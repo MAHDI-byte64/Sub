@@ -16,6 +16,8 @@
 * 📱 **اول موبایل:** بهینه‌سازی کامل برای تجربه لمسی و دستگاه‌های موبایل.
 * 🌐 **چندزبانه:** پشتیبانی کامل از زبان‌های فارسی و انگلیسی.
 * ⚡ **عملکرد بالا:** سرعت بارگذاری بالا با استفاده از `Chart.js` و انیمیشن‌های CSS بهینه.
+* 🤖 **چت بات Fandogh AI:** یک دستیار هوشمند آفلاین در تب اختصاصی «چت بات» (کنار تب نرم‌افزارها) که بدون هیچ API خارجی و کاملاً داخل مرورگر، به سوالات فارسی و انگلیسی درباره اتصال، انتخاب برنامه، حجم باقی‌مانده و تاریخ انقضا پاسخ می‌دهد.
+* 📥 **بخش دانلود بازطراحی‌شده:** کارت اختصاصی برای هر برنامه با برچسب‌های راهنما، تشخیص خودکار سیستم‌عامل و پشتیبانی از Android، iOS، Windows، macOS و Linux به همراه دکمه «افزودن سریع» برای وارد کردن مستقیم لینک اشتراک در برنامه.
 * ✅ **قابلیت‌های کامل:** قابلیت کپی لینک، نمایش QR کد با حالت بارگذاری (Loading State)، و دسترسی سریع به نرم‌افزارهای کلاینت.
 
 ---
@@ -51,6 +53,8 @@ Modern, app-like, and highly responsive subscription page for **3x-ui v3.3.0+**.
 * 📱 **Mobile-First:** Completely optimized for touch screens and mobile devices.
 * 🌐 **Multilingual:** Full, seamless support for both Persian and English.
 * ⚡ **Performance:** High loading speed powered by optimized CSS animations and `Chart.js`.
+* 🤖 **Fandogh AI chat bot:** An offline assistant living in its own "Chat Bot" tab (right next to Apps). It runs entirely in the browser with no external API and answers Persian and English questions about connecting, picking a client, remaining traffic and expiry date.
+* 📥 **Redesigned downloads section:** A dedicated card per client with descriptive tags, automatic OS detection, and coverage for Android, iOS, Windows, macOS and Linux — plus a "Quick add" button that pushes the subscription link straight into the app.
 * ✅ **Full Functionality:** Easy link copying, interactive QR codes with loading states, and quick access to client applications.
 
 ---

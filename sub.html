@@ -520,6 +520,207 @@
         font-size: 0.85rem; font-weight: 700; transition: 0.3s; z-index: 200; pointer-events: none;
       }
       .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+      /* ════════ Apps tab — platform switcher & app cards ════════ */
+      .os-tabs {
+        display: flex; gap: 0.4rem; overflow-x: auto;
+        margin-bottom: 1.1rem; padding-bottom: 0.35rem;
+        scrollbar-width: none;
+      }
+      .os-tabs::-webkit-scrollbar { display: none; }
+      .os-tab {
+        flex: 0 0 auto; display: flex; align-items: center; gap: 0.4rem;
+        padding: 0.5rem 0.85rem; border-radius: 2rem;
+        border: 1px solid var(--border); background: var(--surface);
+        backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+        color: var(--text-secondary); font-family: var(--font);
+        font-weight: 700; font-size: 0.75rem; cursor: pointer; transition: 0.2s;
+      }
+      .os-tab i { font-size: 0.9rem; }
+      .os-tab:active { transform: scale(0.96); }
+      .os-tab.active {
+        color: #fff; border-color: transparent;
+        background: linear-gradient(135deg, var(--color-apps), var(--color-usage));
+        box-shadow: 0 6px 18px rgba(16, 185, 129, 0.25);
+      }
+      .os-pane { display: none; }
+      .os-pane.active { display: block; animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+
+      .app-card {
+        background: var(--surface); border: 1px solid var(--border);
+        backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+        border-radius: var(--radius-md); padding: 0.9rem;
+        margin-bottom: 0.75rem; transition: 0.2s;
+      }
+      .app-card:hover { background: var(--surface-hover); }
+      .app-card.recommended { border-color: rgba(16, 185, 129, 0.45); }
+      .app-card-top { display: flex; align-items: center; gap: 0.75rem; }
+      .app-icon {
+        width: 2.6rem; height: 2.6rem; flex-shrink: 0;
+        border-radius: 0.9rem; display: grid; place-items: center;
+        font-size: 1.15rem; color: var(--color-apps);
+        background: rgba(16, 185, 129, 0.12);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+      }
+      .app-card-meta { flex: 1; min-width: 0; }
+      .app-card-name {
+        font-size: 0.9rem; font-weight: 800; color: var(--text-primary);
+        display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;
+      }
+      .app-badge {
+        font-size: 0.55rem; font-weight: 800; padding: 0.15rem 0.45rem;
+        border-radius: 2rem; color: var(--color-apps);
+        background: rgba(16, 185, 129, 0.14);
+        border: 1px solid rgba(16, 185, 129, 0.25);
+      }
+      .app-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.35rem; }
+      .app-tag {
+        font-size: 0.6rem; font-weight: 700; color: var(--text-secondary);
+        background: var(--border); border-radius: 2rem; padding: 0.15rem 0.5rem;
+      }
+      .app-card-actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+      .app-btn {
+        flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.35rem;
+        padding: 0.6rem 0.5rem; border-radius: var(--radius-sm); border: 1px solid var(--border);
+        font-family: var(--font); font-weight: 700; font-size: 0.72rem;
+        text-decoration: none; cursor: pointer; transition: 0.2s;
+        background: var(--border); color: var(--text-primary);
+      }
+      .app-btn:active { transform: scale(0.97); }
+      .app-btn.primary {
+        border-color: transparent; color: #fff;
+        background: linear-gradient(135deg, var(--color-apps), var(--color-usage));
+        box-shadow: 0 4px 14px rgba(16, 185, 129, 0.22);
+      }
+      .apps-hint {
+        display: flex; align-items: flex-start; gap: 0.55rem;
+        font-size: 0.7rem; line-height: 1.7; color: var(--text-secondary);
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius-md); padding: 0.75rem 0.85rem; margin-bottom: 1rem;
+      }
+      .apps-hint i { color: var(--color-apps); margin-top: 0.15rem; }
+
+      /* ════════ Chat bot tab ════════ */
+      .chat-head { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+      .chat-avatar {
+        width: 2.8rem; height: 2.8rem; flex-shrink: 0;
+        border-radius: 50%; display: grid; place-items: center;
+        font-size: 1.1rem; color: #fff;
+        background: linear-gradient(135deg, var(--color-chart), var(--color-usage));
+        box-shadow: 0 6px 20px var(--primary-glow);
+      }
+      .chat-head-title { font-size: 1rem; font-weight: 800; }
+      .chat-head-sub {
+        font-size: 0.7rem; color: var(--text-secondary); margin-top: 0.15rem;
+        display: flex; align-items: center; gap: 0.35rem;
+      }
+      .chat-dot {
+        width: 0.4rem; height: 0.4rem; border-radius: 50%;
+        background: var(--success); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6);
+        animation: chatPulse 2s infinite;
+      }
+      @keyframes chatPulse {
+        0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55); }
+        70% { box-shadow: 0 0 0 0.35rem rgba(16, 185, 129, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+      }
+
+      .chat-card { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+      .ai-body {
+        height: clamp(17rem, 48vh, 26rem);
+        overflow-y: auto; padding: 1rem;
+        display: flex; flex-direction: column; gap: 0.6rem;
+        scroll-behavior: smooth;
+      }
+      .ai-msg {
+        max-width: 86%; font-size: 0.8rem; line-height: 1.75;
+        padding: 0.6rem 0.8rem; border-radius: var(--radius-md);
+        animation: fadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+        word-wrap: break-word; overflow-wrap: anywhere;
+      }
+      .ai-msg b { color: var(--primary); }
+      .ai-msg.bot {
+        align-self: flex-start; color: var(--text-primary);
+        background: var(--surface-hover); border: 1px solid var(--border);
+        border-start-start-radius: 0.35rem;
+      }
+      .ai-msg.user {
+        align-self: flex-end; color: #fff; border: 1px solid transparent;
+        background: linear-gradient(135deg, var(--color-usage), var(--color-chart));
+        border-end-end-radius: 0.35rem;
+      }
+      .ai-msg.user b { color: #fff; }
+      .ai-msg-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.6rem; }
+      .ai-msg-action {
+        font-size: 0.66rem; font-weight: 700; padding: 0.35rem 0.7rem;
+        border-radius: 2rem; cursor: pointer; font-family: var(--font);
+        color: var(--primary); background: var(--primary-glow);
+        border: 1px solid var(--border); transition: 0.2s;
+      }
+      .ai-msg-action:hover { background: var(--surface-hover); }
+      .ai-msg-action:active { transform: scale(0.96); }
+
+      .ai-typing {
+        align-self: flex-start; display: flex; gap: 0.25rem;
+        padding: 0.7rem 0.85rem; border-radius: var(--radius-md);
+        background: var(--surface-hover); border: 1px solid var(--border);
+      }
+      .ai-typing span {
+        width: 0.35rem; height: 0.35rem; border-radius: 50%;
+        background: var(--text-secondary); animation: aiBounce 1s infinite;
+      }
+      .ai-typing span:nth-child(2) { animation-delay: 0.15s; }
+      .ai-typing span:nth-child(3) { animation-delay: 0.3s; }
+      @keyframes aiBounce {
+        0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
+        30% { transform: translateY(-0.25rem); opacity: 1; }
+      }
+
+      .ai-quick {
+        display: flex; flex-wrap: wrap; gap: 0.4rem;
+        padding: 0 1rem 0.75rem; flex-shrink: 0;
+      }
+      .ai-quick-chip {
+        font-size: 0.66rem; font-weight: 700; padding: 0.4rem 0.7rem;
+        border-radius: 2rem; cursor: pointer; font-family: var(--font);
+        color: var(--text-secondary); background: var(--surface);
+        border: 1px solid var(--border); transition: 0.2s;
+      }
+      .ai-quick-chip:hover { color: var(--primary); border-color: var(--primary); }
+      .ai-quick-chip:active { transform: scale(0.96); }
+      .ai-quick-chip:disabled { opacity: 0.4; cursor: not-allowed; }
+
+      .ai-rate-note {
+        display: none; margin: 0 1rem 0.75rem;
+        font-size: 0.68rem; line-height: 1.7; color: var(--warning);
+        background: rgba(245, 158, 11, 0.1);
+        border: 1px solid rgba(245, 158, 11, 0.25);
+        border-radius: var(--radius-sm); padding: 0.5rem 0.7rem;
+      }
+
+      .ai-input-row {
+        display: flex; gap: 0.5rem; padding: 0.75rem;
+        border-top: 1px solid var(--border); flex-shrink: 0;
+      }
+      .ai-input {
+        flex: 1; min-width: 0; font-family: var(--font); font-size: 0.8rem;
+        padding: 0.65rem 0.85rem; border-radius: var(--radius-md);
+        border: 1px solid var(--border); background: var(--surface);
+        color: var(--text-primary); outline: none; transition: 0.2s;
+      }
+      .ai-input:focus { border-color: var(--primary); }
+      .ai-input::placeholder { color: var(--text-secondary); }
+      .ai-input:disabled { opacity: 0.55; cursor: not-allowed; }
+      .ai-send {
+        width: 2.6rem; height: 2.6rem; flex-shrink: 0;
+        border-radius: var(--radius-md); border: none; cursor: pointer;
+        display: grid; place-items: center; color: #fff; font-size: 0.85rem;
+        background: linear-gradient(135deg, var(--color-usage), var(--color-chart));
+        box-shadow: 0 4px 14px var(--primary-glow); transition: 0.2s;
+      }
+      .ai-send:active { transform: scale(0.95); }
+      .ai-send:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+      [dir="rtl"] .ai-send i { transform: scaleX(-1); }
     </style>
   </head>
   <body>
@@ -685,11 +886,36 @@
 
         <!-- TAB 3: Apps -->
         <div id="tab-apps" class="tab-content">
-          <h3 id="appsTitleApp" style="font-size: 1.1rem; font-weight: 800; margin-bottom: 1.25rem;">برنامه‌های پیشنهادی</h3>
+          <h3 id="appsTitleApp" style="font-size: 1.1rem; font-weight: 800; margin-bottom: 1rem;">برنامه‌های پیشنهادی</h3>
+          <div class="apps-hint">
+            <i class="fa-solid fa-circle-info"></i>
+            <span id="appsHintText">برنامه مناسب سیستم‌عاملت را نصب کن، بعد با دکمه «افزودن سریع» لینک اشتراک مستقیم داخل برنامه اضافه می‌شود.</span>
+          </div>
+          <div class="os-tabs" id="osTabs"></div>
           <div id="appsGridContainer"></div>
         </div>
 
-        <!-- TAB 4: Profile -->
+        <!-- TAB 4: Chat Bot -->
+        <div id="tab-chat" class="tab-content">
+          <div class="chat-head">
+            <div class="chat-avatar"><i class="fa-solid fa-robot"></i></div>
+            <div>
+              <div class="chat-head-title" id="chatHeadTitle">Fandogh AI</div>
+              <div class="chat-head-sub"><span class="chat-dot"></span><span id="chatHeadSub">پاسخ آنی · رایگان · بدون نیاز به اینترنت آزاد</span></div>
+            </div>
+          </div>
+          <div class="card chat-card">
+            <div class="ai-body" id="ai-body"></div>
+            <div class="ai-quick" id="ai-quick"></div>
+            <div class="ai-rate-note" id="ai-rate-note"></div>
+            <form class="ai-input-row" id="ai-form" onsubmit="return aiSubmit(event)">
+              <input type="text" id="ai-input" class="ai-input" autocomplete="off" placeholder="سوالت را بنویس…" />
+              <button type="submit" class="ai-send" id="ai-send-btn" aria-label="Send"><i class="fa-solid fa-paper-plane"></i></button>
+            </form>
+          </div>
+        </div>
+
+        <!-- TAB 5: Profile -->
         <div id="tab-profile" class="tab-content">
           <h3 id="profileTitleText" style="font-size: 1.1rem; font-weight: 800; margin-bottom: 1.25rem;">پروفایل کاربری</h3>
           <div class="card profile-details-card" style="display: flex; flex-direction: column; gap: 0.9rem;">
@@ -740,6 +966,10 @@
         <button class="nav-item" data-target="tab-apps">
           <i class="fa-brands fa-app-store-ios"></i>
           <span id="navAppsText">نرم‌افزارها</span>
+        </button>
+        <button class="nav-item" data-target="tab-chat">
+          <i class="fa-solid fa-robot"></i>
+          <span id="navChatText">چت بات</span>
         </button>
         <button id="navSupportBtn" class="nav-item">
           <i class="fa-brands fa-telegram"></i>
@@ -895,7 +1125,14 @@
           pLastOnline: "آخرین اتصال", pExpiryDate: "تاریخ انقضا",
           chartTitle: "مصرف ۷ روز اخیر", chartFrom: "از ", chartTo: "تا امروز",
           expiryUntil: "تا تاریخ: ", bytesUnit: "بایت", kbUnit: "کیلوبایت", mbUnit: "مگابایت",
-          renewBtn: "تمدید اشتراک"
+          renewBtn: "تمدید اشتراک",
+          chatTab: "چت بات", chatSub: "پاسخ آنی · رایگان · همیشه در دسترس",
+          appsHint: "برنامه مناسب سیستم‌عاملت را نصب کن، بعد با دکمه «افزودن سریع» لینک اشتراک مستقیم داخل برنامه اضافه می‌شود.",
+          appDownload: "دانلود", appQuickAdd: "افزودن سریع", appCopyLink: "کپی لینک", appRecommended: "پیشنهادی",
+          tagPopular: "محبوب", tagLight: "سبک", tagEasy: "ساده برای مبتدی", tagPro: "حرفه‌ای",
+          tagOfficial: "رسمی", tagFast: "سریع", tagAllInOne: "همه‌کاره", tagFree: "رایگان",
+          appLinkCopied: "لینک اشتراک کپی شد؛ داخل برنامه Paste کن.",
+          aiPlaceholder: "سوالت را بنویس…"
         },
         en: {
           used: "Used", usage: "Usage", total: "Total", remained: "Remaining",
@@ -914,7 +1151,14 @@
           pLastOnline: "Last Online", pExpiryDate: "Expiry Date",
           chartTitle: "Usage in last 7 days", chartFrom: "From ", chartTo: "To Today",
           expiryUntil: "Until: ", bytesUnit: "B", kbUnit: "KB", mbUnit: "MB",
-          renewBtn: "Renew Subscription"
+          renewBtn: "Renew Subscription",
+          chatTab: "Chat Bot", chatSub: "Instant answers · Free · Always online",
+          appsHint: "Install the app that matches your device, then use \"Quick add\" to push your subscription link straight into it.",
+          appDownload: "Download", appQuickAdd: "Quick add", appCopyLink: "Copy link", appRecommended: "Recommended",
+          tagPopular: "Popular", tagLight: "Lightweight", tagEasy: "Beginner friendly", tagPro: "Advanced",
+          tagOfficial: "Official", tagFast: "Fast", tagAllInOne: "All-in-one", tagFree: "Free",
+          appLinkCopied: "Subscription link copied — paste it inside the app.",
+          aiPlaceholder: "Type your question…"
         },
         zh: {
           used: "已使用", usage: "用量", total: "总计", remained: "剩余",
@@ -933,7 +1177,14 @@
           pLastOnline: "最后在线", pExpiryDate: "到期时间",
           chartTitle: "过去 7 天的用量", chartFrom: "从 ", chartTo: "至今天",
           expiryUntil: "有效期至：", bytesUnit: "B", kbUnit: "KB", mbUnit: "MB",
-          renewBtn: "续费订阅"
+          renewBtn: "续费订阅",
+          chatTab: "聊天机器人", chatSub: "即时回复 · 免费 · 随时在线",
+          appsHint: "请先安装适合你设备的应用，然后点击\"快速添加\"把订阅链接直接导入应用。",
+          appDownload: "下载", appQuickAdd: "快速添加", appCopyLink: "复制链接", appRecommended: "推荐",
+          tagPopular: "热门", tagLight: "轻量", tagEasy: "新手友好", tagPro: "进阶",
+          tagOfficial: "官方", tagFast: "快速", tagAllInOne: "全能", tagFree: "免费",
+          appLinkCopied: "订阅链接已复制，请在应用中粘贴。",
+          aiPlaceholder: "输入你的问题…"
         },
         ru: {
           used: "Использовано", usage: "Трафик", total: "Всего", remained: "Осталось",
@@ -952,7 +1203,14 @@
           pLastOnline: "Последняя сеть", pExpiryDate: "Дата окончания",
           chartTitle: "Потребление за 7 дней", chartFrom: "С ", chartTo: "По сегодня",
           expiryUntil: "До: ", bytesUnit: "Б", kbUnit: "КБ", mbUnit: "МБ",
-          renewBtn: "Продлить подписку"
+          renewBtn: "Продлить подписку",
+          chatTab: "Чат-бот", chatSub: "Мгновенные ответы · Бесплатно · Всегда на связи",
+          appsHint: "Установите приложение для вашей системы, затем нажмите \"Быстрое добавление\", чтобы импортировать ссылку подписки.",
+          appDownload: "Скачать", appQuickAdd: "Быстрое добавление", appCopyLink: "Копировать ссылку", appRecommended: "Рекомендуем",
+          tagPopular: "Популярное", tagLight: "Лёгкое", tagEasy: "Для новичков", tagPro: "Для опытных",
+          tagOfficial: "Официальное", tagFast: "Быстрое", tagAllInOne: "Всё в одном", tagFree: "Бесплатно",
+          appLinkCopied: "Ссылка подписки скопирована — вставьте её в приложении.",
+          aiPlaceholder: "Напишите свой вопрос…"
         }
       };
 
@@ -1303,19 +1561,176 @@
         container.innerHTML = html || `<div style="text-align:center; padding: 2rem; color: var(--text-secondary);">${t("noConfig")}</div>`;
       }
 
+      /* ════════ App catalogue ════════
+         One entry per platform. `scheme` builds the deep link that hands the
+         subscription URL straight to the installed client; apps without a
+         known scheme fall back to copying the link to the clipboard. */
+      const APP_PLATFORMS = [
+        {
+          id: "android", name: "Android", icon: "fa-brands fa-android",
+          apps: [
+            { n: "v2rayNG", icon: "fa-solid fa-paper-plane", rec: true, tags: ["tagPopular", "tagLight"],
+              url: "https://github.com/2dust/v2rayNG/releases",
+              scheme: (l) => `v2rayng://install-config?url=${encodeURIComponent(l)}` },
+            { n: "Hiddify", icon: "fa-solid fa-shield-halved", rec: true, tags: ["tagEasy", "tagAllInOne"],
+              url: "https://github.com/hiddify/hiddify-app/releases/latest",
+              scheme: (l) => `hiddify://import/${l}` },
+            { n: "Happ", icon: "fa-solid fa-bolt-lightning", tags: ["tagFast", "tagEasy"],
+              url: "https://play.google.com/store/apps/details?id=com.happproxy",
+              scheme: (l) => `happ://add/${l}` },
+            { n: "V2Box", icon: "fa-solid fa-box-open", tags: ["tagAllInOne"],
+              url: "https://play.google.com/store/apps/details?id=dev.v2box.android",
+              scheme: (l) => `v2box://install-sub?url=${encodeURIComponent(l)}&title=${encodeURIComponent(appSubTitle())}` },
+            { n: "Incy", icon: "fa-solid fa-rocket", tags: ["tagLight", "tagFree"],
+              url: "https://play.google.com/store/apps/details?id=llc.itdev.incy",
+              scheme: (l) => `incy://import/${l}` }
+          ]
+        },
+        {
+          id: "ios", name: "iOS", icon: "fa-brands fa-apple",
+          apps: [
+            { n: "Streisand", icon: "fa-solid fa-feather", rec: true, tags: ["tagPopular", "tagFree"],
+              url: "https://apps.apple.com/app/id6450534064",
+              scheme: (l) => `streisand://import/${l}` },
+            { n: "Shadowrocket", icon: "fa-solid fa-fighter-jet", tags: ["tagPro", "tagFast"],
+              url: "https://apps.apple.com/app/id932747118",
+              scheme: (l) => `sub://${appB64(l)}` },
+            { n: "Happ", icon: "fa-solid fa-bolt-lightning", rec: true, tags: ["tagEasy", "tagFree"],
+              url: "https://apps.apple.com/app/id6504287215",
+              scheme: (l) => `happ://add/${l}` },
+            { n: "V2Box", icon: "fa-solid fa-box-open", tags: ["tagAllInOne", "tagFree"],
+              url: "https://apps.apple.com/app/id6446814690",
+              scheme: (l) => `v2box://install-sub?url=${encodeURIComponent(l)}&title=${encodeURIComponent(appSubTitle())}` }
+          ]
+        },
+        {
+          id: "windows", name: "Windows", icon: "fa-brands fa-windows",
+          apps: [
+            { n: "v2rayN", icon: "fa-solid fa-paper-plane", rec: true, tags: ["tagPopular", "tagPro"],
+              url: "https://github.com/2dust/v2rayN/releases" },
+            { n: "Hiddify", icon: "fa-solid fa-shield-halved", rec: true, tags: ["tagEasy", "tagAllInOne"],
+              url: "https://github.com/hiddify/hiddify-app/releases/latest",
+              scheme: (l) => `hiddify://import/${l}` },
+            { n: "Nekoray", icon: "fa-solid fa-cat", tags: ["tagPro", "tagLight"],
+              url: "https://github.com/MatsuriDayo/nekoray/releases" },
+            { n: "Happ", icon: "fa-solid fa-bolt-lightning", tags: ["tagEasy", "tagFast"],
+              url: "https://github.com/Happ-proxy/happ-desktop/releases",
+              scheme: (l) => `happ://add/${l}` },
+            { n: "Clash Verge Rev", icon: "fa-solid fa-bolt", tags: ["tagAllInOne", "tagPro"],
+              url: "https://github.com/clash-verge-rev/clash-verge-rev/releases",
+              scheme: (l) => `clash://install-config?url=${encodeURIComponent(l)}` }
+          ]
+        },
+        {
+          id: "macos", name: "macOS", icon: "fa-brands fa-apple",
+          apps: [
+            { n: "V2Box", icon: "fa-solid fa-box-open", rec: true, tags: ["tagAllInOne", "tagFree"],
+              url: "https://apps.apple.com/app/id6446814690",
+              scheme: (l) => `v2box://install-sub?url=${encodeURIComponent(l)}&title=${encodeURIComponent(appSubTitle())}` },
+            { n: "Streisand", icon: "fa-solid fa-feather", tags: ["tagPopular", "tagFree"],
+              url: "https://apps.apple.com/app/id6450534064",
+              scheme: (l) => `streisand://import/${l}` },
+            { n: "Hiddify", icon: "fa-solid fa-shield-halved", rec: true, tags: ["tagEasy", "tagAllInOne"],
+              url: "https://github.com/hiddify/hiddify-app/releases/latest",
+              scheme: (l) => `hiddify://import/${l}` },
+            { n: "Clash Verge Rev", icon: "fa-solid fa-bolt", tags: ["tagPro"],
+              url: "https://github.com/clash-verge-rev/clash-verge-rev/releases",
+              scheme: (l) => `clash://install-config?url=${encodeURIComponent(l)}` }
+          ]
+        },
+        {
+          id: "linux", name: "Linux", icon: "fa-brands fa-linux",
+          apps: [
+            { n: "Hiddify", icon: "fa-solid fa-shield-halved", rec: true, tags: ["tagEasy", "tagAllInOne"],
+              url: "https://github.com/hiddify/hiddify-app/releases/latest",
+              scheme: (l) => `hiddify://import/${l}` },
+            { n: "Nekoray", icon: "fa-solid fa-cat", tags: ["tagPro", "tagLight"],
+              url: "https://github.com/MatsuriDayo/nekoray/releases" },
+            { n: "Clash Verge Rev", icon: "fa-solid fa-bolt", tags: ["tagAllInOne"],
+              url: "https://github.com/clash-verge-rev/clash-verge-rev/releases",
+              scheme: (l) => `clash://install-config?url=${encodeURIComponent(l)}` },
+            { n: "v2rayA", icon: "fa-solid fa-terminal", tags: ["tagPro", "tagFree"],
+              url: "https://github.com/v2rayA/v2rayA/releases" }
+          ]
+        }
+      ];
+
+      let currentOS = null;
+
+      function appSubTitle() { return normalize(templateVars.subTitle, "") || "Sub"; }
+      function appB64(str) {
+        try { return btoa(unescape(encodeURIComponent(str))); } catch (e) { return ""; }
+      }
+      function escapeAttr(str) {
+        return String(str ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      }
+      function escapeHtml(str) { return escapeAttr(str).replace(/'/g, "&#39;"); }
+
+      /* Best-effort platform guess so the visitor lands on the right tab. */
+      function detectOS() {
+        const ua = navigator.userAgent || "";
+        if (/android/i.test(ua)) return "android";
+        if (/iphone|ipad|ipod/i.test(ua)) return "ios";
+        // iPadOS reports itself as a Mac, but with a touch screen.
+        if (/macintosh|mac os x/i.test(ua)) return navigator.maxTouchPoints > 1 ? "ios" : "macos";
+        if (/windows|win32|win64/i.test(ua)) return "windows";
+        if (/linux|x11|cros/i.test(ua)) return "linux";
+        return "android";
+      }
+
+      function appCardHTML(app) {
+        const tags = (app.tags || []).map((k) => `<span class="app-tag">${escapeHtml(t(k))}</span>`).join("");
+        const badge = app.rec
+          ? `<span class="app-badge"><i class="fa-solid fa-star"></i> ${escapeHtml(t("appRecommended"))}</span>`
+          : "";
+        let quick = "";
+        if (subLink) {
+          quick = app.scheme
+            ? `<a class="app-btn primary" href="${escapeAttr(app.scheme(subLink))}"><i class="fa-solid fa-bolt"></i> ${escapeHtml(t("appQuickAdd"))}</a>`
+            : `<button type="button" class="app-btn primary" data-copy-sub="1"><i class="fa-regular fa-copy"></i> ${escapeHtml(t("appCopyLink"))}</button>`;
+        }
+        return `<div class="app-card${app.rec ? " recommended" : ""}">
+            <div class="app-card-top">
+              <div class="app-icon"><i class="${app.icon}"></i></div>
+              <div class="app-card-meta">
+                <div class="app-card-name">${escapeHtml(app.n)}${badge}</div>
+                <div class="app-tags">${tags}</div>
+              </div>
+            </div>
+            <div class="app-card-actions">
+              <a class="app-btn" href="${escapeAttr(app.url)}" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-download"></i> ${escapeHtml(t("appDownload"))}</a>
+              ${quick}
+            </div>
+          </div>`;
+      }
+
+      /* The strip scrolls horizontally, and the first render happens while the
+         Apps tab is still hidden (so it has no layout yet) — hence this also
+         runs again from switchTab() once the tab is actually shown. */
+      function scrollActiveOsTabIntoView() {
+        document.querySelector(".os-tab.active")?.scrollIntoView({ block: "nearest", inline: "center" });
+      }
+
       function renderApps() {
-        let apps = [
-          { name: "Android", icon: "fa-brands fa-android", list: [{n:"v2rayNG", url:"https://github.com/2dust/v2rayNG/releases"}, {n:"Happ", url:"https://play.google.com/store/apps/details?id=com.happproxy"}, {n:"Incy", url:"https://play.google.com/store/apps/details?id=llc.itdev.incy"}, {n:"V2Box", url:"https://play.google.com/store/apps/details?id=dev.v2box.android"}] },
-          { name: "iOS", icon: "fa-brands fa-apple", list: [{n:"Streisand", url:"https://apps.apple.com/app/id6450534064"}, {n:"Shadowrocket", url:"https://apps.apple.com/app/id932747118"}, {n:"Happ", url:"https://apps.apple.com/app/id6504287215"}, {n:"V2Box", url:"https://apps.apple.com/app/id6446814690"}] },
-          { name: "Windows", icon: "fa-brands fa-windows", list: [{n:"v2rayN", url:"https://github.com/2dust/v2rayN/releases"}, {n:"Hiddify", url:"https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.Msix"}, {n:"Nekoray", url:"https://github.com/MatsuriDayo/nekoray"}, {n:"Happ", url:"https://github.com/Happ-proxy/happ-desktop/releases"}] }
-        ];
-        let grid = document.getElementById("appsGridContainer");
-        grid.innerHTML = apps.map(os => `
-          <div class="app-group">
-            <div class="app-group-title"><i class="${os.icon}"></i> ${os.name}</div>
-            ${os.list.map(app => `<a href="${app.url}" target="_blank" class="app-link"><span>${app.n}</span><i class="fa-solid fa-download"></i></a>`).join('')}
-          </div>
-        `).join('');
+        const tabsEl = document.getElementById("osTabs");
+        const grid = document.getElementById("appsGridContainer");
+        if (!tabsEl || !grid) return;
+
+        if (!currentOS || !APP_PLATFORMS.some((p) => p.id === currentOS)) currentOS = detectOS();
+        const platform = APP_PLATFORMS.find((p) => p.id === currentOS) || APP_PLATFORMS[0];
+
+        tabsEl.innerHTML = APP_PLATFORMS.map(
+          (p) => `<button type="button" class="os-tab${p.id === platform.id ? " active" : ""}" data-os="${p.id}"><i class="${p.icon}"></i>${p.name}</button>`
+        ).join("");
+        tabsEl.querySelectorAll(".os-tab").forEach((btn) => {
+          btn.addEventListener("click", () => { currentOS = btn.dataset.os; renderApps(); });
+        });
+        scrollActiveOsTabIntoView();
+
+        grid.innerHTML = `<div class="os-pane active">${platform.apps.map(appCardHTML).join("")}</div>`;
+        grid.querySelectorAll("[data-copy-sub]").forEach((btn) => {
+          btn.addEventListener("click", () => copyText(subLink, t("appLinkCopied")));
+        });
       }
 
       function renderProfile() {
@@ -1385,6 +1800,12 @@
         document.getElementById("navHomeText").innerText = t("navHome");
         document.getElementById("navConfigText").innerText = t("configTitle");
         document.getElementById("navAppsText").innerText = t("appsTitle");
+        document.getElementById("navChatText").innerText = t("chatTab");
+        document.getElementById("chatHeadTitle").innerText = aiTr().aiTitle;
+        document.getElementById("chatHeadSub").innerText = t("chatSub");
+        document.getElementById("appsHintText").innerText = t("appsHint");
+        document.getElementById("ai-input").placeholder = t("aiPlaceholder");
+        aiOnLanguageChange();
         document.getElementById("navProfileText").innerText = t("profile");
         document.getElementById("navSupportText").innerText = t("support");
         document.getElementById("profileTitleText").innerText = t("profile");
@@ -1434,15 +1855,21 @@
       }
 
       // Tab Switching
+      function switchTab(targetId) {
+        const pane = document.getElementById(targetId);
+        if (!pane) return;
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.target === targetId));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === targetId));
+        // The chat bot renders its greeting the first time its tab is opened.
+        if (targetId === 'tab-chat') aiEnsureStarted();
+        if (targetId === 'tab-apps') scrollActiveOsTabIntoView();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
       document.querySelectorAll('.nav-item').forEach(btn => {
-        btn.addEventListener('click', (e) => {
+        btn.addEventListener('click', () => {
           if (btn.id === "navSupportBtn") return;
-          
-          document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-          btn.classList.add('active');
-          document.getElementById(btn.dataset.target).classList.add('active');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          switchTab(btn.dataset.target);
         });
       });
 
@@ -1477,6 +1904,850 @@
         if(configsList.length === 0) return showToast(t("noConfig"));
         copyText(configsList.join("\n"), t("copyDone"));
       });
+
+      /* ════════════════════════════════════════════════════════════════════
+         FANDOGH AI — local chat bot (no external API, no per-message cost)
+
+         Everything below runs entirely in the browser: the visitor's message is
+         scored against a bilingual (FA/EN) knowledge base and answered from it.
+         Some answers are dynamic and read live page data (traffic, expiry) or
+         jump the user to another tab (apps, support).
+         To hook up a real LLM instead, replace the body of aiAnswer() with a
+         fetch() call to your own backend.
+      ════════════════════════════════════════════════════════════════════ */
+
+      /* Chat bot strings. The knowledge base itself is FA/EN, so the bot replies
+         in whichever of those two languages the visitor typed in; for the zh/ru
+         UI locales the chat falls back to English. */
+      const AI_T = {
+        fa: {
+          aiTitle: 'Fandogh AI',
+          aiSub: 'پاسخ آنی · رایگان · همیشه در دسترس',
+          aiGreeting: 'سلام، من Fandogh AI هستم 🤖 می‌تونم درباره وصل شدن، انتخاب برنامه، حجم باقی‌مونده، تاریخ انقضا و خیلی چیزای دیگه کمکت کنم. سوالتو بپرس یا یکی از پیشنهادها رو بزن 👇',
+          aiGreetingBack: 'خوش برگشتی {name}! 👋 امروز چطور می‌تونم کمکت کنم؟',
+          aiQuick1: 'چطور وصل شم؟', aiQuick2: 'کدوم برنامه رو نصب کنم؟',
+          aiQuick3: 'چقدر حجم برام مونده؟', aiQuick4: 'اشتراکم کی تموم میشه؟',
+          aiFallback: 'دقیق مطمئن نیستم منظورت چیه 🤔 یه جور دیگه بپرس، یا از بخش نرم‌افزارها راهنما رو ببین. برای مسائل مربوط به حساب کاربریت هم پشتیبانی بهترین گزینه‌ست.',
+          aiFallback2: 'هنوز جواب مطمئنی برای این ندارم. می‌تونی سوالتو یه جور دیگه بپرسی، یا وصلت کنم به پشتیبانی؟',
+          aiOpenHowTo: 'رفتن به بخش نرم‌افزارها', aiOpenDownload: 'دانلود برنامه‌ها',
+          aiOpenSupport: 'ارتباط با پشتیبانی',
+          aiOpenTelegram: 'پیام در تلگرام', aiOpenChannel: 'کانال تلگرام',
+          aiRateLimited: 'به سقف ۱۵ سوال در هر ۲۰ دقیقه رسیدی 🙏 لطفاً {s} صبر کن و بعد دوباره بپرس.',
+          aiTooLong: 'سوالتو یه کم کوتاه‌تر بنویس 🙏 (کمتر از ۳۰۰ کاراکتر)',
+          aiRepeated: 'همین الان همینو پرسیدی — جوابش همون بالاست 👆 سوال دیگه‌ای داری؟',
+          aiNiceMeet: 'خوشبختم {name}! 😊 یادم می‌مونه. چطور می‌تونم کمکت کنم؟',
+          aiRecallYes: 'معلومه — تو {name} هستی! 😄',
+          aiRecallNo: 'هنوز اسمتو بهم نگفتی — بگو تا برای دفعه بعد یادم بمونه 😊',
+          unlimited: 'نامحدود'
+        },
+        en: {
+          aiTitle: 'Fandogh AI',
+          aiSub: 'Instant answers · Free · Always online',
+          aiGreeting: "Hi, I'm Fandogh AI 🤖 I can help with connecting, picking an app, your remaining traffic, expiry date and much more. Ask me anything, or tap a suggestion below 👇",
+          aiGreetingBack: 'Welcome back, {name}! 👋 What can I help you with today?',
+          aiQuick1: 'How do I connect?', aiQuick2: 'Which app should I use?',
+          aiQuick3: 'How much traffic is left?', aiQuick4: 'When does it expire?',
+          aiFallback: "I'm not fully sure about that one 🤔 Try rephrasing it, or take a look at the Apps tab. For anything account-specific, support is your best bet.",
+          aiFallback2: "Hmm, I don't have a solid answer for that yet. Could you rephrase it, or would you like me to connect you with support instead?",
+          aiOpenHowTo: 'Open the Apps tab', aiOpenDownload: 'Download apps',
+          aiOpenSupport: 'Contact support',
+          aiOpenTelegram: 'Message on Telegram', aiOpenChannel: 'Open our Telegram channel',
+          aiRateLimited: "You've reached the limit of 15 questions per 20 minutes 🙏 Please wait {s} before asking another one.",
+          aiTooLong: 'Try to keep your question a little shorter 🙏 (under 300 characters)',
+          aiRepeated: 'You already asked me that just now — take a look at my answer above 👆 Got a different question?',
+          aiNiceMeet: "Nice to meet you, {name}! 😊 I'll remember that. What can I help you with?",
+          aiRecallYes: "Of course — you're {name}! 😄",
+          aiRecallNo: "You haven't told me your name yet — tell me and I'll remember it for next time 😊",
+          unlimited: 'Unlimited'
+        }
+      };
+
+      /* Chat strings only exist in FA/EN; zh/ru visitors get the English set. */
+      function aiTr() { return AI_T[currentLang === 'fa' ? 'fa' : 'en']; }
+
+      /* Remaining / total traffic as human-readable strings for the bot. */
+      function aiTrafficText() {
+        if (isDataUnlimited) return null;
+        const totalParts = formatBytesParts(totalByteNum || 0);
+        const remainParts = formatBytesParts(Math.max(0, (totalByteNum || 0) - usedBytes));
+        return {
+          remained: `${remainParts.value} ${remainParts.unit}`,
+          total: `${totalParts.value} ${totalParts.unit}`
+        };
+      }
+
+      /* Expiry as a readable date, or "unlimited" when the account never expires. */
+      function aiExpiryText(lang) {
+        if (!expireISO) return AI_T[lang].unlimited;
+        const d = new Date(expireISO);
+        if (isNaN(d.getTime())) return AI_T[lang].unlimited;
+        try {
+          return d.toLocaleDateString(lang === 'fa' ? 'fa-IR' : 'en-GB', {
+            year: 'numeric', month: 'long', day: 'numeric'
+          });
+        } catch (e) {
+          return d.toISOString().slice(0, 10);
+        }
+      }
+
+      let aiStarted=false, aiOpen=false, aiBusy=false;
+
+      /* ── Anti-spam / rate-limit state ──
+         Sliding-window flood guard: each visitor may ask at most AI_RATE_MAX
+         questions inside any AI_RATE_WINDOW stretch of time. Timestamps are kept
+         in localStorage (not just memory) so refreshing the page can't be used
+         to dodge the limit. Also includes basic repeated-message detection so
+         asking the exact same thing twice in a row doesn't just replay the
+         full answer. */
+      const AI_RATE_WINDOW = 20*60*1000; // 20 minutes
+      const AI_RATE_MAX    = 15;         // max questions allowed inside that window
+      const AI_MAX_LEN     = 300;        // hard cap on message length
+      const AI_RATE_KEY     = 'ai_msg_times';
+      let aiRateInterval = null;
+      let aiLastNorm = '';
+      let aiLastRepeatCount = 0;
+
+      /* ── Lightweight "memory" so the assistant feels less like a static FAQ ── */
+      let aiUserName = null;
+      try{ aiUserName = localStorage.getItem('ai_user_name') || null; }catch{}
+
+      /* The chat bot lives in its own bottom-nav tab here, so "opening" it means
+         activating that tab and "closing" it means going back to the dashboard.
+         The greeting is rendered lazily, the first time the tab is opened. */
+      function toggleAI(force){
+        aiOpen = (typeof force==='boolean') ? force : true;
+        switchTab(aiOpen ? 'tab-chat' : 'tab-home');
+        if(aiOpen){
+          aiEnsureStarted();
+          setTimeout(()=>document.getElementById('ai-input')?.focus(),260);
+        }
+      }
+
+      function aiEnsureStarted(){
+        if(aiStarted) return;
+        aiStarted=true;
+        aiInit();
+      }
+
+      function aiInit(){
+        const tr=aiTr();
+        aiRenderQuickChips();
+        let greet = tr.aiGreeting||'Hi! How can I help?';
+        if(aiUserName && tr.aiGreetingBack) greet = tr.aiGreetingBack.replace('{name}', aiUserName);
+        aiAddBot(greet);
+      }
+
+      function aiRenderQuickChips(){
+        const tr=aiTr();
+        const wrap=document.getElementById('ai-quick');
+        wrap.innerHTML='';
+        [tr.aiQuick1,tr.aiQuick2,tr.aiQuick3,tr.aiQuick4].filter(Boolean).forEach(q=>{
+          const c=document.createElement('button');
+          c.type='button';c.className='ai-quick-chip';c.textContent=q;
+          c.onclick=()=>aiRequestAsk(q);
+          wrap.appendChild(c);
+        });
+      }
+      function aiSetChipsEnabled(enabled){
+        document.querySelectorAll('.ai-quick-chip').forEach(c=>{ c.disabled=!enabled; });
+      }
+
+      function aiScrollBottom(){
+        const body=document.getElementById('ai-body');
+        requestAnimationFrame(()=>{ body.scrollTop=body.scrollHeight; });
+      }
+      function aiAddUser(text){
+        const body=document.getElementById('ai-body');
+        const el=document.createElement('div');
+        el.className='ai-msg user';
+        el.textContent=text;
+        body.appendChild(el);
+        aiScrollBottom();
+      }
+      function aiSetBusy(busy){
+        aiBusy=busy;
+        const send=document.querySelector('.ai-send');
+        const input=document.getElementById('ai-input');
+        if(send) send.disabled=busy;
+        if(input) input.disabled=busy;
+        aiSetChipsEnabled(!busy);
+      }
+      /* Reveals a bot reply with a character-by-character typewriter effect.
+         Tokenizes the HTML into tags vs. text runs so simple markup like <b> is
+         preserved without ever splitting a tag mid-way. */
+      function aiAddBot(html,actions){
+        aiSetBusy(true);
+        const body=document.getElementById('ai-body');
+        const el=document.createElement('div');
+        el.className='ai-msg bot';
+        body.appendChild(el);
+        aiScrollBottom();
+        const tokens=html.match(/<[^>]+>|[^<]+/g)||[];
+        let ti=0, ci=0;
+        function finish(){
+          if(actions&&actions.length){
+            const wrap=document.createElement('div');
+            wrap.className='ai-msg-actions';
+            wrap.style.cssText='opacity:0;transition:opacity .3s';
+            actions.forEach(a=>{
+              const b=document.createElement('button');
+              b.type='button';b.className='ai-msg-action';b.textContent=a.label;
+              b.onclick=a.onClick;
+              wrap.appendChild(b);
+            });
+            el.appendChild(wrap);
+            requestAnimationFrame(()=>{ wrap.style.opacity='1'; });
+          }
+          aiScrollBottom();
+          aiSetBusy(false);
+        }
+        function step(){
+          if(ti>=tokens.length){ finish(); return; }
+          const token=tokens[ti];
+          if(token[0]==='<'){
+            el.insertAdjacentHTML('beforeend',token);
+            ti++;
+            aiScrollBottom();
+            setTimeout(step,0);
+            return;
+          }
+          if(ci===0) el.appendChild(document.createTextNode(''));
+          const node=el.lastChild;
+          node.textContent+=token[ci];
+          ci++;
+          if(ci>=token.length){ ti++; ci=0; }
+          aiScrollBottom();
+          setTimeout(step,12+Math.random()*20);
+        }
+        step();
+      }
+      function aiTypingShow(){
+        const body=document.getElementById('ai-body');
+        const el=document.createElement('div');
+        el.className='ai-typing';el.id='ai-typing-ind';
+        el.innerHTML='<span></span><span></span><span></span>';
+        body.appendChild(el);
+        aiScrollBottom();
+      }
+      function aiTypingHide(){
+        document.getElementById('ai-typing-ind')?.remove();
+      }
+
+      /* Formats a wait duration in seconds as "45s" or "3:07". */
+      function aiFmtWait(sec){
+        if(sec<60) return sec+'s';
+        const m=Math.floor(sec/60), s=sec%60;
+        return m+':'+String(s).padStart(2,'0');
+      }
+
+      function aiLoadTimes(){
+        try{ return JSON.parse(localStorage.getItem(AI_RATE_KEY)||'[]'); }catch{ return []; }
+      }
+      function aiSaveTimes(arr){
+        try{ localStorage.setItem(AI_RATE_KEY, JSON.stringify(arr)); }catch{}
+      }
+
+      /* Returns 0 if a message may be sent right now, or the number of seconds
+         the visitor still needs to wait before their next question — based on
+         a rolling AI_RATE_WINDOW that persists across page reloads. Pushes a
+         timestamp and saves it on success. */
+      function aiCheckRate(){
+        const now=Date.now();
+        let times=aiLoadTimes().filter(ts=>now-ts<AI_RATE_WINDOW);
+        if(times.length>=AI_RATE_MAX){
+          const oldest=times[0];
+          const waitMs=AI_RATE_WINDOW-(now-oldest);
+          aiSaveTimes(times);
+          return Math.max(1,Math.ceil(waitMs/1000));
+        }
+        times.push(now);
+        aiSaveTimes(times);
+        return 0;
+      }
+
+      function aiShowRateNotice(template,seconds){
+        const note=document.getElementById('ai-rate-note');
+        const input=document.getElementById('ai-input');
+        const send=document.querySelector('.ai-send');
+        if(!note) return;
+        if(aiRateInterval) clearInterval(aiRateInterval);
+        let remaining=seconds;
+        input.disabled=true; if(send) send.disabled=true;
+        aiSetChipsEnabled(false);
+        note.style.display='block';
+        note.textContent=template.replace('{s}',aiFmtWait(remaining));
+        aiRateInterval=setInterval(()=>{
+          remaining--;
+          if(remaining<=0){
+            clearInterval(aiRateInterval); aiRateInterval=null;
+            note.style.display='none'; note.textContent='';
+            input.disabled=false; if(send) send.disabled=false;
+            aiSetChipsEnabled(true);
+            input.focus();
+          } else {
+            note.textContent=template.replace('{s}',aiFmtWait(remaining));
+          }
+        },1000);
+      }
+
+      function aiSubmit(ev){
+        ev.preventDefault();
+        const input=document.getElementById('ai-input');
+        const val=input.value.trim();
+        if(!val) return false;
+        input.value='';
+        aiRequestAsk(val);
+        return false;
+      }
+
+      /* Single entry point for asking a question, used by both the text input
+         and the quick-suggestion chips — so neither path can bypass the length
+         cap, the rate limiter, or the busy lock. */
+      function aiRequestAsk(question){
+        if(aiBusy) return;
+        const val=String(question||'').trim();
+        if(!val) return;
+
+        const lang=aiDetectLang(val);
+        const tr=AI_T[lang];
+
+        if(val.length>AI_MAX_LEN){
+          aiAddUser(val.slice(0,140)+'…');
+          aiSetBusy(true);
+          aiTypingShow();
+          setTimeout(()=>{ aiTypingHide(); aiAddBot(tr.aiTooLong||'Please keep your question shorter.'); },260);
+          return;
+        }
+
+        const waitSec=aiCheckRate();
+        if(waitSec>0){
+          aiAddUser(val);
+          aiShowRateNotice(tr.aiRateLimited||'You\'ve reached the question limit. Please wait {s} before sending another message.', waitSec);
+          return;
+        }
+
+        aiAsk(val);
+      }
+
+      function aiAsk(question){
+        aiAddUser(question);
+        aiSetBusy(true); // locked immediately — closes the gap between accepting the
+                          // question and the typing-delay timer actually firing,
+                          // so rapid double-clicks/taps can't sneak past the limiter
+
+        const norm=aiNormalize(question);
+        if(norm && norm===aiLastNorm) aiLastRepeatCount++;
+        else { aiLastNorm=norm; aiLastRepeatCount=0; }
+
+        aiTypingShow();
+        const delay=380+Math.random()*420;
+        setTimeout(()=>{
+          aiTypingHide();
+          if(aiLastRepeatCount>=1){
+            const lang=aiDetectLang(question);
+            const tr=AI_T[lang];
+            aiAddBot(tr.aiRepeated||'You already asked me that — check my answer above.');
+            return;
+          }
+          const {html,actions}=aiAnswer(question);
+          aiAddBot(html,actions);
+        },delay);
+      }
+
+      /* Action helpers reused by several answers */
+      function aiActOpenApps(){ switchTab('tab-apps'); }
+      function aiActOpenSupport(){
+        if(supportUrl && supportUrl.trim()) window.open(supportUrl.replace('t.me','telegram.me'),'_blank');
+        else switchTab('tab-apps');
+      }
+
+      /* ── Knowledge base ──
+         Each entry is scored against the visitor's message; the highest-scoring
+         entry above the minimum threshold wins. Patterns are short FA/EN
+         keywords or phrases — plain substring matches, kept lowercase for the
+         Latin ones (Persian doesn't need case-folding). */
+      const AI_KB=[
+        { id:'greeting', patterns:['سلام','درود','سلامت باشی','hi','hello','hey','yo','سلاام','سلام خوبی'],
+          reply:{
+            fa:'سلام! خوش اومدی 🌙 چطور می‌تونم کمکت کنم؟',
+            en:'Hey there! 👋 What can I help you with?'} },
+        { id:'howAreYou', patterns:['خوبی','چطوری','حالت چطوره','how are you',"what's up",'sup'],
+          reply:{
+            fa:'من که همیشه سرحالم 😄 تو چطوری؟ اگه سوالی درباره اتصال یا اشتراکت داری بپرس.',
+            en:"I'm doing great, thanks for asking! 😄 Got a question about connecting or your subscription?"} },
+        { id:'thanks', patterns:['ممنون','مرسی','تشکر','دمت گرم','دستت درد نکنه','thanks','thank you','thx','appreciate'],
+          reply:{
+            fa:'خواهش می‌کنم! هر سوال دیگه‌ای بود در خدمتم 🙏',
+            en:"You're welcome! Let me know if you need anything else 🙏"} },
+        { id:'bye', patterns:['خداحافظ','بای','فعلا','میرم','bye','goodbye','see ya','later'],
+          reply:{
+            fa:'خداحافظ! هر وقت سوالی داشتی برگرد اینجا 👋',
+            en:'Goodbye! Come back any time you have a question 👋'} },
+        { id:'howToConnect', patterns:['وصل شم','وصل بشم','چطور وصل','چجوری وصل','اتصال','چطور استفاده','چجوری استفاده','نصب کنم','راه اندازی','connect','how to use','how do i connect','setup','get started','how does this work'],
+          reply:{
+            fa:'برای وصل شدن: ۱) اپلیکیشن مناسب گوشیت رو نصب کن  ۲) لینک اشتراک رو از تب «داشبورد» کپی کن  ۳) داخل اپ، اون لینک رو Import/Add کن  ۴) وصل شو! بخش نرم‌افزارها رو برات باز می‌کنم:',
+            en:"To connect: 1) install a compatible app  2) copy your subscription link  3) import it inside the app  4) tap connect! Here's the Apps tab with every client and a one-tap import:"},
+          actionsKey:'howto' },
+        { id:'whichApp', patterns:['اپ','اپلیکیشن','نرم افزار','کدوم اپ','چه برنامه ای','app','application','which app','what app','client'],
+          reply:{
+            fa:'بسته به دستگاهت: اندروید → V2rayNG یا Hiddify، آیفون → Streisand یا Shadowrocket، ویندوز → V2rayN یا Hiddify، مک → V2Box، لینوکس → Nekoray. از تب نرم‌افزارها می‌تونی مستقیم دانلودشون کنی:',
+            en:'Depends on your device: Android → V2rayNG or Hiddify, iPhone → Streisand or Shadowrocket, Windows → V2rayN or Hiddify, macOS → V2Box, Linux → Nekoray. Grab yours from the Apps tab:'},
+          actionsKey:'download' },
+        { id:'android', patterns:['اندروید','گوشیم اندرویده','android'],
+          reply:{
+            fa:'برای اندروید بهترین گزینه‌ها V2rayNG یا Hiddify هستن. از تب نرم‌افزارها نصبشون کن و بعد با دکمه «افزودن سریع» لینک اشتراک رو مستقیم داخلشون بفرست.',
+            en:'For Android, V2rayNG or Hiddify are the best picks. Install one from the Apps tab, then hit "Quick add" to push your subscription link straight into it.'},
+          actionsKey:'download' },
+        { id:'ios', patterns:['آیفون','ایفون','آی او اس','iphone','ipad','ios'],
+          reply:{
+            fa:'برای آیفون/آیپد از Streisand یا Shadowrocket استفاده کن. از تب نرم‌افزارها نصبشون کن و لینک اشتراک رو داخلشون Import کن.',
+            en:'For iPhone/iPad use Streisand or Shadowrocket. Install one from the Apps tab and import your subscription link inside it.'},
+          actionsKey:'download' },
+        { id:'windows', patterns:['ویندوز','windows','pc','کامپیوتر','لپ تاپ','laptop'],
+          reply:{
+            fa:'برای ویندوز از V2rayN یا Hiddify استفاده کن؛ فایلش رو از تب نرم‌افزارها بگیر، اجرا کن و لینک اشتراکتو داخلش اضافه کن.',
+            en:'On Windows use V2rayN or Hiddify — grab it from the Apps tab, run it, and add your subscription link inside.'},
+          actionsKey:'download' },
+        { id:'qr', patterns:['qr','کیو آر','بارکد','اسکن','کد اسکن'],
+          reply:{
+            fa:'در تب «کانفیگ‌ها» روبروی هر لینک، دکمه QR رو بزن؛ یه کد نمایش داده می‌شه که با اپ گوشیت می‌تونی اسکنش کنی و مستقیم وارد بشه.',
+            en:'In the "Configs" tab, tap the QR button next to any link — a code appears that your app can scan to import it directly.'} },
+        { id:'traffic', patterns:['حجم','ترافیک','مصرف','باقی مونده','چقدر حجم','چقد حجم دارم','remaining','traffic','usage','data left','quota','how much data'],
+          reply:{ fa:null, en:null }, dynamic:'traffic' },
+        { id:'expiry', patterns:['انقضا','تموم میشه','کی تموم','چند روز مونده','expire','expiry','expires','when does','how many days'],
+          reply:{ fa:null, en:null }, dynamic:'expiry' },
+        { id:'troubleshoot', patterns:['کند','قطع میشه','وصل نمیشه','کار نمیکنه','لود نمیشه','باز نمیشه','خرابه','آپدیت','update','slow','not working',"won't connect",'disconnect',"doesn't work",'error','broken','stuck','لگ داره','لگ میزنه'],
+          reply:{
+            fa:'اگه سرعت کند بود یا وصل نمی‌شد: ۱) اشتراک رو داخل اپ آپدیت کن  ۲) کانفیگ دیگه‌ای رو امتحان کن  ۳) اپ رو ببند و دوباره باز کن  ۴) اگه امکانش هست شبکه (وایفای/دیتا) رو عوض کن. اگه باز حل نشد، با پشتیبانی در تماس باش:',
+            en:"If it feels slow or won't connect: 1) update the subscription inside the app  2) try a different config  3) restart the app  4) if possible, switch networks (WiFi/mobile data). Still stuck? Reach out to support:"},
+          actionsKey:'support' },
+        { id:'whatIsThis', patterns:['این چیه','این صفحه چیه','این سایت چیه','پنل چیه','vpn چیه','وی پی ان یعنی چی','what is this','what is this page','what is a vpn','what is this panel'],
+          reply:{
+            fa:'این صفحه، پنل اشتراک وی‌پی‌ان شخصی توئه — همینجا لینک اتصال، حجم مصرفی و تاریخ انقضاتو می‌بینی و می‌تونی به اپلیکیشن‌های مختلف وصلش کنی.',
+            en:'This page is your personal VPN subscription panel — you can see your connection links, data usage and expiry date here, and connect from a range of apps.'} },
+        { id:'safety', patterns:['امنه','امنیت','لاگ','لاگ نگه','ذخیره میکنه','خصوصی','امن هست','safe','privacy','logs','secure','anonymous','private'],
+          reply:{
+            fa:'ترافیک بین گوشیت و سرور رمزنگاری شده و همون پروتکل‌های استاندارد (V2Ray/Xray و…) رو استفاده می‌کنه. برای جزئیات دقیق سیاست لاگ، بهتره از پشتیبانی بپرسی.',
+            en:"Traffic between your device and the server is encrypted using standard protocols (V2Ray/Xray, etc). For exact logging-policy details, it's best to ask support."},
+          actionsKey:'support' },
+        { id:'devices', patterns:['چند دستگاه','چند تا گوشی','همزمان','multiple devices','how many devices','simultaneous','shared'],
+          reply:{
+            fa:'تعداد دستگاه‌های مجاز بستگی به پلن توئه. اگه مطمئن نیستی چند دستگاه می‌تونی وصل کنی، از پشتیبانی بپرس.',
+            en:'The number of allowed devices depends on your plan. If you\'re not sure how many devices you can connect, ask support.'},
+          actionsKey:'support' },
+        { id:'multipleConfigs', patterns:['چند تا سرور','چند کانفیگ','فرق سرورا','کدوم سرور بهتره','چرا چند تا لینک','difference between configs','which server','why multiple servers'],
+          reply:{
+            fa:'چند کانفیگ مختلف بهت داده شده تا اگه یکی کند یا فیلتر بود، یکی دیگه رو امتحان کنی. می‌تونی هرکدوم رو که سریع‌تر بود نگه‌داری.',
+            en:'You get a few different configs so if one feels slow or blocked, you can just try another. Keep whichever performs best for you.'} },
+        { id:'renew', patterns:['تمدید','خرید','خرید حجم','افزایش حجم','پرداخت','renew','buy','purchase','payment','subscribe'],
+          reply:{
+            fa:'برای تمدید یا خرید حجم بیشتر باید با پشتیبانی هماهنگ کنی — من نمی‌تونم مستقیم پرداختی رو انجام بدم. قیمت‌ها و پلن‌های فعلی رو هم می‌تونی داخل کانال تلگرام ما ببینی.',
+            en:"For renewals or buying more data, please reach out to support directly — I can't process payments myself. Current prices and plans are also posted in our Telegram channel."},
+          actionsKey:['support','channel'] },
+        { id:'price', patterns:['قیمت','قیمتش چنده','هزینه اش چقدره','قیمت پلن','قیمت اشتراک','چند تومنه','چقدر قیمتش','price','how much does it cost','cost','pricing','plan cost','how much is it'],
+          reply:{
+            fa:['قیمت پلن‌ها و تعرفه‌های فعلی رو داخل کانال تلگرام ما گذاشتیم — از اونجا می‌تونی ببینی:','برای دیدن آخرین قیمت‌ها و پلن‌ها، کانال تلگرام‌مون به‌روزه؛ یه سر بهش بزن:'],
+            en:['Current prices and plans are posted in our Telegram channel — check it out here:','For the latest pricing and plans, our Telegram channel is kept up to date:']},
+          actionsKey:'channel' },
+        { id:'channel', patterns:['کانال تلگرام','کانال شما','کانالتون','آدرس کانال','لینک کانال','عضو کانال','telegram channel','your channel','channel link','join channel'],
+          reply:{
+            fa:'کانال تلگرام ما اینه، حتماً عضو شو تا از آپدیت‌ها و قیمت‌های جدید باخبر بمونی:',
+            en:"Here's our Telegram channel — join it to stay updated on news and pricing:"},
+          actionsKey:'channel' },
+        { id:'support', patterns:['پشتیبانی','ادمین','تماس بگیرم','با کی صحبت کنم','support','contact','admin','human','real person','talk to someone'],
+          reply:{
+            fa:'برای ارتباط با پشتیبانی این دکمه رو بزن:',
+            en:'Tap below to reach support:'},
+          actionsKey:'support' },
+        { id:'siteBlocked', patterns:['سایت باز نمیشه','فیلتره','باز نمیشه سایت','برخی سایت ها','dns','بعضی سایتا','some sites',"site won't open",'blocked site','dns issue'],
+          reply:{
+            fa:'اگه فقط بعضی سایت‌ها باز نمی‌شن، معمولاً مشکل DNS یا همون سایته، نه اتصال تو. یه کانفیگ دیگه رو امتحان کن یا DNS اپ رو عوض کن؛ اگه ادامه داشت به پشتیبانی بگو.',
+            en:"If only some sites won't load, it's usually a DNS or site-specific issue rather than your connection. Try a different config or change the app's DNS setting; tell support if it persists."},
+          actionsKey:'support' },
+        { id:'thanksBot', patterns:['هوش مصنوعی هستی','ربات هستی','واقعی هستی','آدمی','are you real','are you a bot','are you ai','are you human'],
+          reply:{
+            fa:['آره، من Fandogh AI ام — یه دستیار هوشمندم که همینجا داخل همین صفحه در خدمتتم. برای مسائل خاص حساب کاربریت، پشتیبانی واقعی بهتره کمکت کنه.','دقیقاً حدس زدی 😄 من Fandogh AI هستم، دستیار هوشمند این پنل. برای موضوعات حساس حساب کاربری، پشتیبانی انسانی بهترین گزینه‌ست.'],
+            en:["Yep, I'm Fandogh AI — a smart assistant built right into this page. For account-specific issues, a real support agent can help better.","Good guess 😄 I'm Fandogh AI, the assistant living inside this panel. For sensitive account matters, human support is your best bet."]} },
+
+        /* ── Identity ── */
+        { id:'botName', patterns:['اسمت چیه','اسمت چیست','نامت چیه','چی صدات کنم','اسم ربات','name of this bot','what is your name',"what's your name",'your name'],
+          reply:{
+            fa:['اسم من Fandogh AI هست 🤖 دستیار هوشمند همین پنل، در خدمتتم.','من Fandogh AI هستم — همیشه همینجا کنارتم تا سوالاتتو جواب بدم.'],
+            en:["I'm Fandogh AI 🤖 — the smart assistant built right into this panel.","My name is Fandogh AI, your assistant here on this page."]} },
+        { id:'creator', patterns:['سازنده','سازندت','سازنده تو','کی ساختت','کی طراحیت کرد','طراح تو','برنامه نویس تو','توسعه دهنده','توسعه‌دهنده','مالک این سایت','مالک سایت','ادمین سایت کیه','این سایت رو کی زده','این ربات رو کی ساخته','creator','who made you','who built you','who created you','who developed you','developer of this','made by','built by','who is your creator','owner of this site','who owns this','who coded you'],
+          reply:{
+            fa:['من رو Fandogh طراحی و توسعه داده 👨‍💻 اگه خواستی باهاش در ارتباط باشی، از دکمه پایین اقدام کن.','سازنده و توسعه‌دهنده‌ام Fandogh هست. برای تماس مستقیم از دکمه زیر استفاده کن.'],
+            en:['I was built and developed by Fandogh 👨‍💻 — tap the button below if you want to reach out.','My creator and developer is Fandogh. You can get in touch through the button below.']},
+          actionsKey:'creator' },
+        { id:'recallName', patterns:['اسم من چیه','اسمم چیه','یادته اسمم','یادت مونده اسمم','what is my name',"what's my name",'do you remember my name','say my name'],
+          reply:{ fa:null, en:null }, dynamic:'recallName' },
+        { id:'isFree', patterns:['رایگانه','این ربات رایگانه','مجانیه','هزینه داره این چت','پولیه این','is this bot free','is this free','do you cost anything','are you paid'],
+          reply:{
+            fa:['آره، من کاملاً رایگانم و همینجا داخل همین صفحه اجرا می‌شم؛ هیچ هزینه‌ای برای استفاده ازم نداری.','بله، استفاده از من کاملاً مجانیه — بدون هیچ محدودیت پرداختی.'],
+            en:["Yep, I'm completely free and run right here on this page — no cost to use me at all.","Yes, using me is totally free — no payment involved."]} },
+        { id:'languages', patterns:['چه زبونایی بلدی','چند زبان بلدی','فارسی بلدی','انگلیسی بلدی','what languages do you speak','can you speak persian','can you speak farsi','do you speak english'],
+          reply:{
+            fa:['راحت به فارسی و انگلیسی صحبت می‌کنم — به هر کدوم که بنویسی، به همون زبون جواب می‌دم 🌐','فارسی و انگلیسی رو خوب بلدم؛ فقط بنویس، خودم زبونتو تشخیص می‌دم.'],
+            en:["I'm comfortable in both Persian and English — I'll reply in whichever language you write to me 🌐","I speak Persian and English fluently; just type and I'll detect the language automatically."]} },
+
+        /* ── Small talk ── */
+        { id:'joke', patterns:['جوک بگو','یه جوک بگو','لطیفه بگو','بامزه باش','بخندونم','tell me a joke','make me laugh','say something funny'],
+          reply:{
+            fa:['چرا کامپیوترا سردشونه؟ چون پنجره‌هاشون (Windows) همیشه بازه! 😄','یه بار سرورمون خیلی کند بود، گفتم شاید خستس... بعد فهمیدم فقط داره فکر می‌کنه 😄'],
+            en:['Why did the computer go to the doctor? Because it caught a virus! 😄','I asked the server why it was slow — it said it was just deep in thought. 😄']} },
+        { id:'compliment', patterns:['خیلی خفنی','باحالی','خیلی باهوشی','عالی هستی','دمت گرم رباط','you are smart','you are cool','you are awesome','good bot','nice bot'],
+          reply:{
+            fa:['ممنون، لطف داری 🙏 خوشحال می‌شم بازم کمکت کنم.','مرسی! سعی می‌کنم همیشه بهترین جواب رو بدم 😊'],
+            en:["Thank you, that's kind of you 🙏 Happy to help anytime.",'Thanks! I try my best to give useful answers 😊']} },
+        { id:'insult', patterns:['بی خودی','بی مصرفی','خنگی','بدرد نمیخوری','you are dumb','you are useless','bad bot','stupid bot'],
+          reply:{
+            fa:['متاسفم که جواب خوبی ندادم 🙏 بگو دقیقاً چی می‌خوای، دوباره امتحان می‌کنم.','ببخشید اگه ناامیدت کردم. یه بار دیگه سوالتو واضح‌تر بگو تا بهتر کمکت کنم.'],
+            en:["Sorry I didn't get that right 🙏 Tell me exactly what you need and I'll try again.","My apologies if that wasn't helpful. Rephrase your question and I'll do better."]} },
+        { id:'loveYou', patterns:['دوست دارم ربات','عاشقتم','i love you','love you bot'],
+          reply:{
+            fa:['لطف داری 😊 من همیشه اینجام تا کمکت کنم.','ممنونم! من هم خوشحالم که می‌تونم کمکت کنم 🤖'],
+            en:["That's sweet of you 😊 I'm always here to help.",'Thank you! Happy to be of service anytime 🤖']} },
+        { id:'weather', patterns:['هوا چطوره','هوا چجوریه','بارونه','آفتابیه','how is the weather','what is the weather'],
+          reply:{
+            fa:'من به آب و هوا دسترسی ندارم 🌦️ ولی می‌تونم درباره اتصال، حجم و اشتراکت کمکت کنم!',
+            en:"I don't have access to the weather 🌦️ but I can help with connection, traffic, or your subscription!"} },
+        { id:'outOfScope', patterns:['تکالیفم رو حل کن','مسئله ریاضی','برام مقاله بنویس','کد بنویس برام','write me code','solve my homework','write an essay','do my math'],
+          reply:{
+            fa:'من بیشتر برای کمک درباره این پنل و اتصال VPN طراحی شدم 🙂 برای این‌جور سوالا بهتره از یه ابزار عمومی‌تر کمک بگیری، ولی هر سوالی درباره اشتراک یا اتصال داشتی همینجام!',
+            en:"I'm mainly built to help with this panel and your VPN connection 🙂 For that kind of request a general-purpose tool would serve you better, but I'm right here for anything about your subscription or connection!"} },
+
+        /* ── VPN / technical topics ── */
+        { id:'killSwitch', patterns:['کیل سوییچ','کیل سویچ','قطع خودکار اینترنت','kill switch','killswitch'],
+          reply:{
+            fa:'کیل‌سوییچ یعنی اگه اتصال VPN قطع بشه، اینترنت گوشیت هم به‌طور خودکار قطع می‌شه تا چیزی بدون رمزنگاری لو نره. تو تنظیمات اکثر اپ‌ها (V2rayNG، Hiddify، Shadowrocket) این گزینه هست، فعالش کن.',
+            en:"A kill switch automatically cuts your internet if the VPN connection drops, so nothing leaks unencrypted. Most apps (V2rayNG, Hiddify, Shadowrocket) have this option in settings — turn it on."} },
+        { id:'splitTunnel', patterns:['اسپلیت تانل','تقسیم ترافیک','بعضی اپا از وی پی ان رد نشن','split tunnel','split tunneling','per-app vpn','exclude app'],
+          reply:{
+            fa:'Split Tunneling بهت اجازه می‌ده انتخاب کنی کدوم اپ‌ها از VPN رد بشن و کدوم مستقیم به اینترنت وصل بمونن. این گزینه رو داخل تنظیمات اپت (مثلاً V2rayNG → Routing) پیدا می‌کنی.',
+            en:'Split tunneling lets you choose which apps go through the VPN and which connect directly. Look for it in your app\'s settings (e.g. V2rayNG → Routing).'} },
+        { id:'dnsLeak', patterns:['دی ان اس لیک','دی ان اس درست کار نمیکنه','dns leak','leak test'],
+          reply:{
+            fa:'برای چک کردن نشتی DNS، سایت‌هایی مثل dnsleaktest.com رو باز کن. اگه IP یا DNS واقعیت لو رفت، DNS داخل اپ رو دستی روی 1.1.1.1 یا 8.8.8.8 تنظیم کن.',
+            en:'To check for DNS leaks, use a site like dnsleaktest.com. If your real IP or DNS shows up, manually set your app\'s DNS to 1.1.1.1 or 8.8.8.8.'} },
+        { id:'ipv6', patterns:['آی پی وی 6','ipv6'],
+          reply:{
+            fa:'اگه شبکه‌ات از IPv6 پشتیبانی می‌کنه و مشکلی داشتی، بهتره IPv6 رو داخل تنظیمات اپ یا گوشی موقتاً غیرفعال کنی تا ترافیک فقط از IPv4 رد بشه.',
+            en:"If your network uses IPv6 and you're seeing issues, try temporarily disabling IPv6 in your app or device settings so traffic only goes through IPv4."} },
+        { id:'torrent', patterns:['تورنت','دانلود تورنت','پیر تو پیر','torrent','torrenting','p2p','bittorrent'],
+          reply:{
+            fa:'دانلود تورنت معمولاً حجم زیادی مصرف می‌کنه و ممکنه روی سرعت بقیه کاربرا هم اثر بذاره؛ اگه امکانش هست ازش با احتیاط استفاده کن. برای سیاست دقیق، از پشتیبانی بپرس.',
+            en:'Torrenting usually eats a lot of data and can affect speed for other users, so use it with caution if at all. For the exact policy, check with support.'},
+          actionsKey:'support' },
+        { id:'gaming', patterns:['گیمینگ','بازی آنلاین','پینگ بازی','گیم پینگ بالا','gaming','online games','ping for gaming','game lag'],
+          reply:{
+            fa:'برای پینگ بهتر تو بازی: نزدیک‌ترین سرور از نظر جغرافیایی رو انتخاب کن، پروتکل سبک‌تر (مثل VLESS) رو امتحان کن، و مطمئن شو اپ‌های پرمصرف دیگه بسته باشن.',
+            en:'For better gaming ping: pick the geographically closest server, try a lighter protocol (like VLESS), and make sure no other heavy apps are running in the background.'} },
+        { id:'streaming', patterns:['نتفلیکس','نتفلیکس باز نمیشه','یوتیوب 4k','استریم','netflix','streaming','youtube 4k','disney+','prime video'],
+          reply:{
+            fa:'برای استریم روون: کانفیگی با پینگ پایین‌تر رو انتخاب کن و اگه کیفیت پایین بود، یه سرور دیگه رو امتحان کن. بعضی سرویس‌ها بسته به سرور ممکنه رفتار متفاوتی داشته باشن.',
+            en:'For smooth streaming: pick a config with lower ping, and if quality is poor, try a different server — some services behave differently depending on the server.'} },
+        { id:'protocolDiff', patterns:['وی مس','وی لس','تروجان','شادوساکس','فرق پروتکل ها','vmess','vless','trojan','shadowsocks','which protocol','protocol difference'],
+          reply:{
+            fa:'VMess، VLESS، Trojan و Shadowsocks همه پروتکل‌های رمزنگاری ترافیک هستن؛ VLESS معمولاً سبک‌تر و سریع‌تره، Trojan شبیه ترافیک HTTPS معمولی به نظر می‌رسه. اگه یکی فیلتر بود، یکی دیگه رو امتحان کن.',
+            en:'VMess, VLESS, Trojan, and Shadowsocks are all traffic-encryption protocols; VLESS is usually lighter and faster, while Trojan blends in like normal HTTPS traffic. If one gets blocked, just try another.'} },
+        { id:'tunProxy', patterns:['تی یو ان مود','پراکسی مود','tun mode','proxy mode','vpn mode difference'],
+          reply:{
+            fa:'حالت TUN کل ترافیک گوشی رو از VPN رد می‌کنه (شامل همه اپ‌ها)، ولی حالت Proxy فقط اپ‌هایی که مستقیماً تنظیم کردی رو پوشش می‌ده. برای اکثر کاربرا TUN راحت‌تره.',
+            en:'TUN mode routes all of your device\'s traffic through the VPN (every app), while Proxy mode only covers apps you\'ve configured directly. TUN mode is simpler for most users.'} },
+        { id:'router', patterns:['روی روتر','مودم','نصب روی روتر','router setup','on my router','install on router'],
+          reply:{
+            fa:'نصب روی روتر بستگی به فریمور روتر داره (مثل OpenWrt) و کمی پیچیده‌تره. اگه نیاز داری همه دستگاه‌های خونه رو پوشش بدی، بهتره با پشتیبانی هماهنگ کنی.',
+            en:'Setting this up on a router depends on your router\'s firmware (like OpenWrt) and is a bit more advanced. If you need to cover every device at home, it\'s best to coordinate with support.'},
+          actionsKey:'support' },
+        { id:'browserExt', patterns:['اکستنشن مرورگر','افزونه کروم','browser extension','chrome extension','firefox addon'],
+          reply:{
+            fa:'در حال حاضر روی اکستنشن مرورگر تمرکز نکردیم؛ بهترین راه استفاده از اپ‌های موبایل یا دسکتاپ معرفی‌شده در بخش دانلوده.',
+            en:"There's no dedicated browser extension right now — the best path is the mobile or desktop apps listed in the download section."},
+          actionsKey:'download' },
+        { id:'batteryData', patterns:['باتری میخوره','شارژ میخوره','مصرف باتری','battery drain','uses too much battery'],
+          reply:{
+            fa:'مصرف باتری VPN معمولاً کمه، ولی اگه زیاد بود: حالت پروتکل سبک‌تر رو امتحان کن و اجازه اجرای پس‌زمینه رو فقط برای اپ VPN باز نگه‌دار (نه بقیه اپ‌ها).',
+            en:"VPN battery usage is usually low, but if it feels high: try a lighter protocol, and only allow background activity for the VPN app itself (not everything else)."} },
+        { id:'autoConnect', patterns:['اتومات وصل شه','خودش وصل بشه موقع روشن شدن گوشی','auto connect','connect on boot','auto start'],
+          reply:{
+            fa:'داخل تنظیمات اپت (مثلاً V2rayNG یا Hiddify) گزینه‌ای مثل «Auto Connect» یا «Connect on Boot» هست که می‌تونی فعالش کنی.',
+            en:'Look inside your app\'s settings (e.g. V2rayNG or Hiddify) for an option like "Auto Connect" or "Connect on Boot" and enable it there.'} },
+        { id:'sharedIP', patterns:['آی پی اختصاصی','آی پی مشترک','dedicated ip','shared ip','static ip'],
+          reply:{
+            fa:'بسته به پلن، سرورها معمولاً بین چند کاربر مشترک هستن. برای دونستن اینکه پلن تو IP اختصاصی داره یا نه، از پشتیبانی بپرس.',
+            en:'Depending on the plan, servers are usually shared between multiple users. Ask support to confirm whether your plan includes a dedicated IP.'},
+          actionsKey:'support' },
+        { id:'serverLocation', patterns:['سرورا کجان','موقعیت سرور','کشور سرور','server location','where are the servers','which country'],
+          reply:{
+            fa:'موقعیت دقیق سرورا رو می‌تونی از اسم کانفیگ‌ها (معمولاً پرچم یا نام کشور توش هست) تشخیص بدی. برای جزئیات بیشتر از پشتیبانی بپرس.',
+            en:"You can usually tell a server's location from the config name (it often includes a flag or country name). Ask support for more detail."} },
+        { id:'speedByTime', patterns:['شب کند میشه','ساعت شلوغی کند','چرا بعضی وقتا کنده','speed varies by time','slower at night','peak hours slow'],
+          reply:{
+            fa:'تو ساعات پرترافیک (مثلاً شب‌ها) ممکنه سرعت کمی افت کنه چون کاربرای بیشتری همزمان وصلن. امتحان یه کانفیگ یا سرور دیگه معمولاً کمک می‌کنه.',
+            en:'During peak hours (like evenings) speed can dip a bit since more users are connected at once. Trying a different config or server usually helps.'} },
+        { id:'lostLink', patterns:['لینک اشتراکمو گم کردم','لینکمو یادم رفته','forgot my subscription link','lost my link','where is my link'],
+          reply:{
+            fa:'لینک اشتراکت همیشه همینجا در تب «داشبورد» همین صفحه‌ست — کافیه صفحه رو دوباره باز کنی یا bookmark کنی که گمش نکنی.',
+            en:'Your subscription link is always right here in the "Dashboard" tab of this page — just reopen this page, or bookmark it so you never lose it.'} },
+        { id:'changeEmail', patterns:['ایمیلمو عوض کنم','تغییر ایمیل','change my email','update email'],
+          reply:{
+            fa:'برای تغییر ایمیل حساب باید با پشتیبانی هماهنگ کنی، چون این کار از سمت من قابل انجام نیست.',
+            en:"Changing your account email needs to go through support — that's not something I can do from here."},
+          actionsKey:'support' },
+        { id:'accountDisabled', patterns:['اکانتم غیرفعال شده','حسابم بسته شده','اکانتم مسدود شده','my account is disabled','account suspended','account banned'],
+          reply:{
+            fa:'اگه اکانتت غیرفعال یا مسدود شده، معمولاً دلیلش تخطی از قوانین استفاده یا اتمام اشتراکه. برای بررسی دقیق و رفع مشکل حتماً با پشتیبانی تماس بگیر.',
+            en:"If your account got disabled or suspended, it's usually due to a usage-policy issue or an expired plan. Contact support to check the exact reason and get it resolved."},
+          actionsKey:'support' },
+        { id:'refund', patterns:['بازپرداخت','پول برگردون','ریفاند','refund','money back','get a refund'],
+          reply:{
+            fa:'برای درخواست بازپرداخت باید مستقیم با پشتیبانی صحبت کنی — این تصمیم از دست من خارجه.',
+            en:"Refund requests need to go directly through support — that decision is out of my hands."},
+          actionsKey:'support' },
+        { id:'discount', patterns:['تخفیف داره','کد تخفیف','پلن بلند مدت ارزون تره','discount','coupon code','promo code','cheaper plan'],
+          reply:{
+            fa:'برای تخفیف یا پلن‌های بلندمدت، بهتره مستقیم از پشتیبانی جویا بشی — ممکنه پیشنهاد ویژه‌ای در دسترس باشه.',
+            en:'For discounts or longer-term plans, it\'s best to ask support directly — there might be a current promotion available.'},
+          actionsKey:'support' },
+        { id:'doubleVpn', patterns:['دو تا وی پی ان همزمان','وی پی ان روی وی پی ان','double vpn','two vpns at once','vpn on top of vpn'],
+          reply:{
+            fa:'استفاده همزمان از دو VPN معمولاً باعث کندی یا تداخل می‌شه. بهتره فقط از یکی در آنِ واحد استفاده کنی.',
+            en:'Running two VPNs at the same time usually causes slowdowns or conflicts. It\'s best to use just one at a time.'} },
+        { id:'compareOthers', patterns:['چرا این بهتره از بقیه','فرق با وی پی ان رایگان','چرا این بهتر از فیلترشکنای دیگه','why is this better','compared to free vpn','vs other vpn'],
+          reply:{
+            fa:'برخلاف خیلی از فیلترشکن‌های رایگان، این سرویس روی سرعت پایدار، چند پروتکل، و کانفیگ‌های متعدد تمرکز داره تا اگه یکی کند یا فیلتر شد، جایگزین آماده داشته باشی.',
+            en:'Unlike a lot of free VPNs, this service focuses on stable speed, multiple protocols, and several ready-to-use configs so you always have a fallback if one is slow or blocked.'} },
+
+        /* ── More app / platform specifics ── */
+        { id:'nekobox', patterns:['نکوباکس','نکو باکس','nekobox'],
+          reply:{
+            fa:'NekoBox یه اپ خوب اندرویدی و ویندوزیه که از پروتکل‌های مختلف پشتیبانی می‌کنه؛ لینک اشتراک رو داخلش Import کن، دقیقاً مثل بقیه اپ‌ها.',
+            en:'NekoBox is a solid Android/Windows client that supports multiple protocols — import your subscription link inside it just like other apps.'} },
+        { id:'clashMeta', patterns:['کلش','کلش میتا','کلش ورج','clash','clash meta','clash verge','mihomo'],
+          reply:{
+            fa:'برای کاربرای Clash: کانفیگ یا لینک YAML رو از بخش لینک‌های اشتراک کپی کن و داخل Clash Verge یا Mihomo Party وارد کن.',
+            en:'For Clash users: copy the YAML config/link from the subscription section and import it into Clash Verge or Mihomo Party.'} },
+        { id:'hiddify', patterns:['هیدیفای','hiddify'],
+          reply:{
+            fa:'Hiddify روی اندروید، آیفون و ویندوز کار می‌کنه؛ لینک اشتراک رو داخلش Add کن و از دکمه اتصال استفاده کن.',
+            en:'Hiddify works across Android, iOS, and Windows — add your subscription link inside it and hit connect.'} },
+        { id:'manualConfig', patterns:['کانفیگ دستی','پیست کردن کانفیگ','وارد کردن دستی','manual config','paste config','import manually'],
+          reply:{
+            fa:'اگه Import از لینک کار نکرد، می‌تونی از تب «کانفیگ‌ها» یکی رو کپی کنی و داخل اپ به‌صورت دستی («Add from clipboard» یا مشابهش) اضافه کنی.',
+            en:'If importing from the link doesn\'t work, copy one config from the "Configs" tab and add it manually inside the app (look for "Add from clipboard" or similar).'} },
+        { id:'qrNotScan', patterns:['کیو آر اسکن نمیشه','کد اسکن نمیشه','دوربین کد رو نمیخونه','qr not scanning','qr code not working','cant scan qr'],
+          reply:{
+            fa:'اگه دوربین کد رو نمی‌خونه: نور محیط رو بیشتر کن، گوشیتو ثابت نگه دار، یا به‌جاش لینک رو کپی کن و دستی داخل اپ پیست کن.',
+            en:"If the camera won't scan it: improve the lighting, hold your phone steady, or just copy the link and paste it manually inside the app instead."} },
+
+        /* ── Networks / connectivity edge cases ── */
+        { id:'wifiVsData', patterns:['وایفای یا دیتا','با وایفای کار نمیکنه','با دیتا کار نمیکنه','works on wifi not data','wifi vs mobile data'],
+          reply:{
+            fa:'اگه فقط روی یکی از وایفای/دیتا مشکل داری، معمولاً محدودیت اون شبکه خاصه نه سرویس. یه کانفیگ دیگه رو امتحان کن یا با پشتیبانی هماهنگ کن.',
+            en:"If it only misbehaves on one of WiFi/mobile data, that's usually a restriction on that specific network, not the service. Try a different config or check with support."} },
+        { id:'hotspot', patterns:['اشتراک اینترنت','هاتاسپات','هات اسپات','hotspot','tethering','share internet'],
+          reply:{
+            fa:'وصل بودن VPN موقع اشتراک‌گذاری اینترنت (Hotspot) معمولاً مشکلی نداره، ولی سرعت بین دستگاه‌ها تقسیم می‌شه.',
+            en:'Keeping the VPN on while hotspotting usually works fine, but speed gets shared between connected devices.'} },
+        { id:'captivePortal', patterns:['وای فای هتل وارد نمیشه','صفحه ورود وایفای','captive portal',"wifi login page won't load"],
+          reply:{
+            fa:'برای وای‌فای‌های عمومی که صفحه ورود دارن (مثل هتل)، اول VPN رو خاموش کن، وارد وای‌فای شو، بعد دوباره VPN رو روشن کن.',
+            en:'For public WiFi with a login page (like hotels): turn the VPN off first, log into the WiFi, then turn the VPN back on.'} },
+        { id:'clockError', patterns:['ساعت گوشی اشتباه','خطای گواهی','گواهی نامعتبر','تاریخ گوشی درست نیست','certificate error','ssl error','wrong clock time'],
+          reply:{
+            fa:'اگه با خطای گواهی (Certificate/SSL) مواجه شدی، مطمئن شو تاریخ و ساعت گوشیت درست و به‌صورت خودکار تنظیم شده باشه.',
+            en:"If you're seeing certificate/SSL errors, make sure your device's date and time are correct and set to update automatically."} },
+        { id:'antivirusConflict', patterns:['آنتی ویروس مشکل','فایروال مسدود کرده','antivirus blocking','firewall blocking vpn'],
+          reply:{
+            fa:'بعضی آنتی‌ویروس‌ها یا فایروال‌ها ممکنه اتصال VPN رو مسدود کنن؛ اپ رو داخل لیست استثناهاش قرار بده یا موقتاً غیرفعالش کن و تست بگیر.',
+            en:'Some antivirus tools or firewalls can block the VPN connection — add the app to its exceptions list, or temporarily disable it to test.'} },
+        { id:'batteryOptimization', patterns:['بهینه ساز باتری قطعش میکنه','شیائومی قطع میکنه','سامسونگ قطع میکنه','قطع میشه پس زمینه','battery optimization killing vpn','disconnects in background','miui kills app'],
+          reply:{
+            fa:'خیلی از گوشی‌ها (به‌خصوص شیائومی/هوآوی/سامسونگ) اپ‌های پس‌زمینه رو می‌بندن. برای جلوگیری از قطع شدن: تو تنظیمات باتری گوشی، بهینه‌سازی باتری رو برای اپ VPN غیرفعال کن و اجازه اجرای پس‌زمینه بده.',
+            en:'Many phones (especially Xiaomi/Huawei/Samsung) aggressively kill background apps. To stop it from disconnecting: turn off battery optimization for the VPN app in your phone settings and allow it to run in the background.'} },
+        { id:'lockScreenDisconnect', patterns:['قفل صفحه قطع میشه','صفحه خاموش قطع میکنه','disconnects when screen locks','disconnects when locked'],
+          reply:{
+            fa:'اگه با قفل شدن صفحه قطع می‌شه، معمولاً به تنظیمات مدیریت باتری برمی‌گرده — همون مسیر بهینه‌سازی باتری رو برای اپ غیرفعال کن.',
+            en:"If it disconnects when the screen locks, that's usually the same battery-management issue — disable battery optimization for the app."} },
+
+        /* ── Accounts / general ── */
+        { id:'twoFactor', patterns:['رمز دوم','تایید دو مرحله ای','two factor','2fa','two-step verification'],
+          reply:{
+            fa:'در حال حاضر این پنل نیازی به تایید دومرحله‌ای نداره؛ فقط لینک اشتراک شخصی خودت رو محرمانه نگه‌دار.',
+            en:"This panel doesn't require two-factor verification right now — just keep your personal subscription link private."} },
+        { id:'panelNotLoading', patterns:['پنل باز نمیشه','صفحه لود نمیشه','صفحه سفید','panel not loading','page is blank','page won\'t load'],
+          reply:{
+            fa:'اگه خود این صفحه باز نمی‌شه: کش مرورگر رو پاک کن، مرورگر رو آپدیت کن، یا از یه مرورگر دیگه امتحان کن. اگه بازم حل نشد به پشتیبانی بگو.',
+            en:'If this page itself is not loading: clear your browser cache, update your browser, or try a different one. If that still doesn\'t help, contact support.'},
+          actionsKey:'support' },
+        { id:'shareAccount', patterns:['اکانتمو به دوستم بدم','اشتراک بدم به دوستم','share my account','share subscription with friend'],
+          reply:{
+            fa:'به‌اشتراک‌گذاشتن اشتراک با چند نفر ممکنه باعث افت سرعت یا مشکل تو تعداد دستگاه‌های مجاز بشه. برای گرفتن یه اکانت جدا برای دوستت با پشتیبانی صحبت کن.',
+            en:'Sharing your subscription with others can slow things down or run into device-limit issues. Talk to support about getting a separate plan for your friend.'},
+          actionsKey:'support' },
+        { id:'newPhone', patterns:['گوشی عوض کردم','گوشی جدید گرفتم','new phone setup','moved to a new device'],
+          reply:{
+            fa:'گوشی عوض کردی؟ فقط کافیه همین صفحه رو روی گوشی جدید باز کنی، اپ مناسب رو نصب کنی و لینک اشتراکتو همون‌جا Import کنی — نیازی به اکانت جدید نیست.',
+            en:"Got a new phone? Just open this same page on the new device, install the right app, and import your subscription link there — no new account needed."} },
+        { id:'general', patterns:['وی پی ان چیست','فیلترشکن چیه','why do i need a vpn','what does a vpn do','what is a proxy'],
+          reply:{
+            fa:'VPN ترافیک اینترنت گوشیت رو رمزنگاری و از یه سرور واسط رد می‌کنه تا هم حریم خصوصیت حفظ بشه و هم بتونی به سایت‌های فیلترشده دسترسی داشته باشی.',
+            en:"A VPN encrypts your device's internet traffic and routes it through an intermediary server, protecting your privacy and letting you reach sites that would otherwise be blocked."} },
+        { id:'legality', patterns:['استفاده از وی پی ان قانونیه','vpn illegal','is vpn legal','is using a vpn legal'],
+          reply:{
+            fa:'قانونی بودن استفاده از VPN بسته به کشور فرق می‌کنه؛ بهتره از قوانین محلی کشور خودت مطلع باشی.',
+            en:'The legality of using a VPN varies by country — it\'s best to check the local regulations where you live.'} },
+      ];
+
+      /* Detects which language a message was typed in, independently of the
+         site's current UI language — lets the assistant reply in whichever
+         language the visitor actually used. */
+      function aiDetectLang(text){
+        return /[\u0600-\u06FF]/.test(text) ? 'fa' : 'en';
+      }
+
+      /* Normalizes a raw message before matching: lowercases Latin text, strips
+         ZWNJ/Arabic diacritics and stray punctuation, collapses whitespace. */
+      function aiNormalize(s){
+        return String(s||'')
+          .toLowerCase()
+          .replace(/[\u200c\u064b-\u065f]/g,'')
+          .replace(/[؟?!.,،؛;:«»"'`()]/g,' ')
+          .replace(/\s+/g,' ')
+          .trim();
+      }
+
+      /* Substring matching is fine for Persian words/phrases and longer Latin
+         words, but short Latin tokens (e.g. "sup", "yo", "pc", "hi") produce
+         false positives as substrings of unrelated words ("sup" inside
+         "support", "yo" inside "your", "hi" inside "history"...). For those we
+         require a word boundary instead of a raw substring check. */
+      function aiHasPattern(q,p){
+        const pl=p.toLowerCase();
+        if(/^[a-z]+$/.test(pl) && pl.length<=3){
+          return new RegExp('(^|[^a-z])'+pl+'([^a-z]|$)').test(q);
+        }
+        return q.includes(pl);
+      }
+      function aiScore(q,patterns){
+        let score=0;
+        for(const p of patterns){ if(aiHasPattern(q,p)) score+=p.length>=4?2:1; }
+        return score;
+      }
+      function aiBuildActions(key,tr){
+        const keys=Array.isArray(key)?key:[key];
+        const hasSupport=!!(supportUrl && supportUrl.trim());
+        const map={
+          howto:   {label:tr.aiOpenHowTo||'Open the apps section',onClick:aiActOpenApps},
+          download:{label:tr.aiOpenDownload||'Download apps',onClick:aiActOpenApps},
+          support: hasSupport?{label:tr.aiOpenSupport||'Contact support',onClick:aiActOpenSupport}:null,
+          creator: hasSupport?{label:tr.aiOpenTelegram||'Message on Telegram',onClick:aiActOpenSupport}:null,
+          channel: hasSupport?{label:tr.aiOpenChannel||'Open our Telegram channel',onClick:aiActOpenSupport}:null,
+        };
+        // Several keys can resolve to the same action (both apps entries, or every
+        // Telegram entry when they all fall back to the support URL) — keep one.
+        const seen=new Set();
+        const out=keys.map(k=>map[k]).filter(a=>{
+          if(!a || seen.has(a.onClick)) return false;
+          seen.add(a.onClick); return true;
+        });
+        return out.length?out:undefined;
+      }
+
+      /* Picks a reply string, resolving arrays (multiple natural-sounding
+         variants) into a single randomly-chosen one so the assistant doesn't
+         repeat itself verbatim every time the same topic comes up. */
+      function aiPick(val){
+        if(Array.isArray(val)) return val[Math.floor(Math.random()*val.length)];
+        return val;
+      }
+
+      /* Tries to pull a self-introduced name out of the message, in both
+         Persian and English phrasings, so the assistant can remember it. */
+      function aiTryCaptureName(qRaw){
+        const patterns=[
+          /(?:اسمم|اسم من|نامم|نام من)\s+([آ-یa-zA-Z۰-۹0-9]{2,20})\s*(?:است|هست|میباشد|می‌باشد)?/,
+          /my name(?:'?s| is)\s+([a-zA-Z]{2,20})/i,
+          /\bi am\s+([a-zA-Z]{2,20})\b/i,
+          /\bi'm\s+([a-zA-Z]{2,20})\b/i,
+          /call me\s+([a-zA-Z]{2,20})/i
+        ];
+        for(const re of patterns){
+          const m=qRaw.match(re);
+          if(m && m[1]) return m[1];
+        }
+        return null;
+      }
+
+      function aiAnswer(qRaw){
+        const lang=aiDetectLang(qRaw);
+        const tr=AI_T[lang];
+        const rtl=lang==='fa';
+
+        const capturedName=aiTryCaptureName(qRaw);
+        if(capturedName){
+          aiUserName=capturedName;
+          try{ localStorage.setItem('ai_user_name',capturedName); }catch{}
+          return {html:(tr.aiNiceMeet||'Nice to meet you, {name}!').replace('{name}',capturedName)};
+        }
+
+        const q=aiNormalize(qRaw);
+
+        if(q.length){
+          let best=null,bestScore=0;
+          for(const entry of AI_KB){
+            const s=aiScore(q,entry.patterns);
+            if(s>bestScore){ bestScore=s; best=entry; }
+          }
+          if(best && bestScore>=1){
+            if(best.dynamic==='traffic'){
+              const traffic=aiTrafficText();
+              if(!traffic){
+                return {html: rtl
+                  ? 'حجم اشتراک تو <b>نامحدود</b>ه 🎉 پس نگران تموم شدن ترافیک نباش.'
+                  : 'Your plan has <b>unlimited</b> traffic 🎉 so there is nothing to run out of.'};
+              }
+              return {html: rtl
+                ? `حجم باقی‌مونده‌ات: <b>${traffic.remained}</b> از مجموع <b>${traffic.total}</b>. برای جزئیات بیشتر تب «داشبورد» رو ببین.`
+                : `You have <b>${traffic.remained}</b> left out of <b>${traffic.total}</b> total. Check the "Dashboard" tab for the full breakdown.`};
+            }
+            if(best.dynamic==='expiry'){
+              const expTxt=aiExpiryText(lang);
+              return {html: rtl
+                ? `تاریخ انقضای اشتراکت: <b>${expTxt}</b>. یادت نره هر ۱۲ ساعت اشتراکت رو داخل اپ آپدیت کنی تا آخرین سرورها رو داشته باشی.`
+                : `Your subscription expiry: <b>${expTxt}</b>. Remember to update your subscription in the app every 12 hours to get the latest servers.`};
+            }
+            if(best.dynamic==='recallName'){
+              return {html: aiUserName
+                ? (tr.aiRecallYes||'You are {name}!').replace('{name}',aiUserName)
+                : (tr.aiRecallNo||"You haven't told me your name yet.")};
+            }
+            return {
+              html: aiPick(rtl ? best.reply.fa : best.reply.en),
+              actions: best.actionsKey ? aiBuildActions(best.actionsKey,tr) : undefined
+            };
+          }
+        }
+
+        // Fallback — friendly, and still gives useful next steps even for
+        // random/off-topic/gibberish input. Two variants so it doesn't feel
+        // like a canned, hard-coded response every single time.
+        return {
+          html: aiPick([tr.aiFallback, tr.aiFallback2].filter(Boolean)) ||
+            "I'm not sure about that one — try the guide above, or contact support.",
+          actions:[
+            {label:tr.aiOpenHowTo||'Open the guide',onClick:aiActOpenHowTo},
+            {label:tr.aiOpenSupport||'Contact support',onClick:aiActOpenSupport}
+          ]
+        };
+      }
+
+      /* Quick-suggestion chips are language-specific; re-render them (and the
+         greeting, if the bot has not spoken yet) whenever the UI language changes. */
+      function aiOnLanguageChange(){
+        if(!document.getElementById('ai-quick')) return;
+        if(aiStarted) aiRenderQuickChips();
+      }
 
       window.addEventListener("resize", drawInteractiveSparkline);
 
