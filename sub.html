@@ -600,6 +600,36 @@
       }
       .apps-hint i { color: var(--color-apps); margin-top: 0.15rem; }
 
+      /* ════════ Panel announcement ════════ */
+      .announce-card {
+        border-color: rgba(245, 158, 11, 0.35);
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), var(--surface));
+      }
+      .announce-head {
+        display: flex; align-items: center; gap: 0.55rem;
+        font-size: 0.85rem; font-weight: 800; color: var(--color-time);
+        margin-bottom: 0.6rem;
+      }
+      .announce-icon {
+        width: 1.9rem; height: 1.9rem; flex-shrink: 0;
+        border-radius: 0.65rem; display: grid; place-items: center;
+        font-size: 0.8rem;
+        background: rgba(245, 158, 11, 0.14);
+        border: 1px solid rgba(245, 158, 11, 0.25);
+      }
+      .announce-body {
+        font-size: 0.8rem; line-height: 1.9; color: var(--text-primary);
+        white-space: pre-line; word-wrap: break-word; overflow-wrap: anywhere;
+      }
+      .nav-icon-wrap { position: relative; display: inline-grid; place-items: center; }
+      .nav-dot {
+        display: none; position: absolute; top: -0.15rem; inset-inline-end: -0.3rem;
+        width: 0.45rem; height: 0.45rem; border-radius: 50%;
+        background: var(--danger); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6);
+        animation: chatPulse 2s infinite;
+      }
+      .nav-dot.show { display: block; }
+
       /* ════════ Chat bot tab ════════ */
       .chat-head { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
       .chat-avatar {
@@ -918,6 +948,16 @@
         <!-- TAB 5: Profile -->
         <div id="tab-profile" class="tab-content">
           <h3 id="profileTitleText" style="font-size: 1.1rem; font-weight: 800; margin-bottom: 1.25rem;">پروفایل کاربری</h3>
+
+          <!-- Panel announcement (3x-ui "Announce" setting); hidden when unset -->
+          <div class="card announce-card" id="announceCard" style="display: none;">
+            <div class="announce-head">
+              <div class="announce-icon"><i class="fa-solid fa-bullhorn"></i></div>
+              <span id="announceTitleText">اطلاعیه</span>
+            </div>
+            <p class="announce-body" id="announceBody"></p>
+          </div>
+
           <div class="card profile-details-card" style="display: flex; flex-direction: column; gap: 0.9rem;">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.75rem;">
               <span style="font-size: 0.8rem; color: var(--text-secondary);"><i class="fa-regular fa-user" style="margin-inline-end: 0.4rem;"></i> <span id="pLabelUsername">نام کاربری</span></span>
@@ -952,7 +992,7 @@
       <!-- Bottom Navigation -->
       <nav class="bottom-nav">
         <button class="nav-item" data-target="tab-profile">
-          <i class="fa-regular fa-user"></i>
+          <span class="nav-icon-wrap"><i class="fa-regular fa-user"></i><span class="nav-dot" id="announceDot"></span></span>
           <span id="navProfileText">پروفایل</span>
         </button>
         <button class="nav-item active" data-target="tab-home">
@@ -1022,6 +1062,7 @@
         subClashUrl: "{{ .subClashUrl }}",
         subTitle: "{{ .subTitle }}",
         subSupportUrl: "{{ .subSupportUrl }}",
+        announce: "{{ .announce }}",
         links: `{{ range .links }}{{ . }}\n{{ end }}`,
         emails: `{{ range .emails }}{{ . }}\n{{ end }}`,
         datepicker: "{{ .datepicker }}",
@@ -1043,7 +1084,11 @@
           .replace(/[٠-٩]/g, (c) => arabic.indexOf(c));
       }
 
-      function isPlaceholder(v) { return typeof v === "string" && v.includes("{{") && v.includes("}}"); }
+      function isPlaceholder(v) {
+        if (typeof v !== "string") return false;
+        // Unrendered Go template tag, or a key this panel version does not pass.
+        return (v.includes("{{") && v.includes("}}")) || v.trim() === "<no value>";
+      }
       function normalize(v, fb) {
         let t = String(v ?? "").trim();
         if (!t || isPlaceholder(t)) return fb;
@@ -1106,6 +1151,7 @@
       let expireISO = parseExpireIso(templateVars.expire);
       let isEnabled = String(templateVars.enabled).toLowerCase() !== "false";
       let supportUrl = normalize(templateVars.subSupportUrl, "");
+      let announceText = normalize(templateVars.announce, "");
 
       const locales = {
         fa: {
@@ -1126,6 +1172,7 @@
           chartTitle: "مصرف ۷ روز اخیر", chartFrom: "از ", chartTo: "تا امروز",
           expiryUntil: "تا تاریخ: ", bytesUnit: "بایت", kbUnit: "کیلوبایت", mbUnit: "مگابایت",
           renewBtn: "تمدید اشتراک",
+          announceTitle: "اطلاعیه",
           chatTab: "چت بات", chatSub: "پاسخ آنی · رایگان · همیشه در دسترس",
           appsHint: "برنامه مناسب سیستم‌عاملت را نصب کن، بعد با دکمه «افزودن سریع» لینک اشتراک مستقیم داخل برنامه اضافه می‌شود.",
           appDownload: "دانلود", appQuickAdd: "افزودن سریع", appCopyLink: "کپی لینک", appRecommended: "پیشنهادی",
@@ -1152,6 +1199,7 @@
           chartTitle: "Usage in last 7 days", chartFrom: "From ", chartTo: "To Today",
           expiryUntil: "Until: ", bytesUnit: "B", kbUnit: "KB", mbUnit: "MB",
           renewBtn: "Renew Subscription",
+          announceTitle: "Announcement",
           chatTab: "Chat Bot", chatSub: "Instant answers · Free · Always online",
           appsHint: "Install the app that matches your device, then use \"Quick add\" to push your subscription link straight into it.",
           appDownload: "Download", appQuickAdd: "Quick add", appCopyLink: "Copy link", appRecommended: "Recommended",
@@ -1178,6 +1226,7 @@
           chartTitle: "过去 7 天的用量", chartFrom: "从 ", chartTo: "至今天",
           expiryUntil: "有效期至：", bytesUnit: "B", kbUnit: "KB", mbUnit: "MB",
           renewBtn: "续费订阅",
+          announceTitle: "公告",
           chatTab: "聊天机器人", chatSub: "即时回复 · 免费 · 随时在线",
           appsHint: "请先安装适合你设备的应用，然后点击\"快速添加\"把订阅链接直接导入应用。",
           appDownload: "下载", appQuickAdd: "快速添加", appCopyLink: "复制链接", appRecommended: "推荐",
@@ -1204,6 +1253,7 @@
           chartTitle: "Потребление за 7 дней", chartFrom: "С ", chartTo: "По сегодня",
           expiryUntil: "До: ", bytesUnit: "Б", kbUnit: "КБ", mbUnit: "МБ",
           renewBtn: "Продлить подписку",
+          announceTitle: "Объявление",
           chatTab: "Чат-бот", chatSub: "Мгновенные ответы · Бесплатно · Всегда на связи",
           appsHint: "Установите приложение для вашей системы, затем нажмите \"Быстрое добавление\", чтобы импортировать ссылку подписки.",
           appDownload: "Скачать", appQuickAdd: "Быстрое добавление", appCopyLink: "Копировать ссылку", appRecommended: "Рекомендуем",
@@ -1711,6 +1761,40 @@
         document.querySelector(".os-tab.active")?.scrollIntoView({ block: "nearest", inline: "center" });
       }
 
+      /* Panel announcement. The nav dot stays lit until the visitor opens the
+         profile tab; it is keyed by the announcement text, so editing the
+         announcement in the panel makes it count as unread again. */
+      function announceKey(text) {
+        let h = 0;
+        for (let i = 0; i < text.length; i++) h = ((h << 5) - h + text.charCodeAt(i)) | 0;
+        return "nexus_announce_seen_" + h;
+      }
+
+      function renderAnnounce() {
+        const card = document.getElementById("announceCard");
+        const dot = document.getElementById("announceDot");
+        if (!card || !dot) return;
+        if (!announceText) {
+          card.style.display = "none";
+          dot.classList.remove("show");
+          return;
+        }
+        document.getElementById("announceTitleText").innerText = t("announceTitle");
+        // textContent, never innerHTML: the announcement is plain text set in
+        // the panel and may legitimately contain < or & characters.
+        document.getElementById("announceBody").textContent = announceText;
+        card.style.display = "block";
+        let seen = false;
+        try { seen = localStorage.getItem(announceKey(announceText)) === "1"; } catch (e) {}
+        dot.classList.toggle("show", !seen);
+      }
+
+      function markAnnounceSeen() {
+        if (!announceText) return;
+        try { localStorage.setItem(announceKey(announceText), "1"); } catch (e) {}
+        document.getElementById("announceDot")?.classList.remove("show");
+      }
+
       function renderApps() {
         const tabsEl = document.getElementById("osTabs");
         const grid = document.getElementById("appsGridContainer");
@@ -1852,6 +1936,7 @@
         renderConfigs();
         renderApps();
         renderProfile();
+        renderAnnounce();
       }
 
       // Tab Switching
@@ -1863,6 +1948,7 @@
         // The chat bot renders its greeting the first time its tab is opened.
         if (targetId === 'tab-chat') aiEnsureStarted();
         if (targetId === 'tab-apps') scrollActiveOsTabIntoView();
+        if (targetId === 'tab-profile') markAnnounceSeen();
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
 
@@ -1930,6 +2016,7 @@
           aiFallback: 'دقیق مطمئن نیستم منظورت چیه 🤔 یه جور دیگه بپرس، یا از بخش نرم‌افزارها راهنما رو ببین. برای مسائل مربوط به حساب کاربریت هم پشتیبانی بهترین گزینه‌ست.',
           aiFallback2: 'هنوز جواب مطمئنی برای این ندارم. می‌تونی سوالتو یه جور دیگه بپرسی، یا وصلت کنم به پشتیبانی؟',
           aiOpenHowTo: 'رفتن به بخش نرم‌افزارها', aiOpenDownload: 'دانلود برنامه‌ها',
+          aiOpenProfile: 'دیدن اطلاعیه در پروفایل',
           aiOpenSupport: 'ارتباط با پشتیبانی',
           aiOpenTelegram: 'پیام در تلگرام', aiOpenChannel: 'کانال تلگرام',
           aiRateLimited: 'به سقف ۱۵ سوال در هر ۲۰ دقیقه رسیدی 🙏 لطفاً {s} صبر کن و بعد دوباره بپرس.',
@@ -1950,6 +2037,7 @@
           aiFallback: "I'm not fully sure about that one 🤔 Try rephrasing it, or take a look at the Apps tab. For anything account-specific, support is your best bet.",
           aiFallback2: "Hmm, I don't have a solid answer for that yet. Could you rephrase it, or would you like me to connect you with support instead?",
           aiOpenHowTo: 'Open the Apps tab', aiOpenDownload: 'Download apps',
+          aiOpenProfile: 'See the announcement in Profile',
           aiOpenSupport: 'Contact support',
           aiOpenTelegram: 'Message on Telegram', aiOpenChannel: 'Open our Telegram channel',
           aiRateLimited: "You've reached the limit of 15 questions per 20 minutes 🙏 Please wait {s} before asking another one.",
@@ -2256,6 +2344,7 @@
 
       /* Action helpers reused by several answers */
       function aiActOpenApps(){ switchTab('tab-apps'); }
+      function aiActOpenProfile(){ switchTab('tab-profile'); }
       function aiActOpenSupport(){
         if(supportUrl && supportUrl.trim()) window.open(supportUrl.replace('t.me','telegram.me'),'_blank');
         else switchTab('tab-apps');
@@ -2267,6 +2356,8 @@
          keywords or phrases — plain substring matches, kept lowercase for the
          Latin ones (Persian doesn't need case-folding). */
       const AI_KB=[
+        { id:'announce', patterns:['اطلاعیه','اعلان','اعلانات','اطلاع رسانی','خبر جدید','announcement','announce','notice','any news'],
+          reply:{ fa:null, en:null }, dynamic:'announce' },
         { id:'greeting', patterns:['سلام','درود','سلامت باشی','hi','hello','hey','yo','سلاام','سلام خوبی'],
           reply:{
             fa:'سلام! خوش اومدی 🌙 چطور می‌تونم کمکت کنم؟',
@@ -2639,6 +2730,7 @@
         const hasSupport=!!(supportUrl && supportUrl.trim());
         const map={
           howto:   {label:tr.aiOpenHowTo||'Open the apps section',onClick:aiActOpenApps},
+          profile: {label:tr.aiOpenProfile||'Open your profile',onClick:aiActOpenProfile},
           download:{label:tr.aiOpenDownload||'Download apps',onClick:aiActOpenApps},
           support: hasSupport?{label:tr.aiOpenSupport||'Contact support',onClick:aiActOpenSupport}:null,
           creator: hasSupport?{label:tr.aiOpenTelegram||'Message on Telegram',onClick:aiActOpenSupport}:null,
@@ -2716,6 +2808,19 @@
               return {html: rtl
                 ? `تاریخ انقضای اشتراکت: <b>${expTxt}</b>. یادت نره هر ۱۲ ساعت اشتراکت رو داخل اپ آپدیت کنی تا آخرین سرورها رو داشته باشی.`
                 : `Your subscription expiry: <b>${expTxt}</b>. Remember to update your subscription in the app every 12 hours to get the latest servers.`};
+            }
+            if(best.dynamic==='announce'){
+              if(!announceText){
+                return {html: rtl
+                  ? 'الان هیچ اطلاعیه فعالی ثبت نشده. هر وقت اطلاعیه‌ای منتشر بشه، توی تب «پروفایل» می‌بینیش.'
+                  : 'There is no active announcement right now. Whenever one is posted, it shows up in the "Profile" tab.'};
+              }
+              return {
+                html: rtl
+                  ? 'آخرین اطلاعیه پنل رو توی تب «پروفایل» می‌تونی کامل بخونی 📢'
+                  : 'You can read the latest panel announcement in full in the "Profile" tab 📢',
+                actions: aiBuildActions('profile',tr)
+              };
             }
             if(best.dynamic==='recallName'){
               return {html: aiUserName
