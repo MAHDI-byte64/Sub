@@ -67,7 +67,7 @@
         --primary: var(--color-usage);
         --primary-glow: rgba(29, 78, 216, 0.1);
         --nav-active: #1d4ed8;
-        --nav-inactive: #94a3b8;
+        --nav-inactive: #64748b;
       }
 
       * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -458,10 +458,20 @@
       .nav-item {
         display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
         color: var(--nav-inactive); background: none; border: none;
-        font-family: var(--font); cursor: pointer; flex: 1; padding: 0.35rem 0.1rem; transition: 0.2s;
+        font-family: var(--font); cursor: pointer; flex: 1; min-width: 0;
+        padding: 0.35rem 0.1rem; transition: 0.2s;
       }
       .nav-item i { font-size: 1.15rem; }
-      .nav-item span { font-size: 0.6rem; font-weight: 700; white-space: nowrap; }
+      .nav-item span {
+        font-size: 0.6rem; font-weight: 700; white-space: nowrap;
+        max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+      }
+
+      /* Very narrow phones: six labels no longer fit, so lead with the icons. */
+      @media (max-width: 380px) {
+        .nav-item span { font-size: 0.52rem; }
+        .nav-item { gap: 0.25rem; }
+      }
       .nav-item.active { color: var(--nav-active); transform: translateY(-1px); }
 
       /* Modals */
@@ -657,7 +667,8 @@
 
       .chat-card { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
       .ai-body {
-        height: clamp(17rem, 48vh, 26rem);
+        min-height: 13rem;
+        max-height: clamp(17rem, 48vh, 26rem);
         overflow-y: auto; padding: 1rem;
         display: flex; flex-direction: column; gap: 0.6rem;
         scroll-behavior: smooth;
@@ -751,6 +762,108 @@
       .ai-send:active { transform: scale(0.95); }
       .ai-send:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
       [dir="rtl"] .ai-send i { transform: scaleX(-1); }
+
+      /* The panel's own client gets a stronger accent than the green
+         "recommended" cards so it reads as the first-party option. */
+      .app-card.official {
+        border-color: rgba(168, 85, 247, 0.45);
+        background: linear-gradient(135deg, rgba(168, 85, 247, 0.09), var(--surface));
+      }
+      .app-card.official .app-icon {
+        color: var(--color-chart);
+        background: rgba(168, 85, 247, 0.14);
+        border-color: rgba(168, 85, 247, 0.25);
+      }
+      .app-card.official .app-badge {
+        color: var(--color-chart);
+        background: rgba(168, 85, 247, 0.14);
+        border-color: rgba(168, 85, 247, 0.28);
+      }
+      .app-card.official .app-btn.primary {
+        background: linear-gradient(135deg, var(--color-chart), var(--color-usage));
+        box-shadow: 0 4px 14px rgba(168, 85, 247, 0.25);
+      }
+
+      /* ════════════════════════════════════════════════════════════
+         RESPONSIVE — the layout below the first breakpoint is the
+         phone design; these two widen it for tablets and desktops.
+      ════════════════════════════════════════════════════════════ */
+
+      /* Tablets / small laptops: same single column, just less cramped. */
+      @media (min-width: 640px) {
+        .app-container { max-width: 34rem; }
+        .bottom-nav { max-width: 32rem; }
+      }
+
+      /* Desktop: the bottom nav becomes a sticky side rail and the content
+         gets room to lay its cards out in two columns. */
+      @media (min-width: 1024px) {
+        .app-container { max-width: 74rem; }
+
+        .app-body {
+          display: flex;
+          align-items: flex-start;
+          gap: 1.5rem;
+          padding: 1.5rem 1.5rem 3rem;
+        }
+
+        .content-area { flex: 1; min-width: 0; padding: 0; }
+
+        .bottom-nav {
+          order: -1;                 /* side rail leads, whatever the direction */
+          position: sticky;
+          top: 5.5rem;               /* clears the sticky header */
+          inset-inline: auto;
+          bottom: auto;
+          transform: none;
+          flex: 0 0 15rem;
+          width: 15rem;
+          max-width: none;
+          flex-direction: column;
+          justify-content: flex-start;
+          gap: 0.25rem;
+          padding: 0.75rem;
+          border-radius: var(--radius-lg);
+        }
+        .nav-item {
+          flex: 0 0 auto;
+          flex-direction: row;
+          justify-content: flex-start;
+          gap: 0.85rem;
+          padding: 0.7rem 0.9rem;
+          border-radius: var(--radius-md);
+        }
+        .nav-item i { font-size: 1.05rem; width: 1.5rem; text-align: center; }
+        .nav-item span { font-size: 0.82rem; }
+        .nav-item.active { background: var(--primary-glow); transform: none; }
+
+        /* Dashboard: full-width hero rows, paired cards in the middle. */
+        #tab-home.active {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 1.25rem;
+          align-items: start;
+        }
+        #tab-home > .card, #tab-home > .main-actions { margin-bottom: 0; }
+        #tab-home > .usage-wrapper { order: 1; grid-column: 1 / -1; }
+        #tab-home > .main-actions { order: 2; grid-column: 1 / -1; }
+        #tab-home > .import-card { order: 3; }
+        #tab-home > .expiry-card { order: 4; }
+        #tab-home > .chart-container { order: 5; grid-column: 1 / -1; }
+
+        /* Config and app lists pair up instead of running one long column. */
+        #configListContainer, .os-pane.active {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.85rem;
+        }
+        #configListContainer > .list-item, .os-pane .app-card { margin-bottom: 0; }
+
+        /* Reading-width columns — these two get worse, not better, when stretched. */
+        #tab-chat, #tab-profile { max-width: 46rem; }
+        .ai-body { min-height: 15rem; max-height: clamp(20rem, 55vh, 30rem); }
+        .apps-hint { max-width: 46rem; }
+      }
     </style>
   </head>
   <body>
@@ -781,6 +894,8 @@
           </div>
         </div>
       </header>
+
+      <div class="app-body">
 
       <!-- Content -->
       <main class="content-area">
@@ -859,16 +974,16 @@
               <span class="chart-title" id="chartMainHeaderTitle"><i class="fa-solid fa-chart-area"></i> مصرف ۷ روز اخیر</span>
             </div>
             <div style="position: relative; width: 100%; height: 70px;">
-              <svg class="sparkline-svg" viewBox="0 0 100 25">
+              <svg class="sparkline-svg" viewBox="0 0 100 25" preserveAspectRatio="none">
                 <defs>
                   <linearGradient id="chartGlow" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stop-color="var(--color-chart)" stop-opacity="0.3" />
                     <stop offset="100%" stop-color="var(--color-chart)" stop-opacity="0.0" />
                   </linearGradient>
                 </defs>
-                <line id="chartGuideLine" x1="0" y1="0" x2="0" y2="25" stroke="var(--color-chart)" stroke-width="0.25" stroke-dasharray="1,1" style="display: none;" />
+                <line id="chartGuideLine" x1="0" y1="0" x2="0" y2="25" stroke="var(--color-chart)" stroke-width="1" stroke-dasharray="3,3" vector-effect="non-scaling-stroke" style="display: none;" />
                 <path id="chartAreaPath" d="" fill="url(#chartGlow)" />
-                <path id="chartLinePath" d="" fill="none" stroke="var(--color-chart)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" />
+                <path id="chartLinePath" d="" fill="none" stroke="var(--color-chart)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
                 <g id="chartPointsGroup" class="chart-interactive-group"></g>
               </svg>
               <div id="chartTooltip" class="chart-tooltip"></div>
@@ -1016,6 +1131,8 @@
           <span id="navSupportText">پشتیبانی</span>
         </button>
       </nav>
+
+      </div>
       
       <!-- Modal -->
       <div id="qrModal" class="modal">
@@ -1453,16 +1570,30 @@
         const tooltip = document.getElementById("chartTooltip");
         const chartContainer = document.getElementById("interactiveChartContainer");
 
+        const svgNS = "http://www.w3.org/2000/svg";
+        const makeDot = (pt, width, opacity) => {
+          const dot = document.createElementNS(svgNS, "line");
+          dot.setAttribute("x1", pt.x);
+          dot.setAttribute("y1", pt.y);
+          dot.setAttribute("x2", pt.x);
+          dot.setAttribute("y2", pt.y);
+          dot.setAttribute("stroke", "var(--color-chart)");
+          dot.setAttribute("stroke-width", width);
+          dot.setAttribute("stroke-linecap", "round");
+          dot.setAttribute("vector-effect", "non-scaling-stroke");
+          if (opacity !== undefined) dot.setAttribute("stroke-opacity", opacity);
+          return dot;
+        };
+
         points.forEach((pt, index) => {
-          const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-          circle.setAttribute("cx", pt.x);
-          circle.setAttribute("cy", pt.y);
-          circle.setAttribute("r", "1.5");
-          circle.setAttribute("fill", "var(--color-chart)");
+          const circle = makeDot(pt, "6");
+          // Invisible, much larger dot underneath: the visible one is only a few
+          // pixels across, which is far too small to hover or tap accurately.
+          const hit = makeDot(pt, "26", "0");
+          hit.style.cursor = "pointer";
 
           const showTooltip = (e) => {
-            circle.setAttribute("r", "3");
-            circle.setAttribute("fill", "var(--color-chart)");
+            circle.setAttribute("stroke-width", "11");
             
             guideLine.style.display = "block";
             guideLine.setAttribute("x1", pt.x);
@@ -1482,21 +1613,21 @@
           };
 
           const hideTooltip = () => {
-            circle.setAttribute("r", "1.5");
-            circle.setAttribute("fill", "var(--color-chart)");
+            circle.setAttribute("stroke-width", "6");
             guideLine.style.display = "none";
             tooltip.style.display = "none";
           };
 
-          circle.addEventListener("mouseenter", showTooltip);
-          circle.addEventListener("mouseleave", hideTooltip);
-          circle.addEventListener("touchstart", (e) => {
+          hit.addEventListener("mouseenter", showTooltip);
+          hit.addEventListener("mouseleave", hideTooltip);
+          hit.addEventListener("touchstart", (e) => {
             e.preventDefault();
             showTooltip();
           });
-          circle.addEventListener("touchend", hideTooltip);
+          hit.addEventListener("touchend", hideTooltip);
 
           pointsGroup.appendChild(circle);
+          pointsGroup.appendChild(hit);
         });
       }
 
@@ -1558,13 +1689,15 @@
           return;
         }
         let end = new Date(expireISO).getTime();
-        countdownInterval = setInterval(() => {
+        const tick = () => {
           let diff = Math.max(0, end - Date.now());
           document.getElementById("daysLeft").innerText = formatDisplay(Math.floor(diff / 86400000));
           document.getElementById("hoursLeft").innerText = formatDisplay(Math.floor((diff % 86400000) / 3600000));
           document.getElementById("minutesLeft").innerText = formatDisplay(Math.floor((diff % 3600000) / 60000));
           if (diff <= 0) clearInterval(countdownInterval);
-        }, 1000);
+        };
+        tick(); // paint immediately instead of showing 0/0/0 until the first tick
+        countdownInterval = setInterval(tick, 1000);
       }
 
       function createSubItem(name, url, iconClass) {
@@ -1619,6 +1752,12 @@
         {
           id: "android", name: "Android", icon: "fa-brands fa-android",
           apps: [
+            // Fandogh is a v2rayNG fork (applicationId ir.fandogh.vpn) that kept
+            // the v2rayng:// scheme, so the same import link works for it.
+            { n: "Fandogh", icon: "fa-solid fa-shield-heart", rec: true, official: true,
+              tags: ["tagEasy", "tagFree", "tagFast"],
+              url: "https://github.com/MAHDI-byte64/Fandogh/releases/latest",
+              scheme: (l) => `v2rayng://install-config?url=${encodeURIComponent(l)}` },
             { n: "v2rayNG", icon: "fa-solid fa-paper-plane", rec: true, tags: ["tagPopular", "tagLight"],
               url: "https://github.com/2dust/v2rayNG/releases",
               scheme: (l) => `v2rayng://install-config?url=${encodeURIComponent(l)}` },
@@ -1730,16 +1869,18 @@
 
       function appCardHTML(app) {
         const tags = (app.tags || []).map((k) => `<span class="app-tag">${escapeHtml(t(k))}</span>`).join("");
-        const badge = app.rec
-          ? `<span class="app-badge"><i class="fa-solid fa-star"></i> ${escapeHtml(t("appRecommended"))}</span>`
-          : "";
+        const badge = app.official
+          ? `<span class="app-badge"><i class="fa-solid fa-circle-check"></i> ${escapeHtml(t("tagOfficial"))}</span>`
+          : app.rec
+            ? `<span class="app-badge"><i class="fa-solid fa-star"></i> ${escapeHtml(t("appRecommended"))}</span>`
+            : "";
         let quick = "";
         if (subLink) {
           quick = app.scheme
             ? `<a class="app-btn primary" href="${escapeAttr(app.scheme(subLink))}"><i class="fa-solid fa-bolt"></i> ${escapeHtml(t("appQuickAdd"))}</a>`
             : `<button type="button" class="app-btn primary" data-copy-sub="1"><i class="fa-regular fa-copy"></i> ${escapeHtml(t("appCopyLink"))}</button>`;
         }
-        return `<div class="app-card${app.rec ? " recommended" : ""}">
+        return `<div class="app-card${app.rec ? " recommended" : ""}${app.official ? " official" : ""}">
             <div class="app-card-top">
               <div class="app-icon"><i class="${app.icon}"></i></div>
               <div class="app-card-meta">
@@ -2379,15 +2520,15 @@
             fa:'برای وصل شدن: ۱) اپلیکیشن مناسب گوشیت رو نصب کن  ۲) لینک اشتراک رو از تب «داشبورد» کپی کن  ۳) داخل اپ، اون لینک رو Import/Add کن  ۴) وصل شو! بخش نرم‌افزارها رو برات باز می‌کنم:',
             en:"To connect: 1) install a compatible app  2) copy your subscription link  3) import it inside the app  4) tap connect! Here's the Apps tab with every client and a one-tap import:"},
           actionsKey:'howto' },
-        { id:'whichApp', patterns:['اپ','اپلیکیشن','نرم افزار','کدوم اپ','چه برنامه ای','app','application','which app','what app','client'],
+        { id:'whichApp', patterns:['اپ','اپلیکیشن','نرم افزار','کدوم اپ','چه برنامه ای','کدوم برنامه','کدوم برنامه رو','برنامه رو نصب','چه برنامه','بهترین برنامه','برنامه پیشنهادی','app','application','which app','what app','client'],
           reply:{
-            fa:'بسته به دستگاهت: اندروید → V2rayNG یا Hiddify، آیفون → Streisand یا Shadowrocket، ویندوز → V2rayN یا Hiddify، مک → V2Box، لینوکس → Nekoray. از تب نرم‌افزارها می‌تونی مستقیم دانلودشون کنی:',
-            en:'Depends on your device: Android → V2rayNG or Hiddify, iPhone → Streisand or Shadowrocket, Windows → V2rayN or Hiddify, macOS → V2Box, Linux → Nekoray. Grab yours from the Apps tab:'},
+            fa:'بسته به دستگاهت: اندروید → Fandogh (برنامه رسمی) یا V2rayNG، آیفون → Streisand یا Shadowrocket، ویندوز → V2rayN یا Hiddify، مک → V2Box، لینوکس → Nekoray. از تب نرم‌افزارها می‌تونی مستقیم دانلودشون کنی:',
+            en:'Depends on your device: Android → Fandogh (our official app) or V2rayNG, iPhone → Streisand or Shadowrocket, Windows → V2rayN or Hiddify, macOS → V2Box, Linux → Nekoray. Grab yours from the Apps tab:'},
           actionsKey:'download' },
         { id:'android', patterns:['اندروید','گوشیم اندرویده','android'],
           reply:{
-            fa:'برای اندروید بهترین گزینه‌ها V2rayNG یا Hiddify هستن. از تب نرم‌افزارها نصبشون کن و بعد با دکمه «افزودن سریع» لینک اشتراک رو مستقیم داخلشون بفرست.',
-            en:'For Android, V2rayNG or Hiddify are the best picks. Install one from the Apps tab, then hit "Quick add" to push your subscription link straight into it.'},
+            fa:'برای اندروید بهترین گزینه Fandogh هست — برنامه رسمی خودمون. V2rayNG و Hiddify هم کار می‌کنن. از تب نرم‌افزارها نصبشون کن و بعد با دکمه «افزودن سریع» لینک اشتراک رو مستقیم داخلشون بفرست.',
+            en:'For Android, Fandogh — our own official app — is the best pick; V2rayNG and Hiddify work too. Install one from the Apps tab, then hit "Quick add" to push your subscription link straight into it.'},
           actionsKey:'download' },
         { id:'ios', patterns:['آیفون','ایفون','آی او اس','iphone','ipad','ios'],
           reply:{
