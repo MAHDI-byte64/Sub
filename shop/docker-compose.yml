@@ -1,0 +1,17 @@
+services:
+  shop:
+    build: .
+    image: fandogh-shop:latest
+    container_name: fandogh-shop
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "file:../data/fandogh.db"
+      UPLOAD_DIR: "/app/data/uploads"
+      PORT: "3000"
+    ports:
+      # فقط روی لوکال‌هاست باز می‌شود؛ Nginx جلوی آن قرار می‌گیرد
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+    volumes:
+      - ./data:/app/data

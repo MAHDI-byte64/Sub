@@ -32,6 +32,20 @@
 bash <(curl -fsSL https://raw.githubusercontent.com/monhacer/AioSubX3/refs/heads/main/install.sh)
 ```
 
+---
+
+## 🛒 سایت فروش (فندق)
+
+در پوشه‌ی [`shop/`](./shop) یک **سایت فروش کامل VLESS** قرار دارد که مستقیماً به همین پنل 3x-ui وصل می‌شود:
+پرداخت کارت‌به‌کارت با آپلود رسید، تأیید توسط مدیر و **ساخت خودکار کانفیگ روی پنل**، پشتیبانی از چند سرور/لوکیشن،
+اکانت تست رایگان، کد تخفیف، تیکت پشتیبانی و اطلاع‌رسانی تلگرامی.
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/mahdi-byte64/Sub/main/shop/install.sh)
+```
+
+راهنمای کامل: [shop/README.md](./shop/README.md)
+
 </details>
 <!-- tab-end -->
 
@@ -70,6 +84,20 @@ To install or update to the latest version of AioSubX3, run the following comman
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/monhacer/AioSubX3/refs/heads/main/install.sh)
 ```
+
+---
+
+## 🛒 Sales Website (Fandogh)
+
+The [`shop/`](./shop) directory contains a complete **VLESS sales website** wired directly into this 3x-ui panel:
+card-to-card payments with receipt upload, admin approval and **automatic client provisioning on the panel**,
+multi-server/multi-location support, free trial accounts, discount codes, support tickets and Telegram notifications.
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/mahdi-byte64/Sub/main/shop/install.sh)
+```
+
+Full documentation: [shop/README.md](./shop/README.md)
 
 </details>
 <!-- tab-end -->
