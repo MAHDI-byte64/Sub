@@ -9,6 +9,8 @@
 #    --node      نصب بدون Docker (Node.js + systemd)
 #    --update    فقط به‌روزرسانی نسخه نصب‌شده
 #    --uninstall حذف کامل (دیتابیس نگه داشته می‌شود)
+#    --logs      نمایش آخرین لاگ‌های سرویس
+#    --status    بررسی وضعیت و پاسخ‌دهی سایت
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -18,6 +20,8 @@ BRANCH="${BRANCH:-}"
 BASE_DIR="${BASE_DIR:-/opt/fandogh-shop}"
 APP_DIR="${BASE_DIR}/shop"
 APP_PORT="${APP_PORT:-3000}"
+# 0.0.0.0 یعنی از بیرون سرور در دسترس باشد؛ برای حالت پشت Nginx مقدار 127.0.0.1 بدهید
+BIND_ADDR="${BIND_ADDR:-0.0.0.0}"
 SERVICE_NAME="fandogh-shop"
 MODE="docker"
 ACTION="install"
@@ -34,6 +38,8 @@ for arg in "$@"; do
     --docker) MODE="docker" ;;
     --update) ACTION="update" ;;
     --uninstall) ACTION="uninstall" ;;
+    --logs) ACTION="logs" ;;
+    --status) ACTION="status" ;;
     -h|--help)
       sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
       exit 0 ;;
@@ -140,6 +146,7 @@ ADMIN_EMAIL="${admin_email}"
 ADMIN_PASSWORD="${admin_pass}"
 PORT=3000
 APP_PORT=${APP_PORT}
+BIND_ADDR=${BIND_ADDR}
 UPLOAD_DIR="/app/data/uploads"
 ENVFILE
   chmod 600 "${APP_DIR}/.env"
@@ -149,11 +156,49 @@ ENVFILE
   warn "این رمز را یادداشت کنید؛ بعد از ورود از بخش پروفایل تغییرش دهید."
 }
 
+open_firewall() {
+  [ "$BIND_ADDR" = "127.0.0.1" ] && return 0
+  if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi "Status: active"; then
+    ufw allow "${APP_PORT}/tcp" >/dev/null 2>&1 && ok "پورت ${APP_PORT} در ufw باز شد"
+  elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    firewall-cmd --permanent --add-port="${APP_PORT}/tcp" >/dev/null 2>&1
+    firewall-cmd --reload >/dev/null 2>&1 && ok "پورت ${APP_PORT} در firewalld باز شد"
+  fi
+  return 0
+}
+
+show_logs() {
+  if [ -f "${APP_DIR}/docker-compose.yml" ] && command -v docker >/dev/null 2>&1 \
+     && docker compose -f "${APP_DIR}/docker-compose.yml" ps >/dev/null 2>&1; then
+    docker compose -f "${APP_DIR}/docker-compose.yml" logs --tail="${1:-60}"
+  else
+    journalctl -u "${SERVICE_NAME}" -n "${1:-60}" --no-pager 2>/dev/null || true
+  fi
+}
+
+wait_for_app() {
+  info "بررسی بالا آمدن سایت (حداکثر ۲ دقیقه)"
+  local i
+  for i in $(seq 1 60); do
+    if curl -fs -o /dev/null --max-time 3 "http://127.0.0.1:${APP_PORT}/" 2>/dev/null; then
+      ok "سایت پاسخ می‌دهد"
+      return 0
+    fi
+    sleep 2
+  done
+  warn "سایت در ۲ دقیقه بالا نیامد. آخرین لاگ‌ها:"
+  show_logs 40
+  echo
+  warn "بعد از رفع مشکل: cd ${APP_DIR} && docker compose up -d"
+  return 1
+}
+
 run_docker() {
   cd "$APP_DIR"
   info "ساخت و اجرای کانتینر (چند دقیقه طول می‌کشد)"
   docker compose up -d --build
-  ok "سرویس در حال اجراست"
+  open_firewall
+  wait_for_app || true
 }
 
 run_node() {
@@ -167,6 +212,8 @@ run_node() {
   npx prisma db seed || true
   mkdir -p data/uploads
 
+  local npm_bin
+  npm_bin="$(command -v npm)"
   cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<UNIT
 [Unit]
 Description=Fandogh VPN Shop
@@ -178,7 +225,7 @@ WorkingDirectory=${APP_DIR}
 EnvironmentFile=${APP_DIR}/.env
 Environment=NODE_ENV=production
 Environment=PORT=${APP_PORT}
-ExecStart=/usr/bin/npm run start
+ExecStart=${npm_bin} run start
 Restart=always
 RestartSec=5
 
@@ -189,6 +236,8 @@ UNIT
   systemctl daemon-reload
   systemctl enable --now "${SERVICE_NAME}" >/dev/null 2>&1
   ok "سرویس systemd با نام ${SERVICE_NAME} فعال شد"
+  open_firewall
+  wait_for_app || true
 }
 
 uninstall() {
@@ -211,8 +260,14 @@ final_note() {
   ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
   echo
   ok "نصب کامل شد 🎉"
-  echo -e "   آدرس سایت: ${C_INFO}http://${ip}:${APP_PORT}${C_OFF}"
-  echo -e "   پنل مدیریت: ${C_INFO}http://${ip}:${APP_PORT}/admin${C_OFF}"
+  if [ "$BIND_ADDR" = "127.0.0.1" ]; then
+    echo -e "   سایت فقط روی ${C_INFO}http://127.0.0.1:${APP_PORT}${C_OFF} باز است (حالت پشت Nginx)."
+  else
+    echo -e "   آدرس سایت: ${C_INFO}http://${ip}:${APP_PORT}${C_OFF}"
+    echo -e "   پنل مدیریت: ${C_INFO}http://${ip}:${APP_PORT}/admin${C_OFF}"
+    echo -e "   ${C_WARN}اگر باز نشد:${C_OFF} فایروال سرور و Security Group پنل ابری را برای پورت ${APP_PORT} باز کنید،"
+    echo -e "   و با ${C_INFO}bash install.sh --status${C_OFF} وضعیت را بررسی کنید."
+  fi
   echo
   echo "گام‌های بعدی:"
   echo "  ۱) وارد /admin شوید و در «سرورها» اطلاعات پنل 3x-ui خود را وارد کنید و «تست اتصال» بگیرید."
@@ -221,13 +276,47 @@ final_note() {
   echo "  ۴) برای دامنه و HTTPS، Nginx را طبق راهنمای shop/README.md تنظیم کنید."
   echo
   if [ "$MODE" = "docker" ]; then
-    echo "دستورات مفید:  cd ${APP_DIR} && docker compose logs -f | docker compose restart"
+    echo "دستورات مفید:"
+    echo "  bash install.sh --status     بررسی وضعیت"
+    echo "  bash install.sh --logs       آخرین لاگ‌ها"
+    echo "  cd ${APP_DIR} && docker compose restart"
   else
-    echo "دستورات مفید:  systemctl status ${SERVICE_NAME} | journalctl -u ${SERVICE_NAME} -f"
+    echo "دستورات مفید:"
+    echo "  bash install.sh --status     بررسی وضعیت"
+    echo "  bash install.sh --logs       آخرین لاگ‌ها"
+    echo "  systemctl restart ${SERVICE_NAME}"
   fi
 }
 
 case "$ACTION" in
+  logs) show_logs 100; exit 0 ;;
+  status)
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    echo "پوشه نصب: ${APP_DIR}"
+    if [ -f "${APP_DIR}/.env" ]; then
+      APP_PORT="$(grep -E '^APP_PORT=' "${APP_DIR}/.env" | tail -1 | cut -d= -f2 | tr -d '"')"
+      BIND_ADDR="$(grep -E '^BIND_ADDR=' "${APP_DIR}/.env" | tail -1 | cut -d= -f2 | tr -d '"')"
+      APP_PORT="${APP_PORT:-3000}"
+      BIND_ADDR="${BIND_ADDR:-0.0.0.0}"
+    fi
+    echo "پورت: ${APP_PORT} | آدرس انتشار: ${BIND_ADDR}"
+    if [ -f "${APP_DIR}/docker-compose.yml" ] && command -v docker >/dev/null 2>&1; then
+      docker compose -f "${APP_DIR}/docker-compose.yml" ps 2>/dev/null || true
+    fi
+    systemctl is-active "${SERVICE_NAME}" >/dev/null 2>&1 && echo "سرویس systemd: فعال"
+    if curl -fs -o /dev/null --max-time 5 "http://127.0.0.1:${APP_PORT}/" 2>/dev/null; then
+      ok "سایت از داخل سرور پاسخ می‌دهد: http://127.0.0.1:${APP_PORT}"
+      if [ "$BIND_ADDR" = "127.0.0.1" ]; then
+        warn "پورت فقط روی لوکال‌هاست باز است؛ از بیرون باید از طریق Nginx/دامنه وارد شوید."
+        warn "برای باز کردن مستقیم: در ${APP_DIR}/.env مقدار BIND_ADDR=0.0.0.0 را بگذارید و docker compose up -d بزنید."
+      else
+        echo "   آدرس بیرونی: http://${ip}:${APP_PORT}"
+        warn "اگر از بیرون باز نشد، فایروال سرور و Security Group سرویس ابری را بررسی کنید."
+      fi
+    else
+      die "سایت از داخل سرور هم پاسخ نمی‌دهد. برای دیدن دلیل: bash install.sh --logs"
+    fi
+    exit 0 ;;
   uninstall) uninstall; exit 0 ;;
   update)
     fetch_source

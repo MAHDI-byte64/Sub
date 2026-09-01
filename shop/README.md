@@ -54,8 +54,12 @@ bash <(curl -fsSL https://raw.githubusercontent.com/mahdi-byte64/Sub/HEAD/shop/i
 ```bash
 bash install.sh --node       # نصب بدون Docker (Node.js 22 + systemd)
 bash install.sh --update     # به‌روزرسانی نسخه نصب‌شده
+bash install.sh --status     # بررسی وضعیت و پاسخ‌دهی سایت
+bash install.sh --logs       # آخرین لاگ‌های سرویس
 bash install.sh --uninstall  # حذف (دیتابیس در /root نگه داشته می‌شود)
 ```
+
+بعد از نصب، سایت روی `http://IP-سرور:3000` بالا می‌آید. اگر باز نشد، اول `bash install.sh --status` را بزنید.
 
 ## 🐳 نصب دستی با Docker Compose
 
@@ -67,7 +71,8 @@ nano .env                     # AUTH_SECRET و اطلاعات مدیر را عو
 docker compose up -d --build
 ```
 
-سایت روی `http://127.0.0.1:3000` بالا می‌آید (پورت فقط روی لوکال‌هاست باز است تا پشت Nginx قرار بگیرد).
+سایت روی `http://IP-سرور:3000` بالا می‌آید. اگر می‌خواهید پورت فقط از داخل سرور در دسترس باشد (حالت پشت Nginx)،
+در `.env` مقدار `BIND_ADDR=127.0.0.1` را بگذارید و `docker compose up -d` بزنید.
 
 ## 🛠 اجرای محلی برای توسعه
 
@@ -172,7 +177,16 @@ server {
 certbot --nginx -d shop.example.com
 ```
 
-و در `.env` مقدار `APP_URL` را روی دامنه تنظیم کنید.
+و در `.env` این دو مقدار را تنظیم کنید و سرویس را دوباره بالا بیاورید:
+
+```bash
+APP_URL="https://shop.example.com"
+BIND_ADDR=127.0.0.1      # دیگر نیازی نیست پورت ۳۰۰۰ از بیرون باز باشد
+```
+
+```bash
+cd /opt/fandogh-shop/shop && docker compose up -d
+```
 
 ---
 
@@ -190,7 +204,9 @@ certbot --nginx -d shop.example.com
 | `AUTH_SECRET` | کلید تصادفی؛ حتماً عوض شود |
 | `APP_URL` | آدرس عمومی سایت |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | حساب مدیری که هنگام seed ساخته می‌شود |
-| `PORT` | پورت اجرای برنامه |
+| `PORT` | پورت داخلی برنامه (داخل کانتینر) |
+| `APP_PORT` | پورتی که روی سرور باز می‌شود (پیش‌فرض `3000`) |
+| `BIND_ADDR` | `0.0.0.0` یعنی از بیرون در دسترس (پیش‌فرض)، `127.0.0.1` یعنی فقط از داخل سرور (پشت Nginx) |
 | `UPLOAD_DIR` | مسیر ذخیره رسیدهای پرداخت |
 
 **ربات تلگرام:** با [@BotFather](https://t.me/BotFather) یک ربات بسازید، توکن را در تنظیمات وارد کنید،
@@ -243,6 +259,8 @@ shop/
 
 | مشکل | راه‌حل |
 | --- | --- |
+| با `http://IP:3000` باز نمی‌شود | `bash install.sh --status` را بزنید. اگر از داخل سرور پاسخ می‌دهد اما از بیرون نه: پورت را در فایروال سرور (`ufw allow 3000/tcp`) و در Security Group سرویس ابری باز کنید، و مطمئن شوید در `.env` مقدار `BIND_ADDR=0.0.0.0` است. |
+| از داخل سرور هم پاسخ نمی‌دهد | `bash install.sh --logs` را ببینید؛ معمولاً یا کانتینر بالا نیامده یا پورت اشغال است (`ss -ltnp \| grep 3000`). |
 | «پنل کوکی نشست برنگرداند» | نام کاربری/رمز یا base path پنل اشتباه است. |
 | «اتصال به پنل برقرار نشد» | آدرس/پورت پنل یا فایروال را بررسی کنید (`curl -k https://IP:PORT/`). |
 | «اینباند انتخابی در این پنل نیست» | شناسه اینباند را از خروجی تست اتصال بردارید. |
