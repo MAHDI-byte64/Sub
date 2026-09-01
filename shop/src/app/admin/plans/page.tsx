@@ -20,8 +20,11 @@ export default async function AdminPlansPage({
 
   return (
     <div>
-      <div className="card-title">
-        <h1 style={{ fontSize: "1.5rem" }}>پلن‌ها</h1>
+      <div className="page-head">
+        <div>
+          <h1>پلن‌ها</h1>
+          <p>قیمت، حجم، مدت و تعداد کاربر همزمان هر پلن.</p>
+        </div>
         {editing ? (
           <Link className="btn btn-sm" href="/admin/plans">
             + پلن جدید
@@ -82,7 +85,11 @@ export default async function AdminPlansPage({
         </ActionForm>
       </div>
 
-      <div className="card">
+      <div className="card data-card">
+        <div className="data-head">
+          <h3>فهرست پلن‌ها</h3>
+          <span className="badge badge-info">{faNum(plans.length)} پلن</span>
+        </div>
         <div className="table-wrap">
           <table>
             <thead>
@@ -140,7 +147,7 @@ export default async function AdminPlansPage({
             </tbody>
           </table>
         </div>
-        <p className="field-hint">مجموع پلن‌ها: {faNum(plans.length)}</p>
+        <div className="data-foot">پلن‌های غیرفعال در سایت نمایش داده نمی‌شوند.</div>
       </div>
     </div>
   );

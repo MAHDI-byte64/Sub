@@ -107,12 +107,20 @@ try {
   await Promise.all([user.waitForURL("**/dashboard/orders/**"), user.click("button:has-text('ثبت سفارش')")]);
   const payUrl = user.url();
 
+  // صفحات عمومی را با کاربر مهمان (خارج‌شده) می‌گیریم
+  const guestCtx = await browser.newContext({ locale: "fa-IR", viewport: DESKTOP });
+  await blockExternal(guestCtx);
+  const guest = await guestCtx.newPage();
+
   const publicPages = [
     ["home", "/"],
     ["plans", "/plans"],
     ["tutorial", "/tutorial"],
     ["faq", "/faq"],
+    ["terms", "/terms"],
+    ["contact", "/contact"],
     ["login", "/login"],
+    ["register", "/register"],
   ];
   const userPages = [
     ["dashboard", "/dashboard"],
@@ -130,13 +138,15 @@ try {
     ["admin-services", "/admin/services"],
     ["admin-settings", "/admin/settings"],
     ["admin-tickets", "/admin/tickets"],
+    ["admin-users", "/admin/users"],
+    ["admin-discounts", "/admin/discounts"],
   ];
 
   for (const [size, viewport] of [["m", MOBILE], ["d", DESKTOP]]) {
     console.log(`\n${size === "m" ? "موبایل" : "دسکتاپ"}:`);
     for (const [name, url] of publicPages) {
-      await user.goto(`${BASE}${url}`, { waitUntil: "domcontentloaded" });
-      await shoot(user, `${size}-${name}`, viewport);
+      await guest.goto(`${BASE}${url}`, { waitUntil: "domcontentloaded" });
+      await shoot(guest, `${size}-${name}`, viewport);
     }
     for (const [name, url] of userPages) {
       await user.goto(`${BASE}${url}`, { waitUntil: "domcontentloaded" });
@@ -151,7 +161,11 @@ try {
   // بررسی سرریز افقی در موبایل
   console.log("\nبررسی سرریز افقی (موبایل):");
   for (const [name, url] of [...publicPages, ...userPages, ...adminPages]) {
-    const page = url.startsWith("/admin") ? admin : user;
+    const page = url.startsWith("/admin")
+      ? admin
+      : publicPages.some(([, u]) => u === url)
+        ? guest
+        : user;
     await page.setViewportSize(MOBILE);
     await page.goto(`${BASE}${url}`, { waitUntil: "domcontentloaded" });
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

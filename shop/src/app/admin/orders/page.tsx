@@ -33,8 +33,11 @@ export default async function AdminOrdersPage({
 
   return (
     <div>
-      <div className="card-title">
-        <h1 style={{ fontSize: "1.5rem" }}>سفارش‌ها</h1>
+      <div className="page-head">
+        <div>
+          <h1>سفارش‌ها</h1>
+          <p>رسیدها را بررسی کنید؛ با تأیید، سرویس خودکار روی پنل ساخته می‌شود.</p>
+        </div>
       </div>
 
       <Flash msg={msg} type={type} />

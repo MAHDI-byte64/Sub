@@ -22,8 +22,11 @@ export default async function AdminPanelsPage({
 
   return (
     <div>
-      <div className="card-title">
-        <h1 style={{ fontSize: "1.5rem" }}>سرورها (پنل 3x-ui)</h1>
+      <div className="page-head">
+        <div>
+          <h1>سرورها (پنل 3x-ui)</h1>
+          <p>هر سرور یک پنل 3x-ui است؛ کلاینت‌ها از روی «کلاینت الگو» ساخته می‌شوند.</p>
+        </div>
         {editing ? (
           <Link className="btn btn-sm" href="/admin/panels">
             + افزودن سرور جدید
@@ -39,6 +42,8 @@ export default async function AdminPanelsPage({
         </div>
         <ActionForm action={savePanelAction} submitLabel={editing ? "ذخیره تغییرات" : "افزودن سرور"}>
           {editing ? <input type="hidden" name="id" value={editing.id} /> : null}
+          <div className="form-section">
+            <h4>مشخصات نمایشی</h4>
           <div className="grid grid-2">
             <div className="field">
               <label htmlFor="name">نام سرور (داخلی)</label>
@@ -59,6 +64,10 @@ export default async function AdminPanelsPage({
               <input id="url" name="url" defaultValue={editing?.url} required className="ltr" placeholder="https://panel.example.com:2053/mypath" />
             </div>
           </div>
+          </div>
+
+          <div className="form-section">
+            <h4>اتصال به پنل</h4>
           <div className="field">
             <label htmlFor="apiToken">توکن API پنل (روش پیشنهادی برای پنل نسخه ۳)</label>
             <input
@@ -101,6 +110,10 @@ export default async function AdminPanelsPage({
               <input id="inboundId" name="inboundId" type="number" min={1} defaultValue={editing?.inboundId ?? 1} required />
             </div>
           </div>
+          </div>
+
+          <div className="form-section">
+            <h4>کلاینت الگو و نام‌گذاری</h4>
           <div className="grid grid-2">
             <div className="field">
               <label htmlFor="templateEmail">نام کلاینت الگو در پنل</label>
@@ -131,6 +144,10 @@ export default async function AdminPanelsPage({
               </span>
             </div>
           </div>
+          </div>
+
+          <div className="form-section">
+            <h4>لینک اشتراک و کانفیگ</h4>
           <div className="grid grid-3">
             <div className="field">
               <label htmlFor="subBase">آدرس پایه لینک اشتراک</label>
@@ -148,6 +165,10 @@ export default async function AdminPanelsPage({
               <span className="field-hint">خالی بگذارید تا از کلاینت الگو برداشته شود.</span>
             </div>
           </div>
+          </div>
+
+          <div className="form-section">
+            <h4>ظرفیت و وضعیت</h4>
           <div className="grid grid-3">
             <div className="field">
               <label htmlFor="capacity">ظرفیت (تعداد سرویس، ۰ = نامحدود)</label>
@@ -165,6 +186,7 @@ export default async function AdminPanelsPage({
           <div className="checkbox">
             <input id="isActive" name="isActive" type="checkbox" defaultChecked={editing ? editing.isActive : true} />
             <label htmlFor="isActive">این سرور فعال باشد و در فروش نمایش داده شود</label>
+          </div>
           </div>
         </ActionForm>
       </div>

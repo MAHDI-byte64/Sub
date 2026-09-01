@@ -20,8 +20,11 @@ export default async function AdminDiscountsPage({
 
   return (
     <div>
-      <div className="card-title">
-        <h1 style={{ fontSize: "1.5rem" }}>کدهای تخفیف</h1>
+      <div className="page-head">
+        <div>
+          <h1>کدهای تخفیف</h1>
+          <p>کدهای درصدی یا مبلغی با سقف مصرف و تاریخ انقضا.</p>
+        </div>
         {editing ? (
           <Link className="btn btn-sm" href="/admin/discounts">
             + کد جدید
@@ -80,7 +83,11 @@ export default async function AdminDiscountsPage({
         </ActionForm>
       </div>
 
-      <div className="card">
+      <div className="card data-card">
+        <div className="data-head">
+          <h3>فهرست کدها</h3>
+          <span className="badge badge-info">{faNum(discounts.length)} کد</span>
+        </div>
         <div className="table-wrap">
           <table>
             <thead>

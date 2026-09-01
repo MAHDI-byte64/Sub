@@ -5,27 +5,55 @@ import { useActionState } from "react";
 import { loginAction, registerAction, type AuthState } from "@/app/actions/auth";
 import SubmitButton from "./SubmitButton";
 
+const BENEFITS = [
+  { icon: "⚡", text: "تحویل آنی کانفیگ بلافاصله پس از تأیید پرداخت" },
+  { icon: "🎁", text: "اکانت تست رایگان برای اطمینان قبل از خرید" },
+  { icon: "🔄", text: "تمدید با یک کلیک، بدون تغییر لینک اشتراک" },
+  { icon: "🎧", text: "پشتیبانی ۲۴ ساعته با تیکت داخل پنل" },
+];
+
 export default function AuthForm({ mode, next }: { mode: "login" | "register"; next: string }) {
   const action = mode === "login" ? loginAction : registerAction;
   const [state, formAction] = useActionState<AuthState, FormData>(action, {});
 
   return (
-    <div className="auth-wrap container">
-      <div className="card">
-        <div className="center" style={{ marginBottom: 18 }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/fandogh.svg" alt="" width={54} height={54} className="brand-logo" style={{ width: 54, height: 54 }} />
-        </div>
-        <h1 className="center" style={{ fontSize: "1.4rem" }}>
-          <span className="gradient-text">
-            {mode === "login" ? "ورود به حساب" : "ساخت حساب کاربری"}
-          </span>
+    <div className="container auth-split">
+      <div className="auth-intro">
+        <span className="eyebrow">
+          <span className="eyebrow-dot" />
+          {mode === "login" ? "خوش برگشتید" : "کمتر از یک دقیقه"}
+        </span>
+        <h1 style={{ fontSize: "clamp(1.6rem, 4.4vw, 2.3rem)" }}>
+          {mode === "login" ? (
+            <>
+              ورود به <span className="gradient-text">پنل کاربری</span>
+            </>
+          ) : (
+            <>
+              ساخت <span className="gradient-text">حساب کاربری</span>
+            </>
+          )}
         </h1>
-        <p className="center">
+        <p>
           {mode === "login"
-            ? "برای مشاهده سرویس‌ها و خرید وارد شوید."
-            : "با ایمیل ثبت‌نام کنید؛ کمتر از یک دقیقه طول می‌کشد."}
+            ? "سرویس‌ها، مصرف لحظه‌ای، تمدید و تیکت‌های پشتیبانی؛ همه در یک صفحه."
+            : "با ایمیل ثبت‌نام کنید و بلافاصله اکانت تست رایگان بگیرید."}
         </p>
+        <ul className="auth-benefits">
+          {BENEFITS.map((b) => (
+            <li key={b.text}>
+              <span>{b.icon}</span>
+              {b.text}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="card">
+        <div className="center" style={{ marginBottom: 16 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/fandogh.svg" alt="" width={52} height={52} style={{ width: 52, height: 52 }} />
+        </div>
 
         {state.error ? <div className="alert alert-error">{state.error}</div> : null}
 
@@ -39,7 +67,15 @@ export default function AuthForm({ mode, next }: { mode: "login" | "register"; n
           ) : null}
           <div className="field">
             <label htmlFor="email">ایمیل</label>
-            <input id="email" name="email" type="email" required autoComplete="email" placeholder="you@example.com" className="ltr" />
+            <input
+              id="email"
+              name="email"
+              type="email"
+              required
+              autoComplete="email"
+              placeholder="you@example.com"
+              className="ltr"
+            />
           </div>
           <div className="field">
             <label htmlFor="password">رمز عبور</label>
@@ -57,22 +93,36 @@ export default function AuthForm({ mode, next }: { mode: "login" | "register"; n
           {mode === "register" ? (
             <div className="field">
               <label htmlFor="confirm">تکرار رمز عبور</label>
-              <input id="confirm" name="confirm" type="password" required minLength={8} autoComplete="new-password" className="ltr" />
+              <input
+                id="confirm"
+                name="confirm"
+                type="password"
+                required
+                minLength={8}
+                autoComplete="new-password"
+                className="ltr"
+              />
             </div>
           ) : null}
-          <SubmitButton className="btn btn-primary btn-block">
-            {mode === "login" ? "ورود" : "ثبت‌نام"}
+          <SubmitButton className="btn btn-primary btn-block btn-lg">
+            {mode === "login" ? "ورود" : "ثبت‌نام و شروع"}
           </SubmitButton>
         </form>
 
         <div className="center" style={{ marginTop: 16, fontSize: 14 }}>
           {mode === "login" ? (
             <>
-              حساب ندارید؟ <Link href={`/register?next=${encodeURIComponent(next)}`}>ثبت‌نام کنید</Link>
+              حساب ندارید؟{" "}
+              <Link className="gold" href={`/register?next=${encodeURIComponent(next)}`}>
+                ثبت‌نام کنید
+              </Link>
             </>
           ) : (
             <>
-              قبلاً ثبت‌نام کرده‌اید؟ <Link href={`/login?next=${encodeURIComponent(next)}`}>وارد شوید</Link>
+              قبلاً ثبت‌نام کرده‌اید؟{" "}
+              <Link className="gold" href={`/login?next=${encodeURIComponent(next)}`}>
+                وارد شوید
+              </Link>
             </>
           )}
         </div>

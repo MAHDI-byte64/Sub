@@ -10,8 +10,11 @@ export default async function AdminSettingsPage() {
 
   return (
     <div>
-      <div className="card-title">
-        <h1 style={{ fontSize: "1.5rem" }}>تنظیمات سایت</h1>
+      <div className="page-head">
+        <div>
+          <h1>تنظیمات سایت</h1>
+          <p>نام و متن‌های سایت، اطلاعات پرداخت، اکانت تست و اطلاع‌رسانی تلگرام.</p>
+        </div>
       </div>
 
       <ActionForm action={saveSettingsAction} submitLabel="ذخیره همه تنظیمات">

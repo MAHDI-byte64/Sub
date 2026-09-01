@@ -2364,3 +2364,248 @@ tbody tr:hover {
     width: 100%;
   }
 }
+
+/* ==========================================================================
+   آواتار، گفتگو، قوانین، جدول‌های مدیریت و صفحات ورود
+   ========================================================================== */
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  border-radius: 18px;
+  font-weight: 900;
+  font-size: 20px;
+  color: #22160a;
+  background: var(--grad);
+  box-shadow: var(--shadow-gold);
+}
+.avatar-sm {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+.avatar-muted {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--border);
+  color: var(--text-soft);
+  box-shadow: none;
+}
+
+/* --------------------------------- گفتگو ---------------------------------- */
+
+.chat-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.chat-row.is-admin {
+  flex-direction: row-reverse;
+}
+.chat-row .bubble {
+  position: relative;
+  max-width: min(560px, 82%);
+  padding: 13px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  overflow-wrap: anywhere;
+}
+.chat-row.is-admin .bubble {
+  background: var(--grad-soft);
+  border-color: rgba(244, 183, 64, 0.28);
+}
+.chat-row .bubble .meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--dim);
+  margin-bottom: 5px;
+}
+.chat-row .bubble .body {
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.95;
+}
+
+/* ------------------------------ قوانین / بخش‌ها ---------------------------- */
+
+.rule-list {
+  display: grid;
+  gap: 12px;
+}
+.rule-item {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  transition: 0.18s ease;
+}
+.rule-item:hover {
+  border-color: var(--border-strong);
+  background: rgba(244, 183, 64, 0.05);
+}
+.rule-item i {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  font-style: normal;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--gold);
+  background: var(--grad-soft);
+  border: 1px solid rgba(244, 183, 64, 0.2);
+}
+.rule-item p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.95;
+}
+
+/* --------------------------------- سوالات --------------------------------- */
+
+.faq-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+/* ------------------------------ صفحات ورود -------------------------------- */
+
+.auth-split {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: clamp(20px, 4vw, 44px);
+  align-items: center;
+  padding: clamp(26px, 6vw, 60px) 0;
+}
+.auth-benefits {
+  list-style: none;
+  padding: 0;
+  margin: 22px 0 0;
+  display: grid;
+  gap: 12px;
+}
+.auth-benefits li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-soft);
+}
+.auth-benefits li span {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border-radius: 13px;
+  font-size: 17px;
+  background: var(--grad-soft);
+  border: 1px solid rgba(244, 183, 64, 0.18);
+}
+
+/* ---------------------------- جدول‌های مدیریت ------------------------------ */
+
+.data-card {
+  padding: 0;
+  overflow: hidden;
+}
+.data-card .data-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.data-card .data-head h3 {
+  margin: 0;
+}
+.data-card .table-wrap {
+  border-radius: 0;
+}
+.data-card table th:first-child,
+.data-card table td:first-child {
+  padding-inline-start: 20px;
+}
+.data-card table th:last-child,
+.data-card table td:last-child {
+  padding-inline-end: 20px;
+}
+.data-card .data-foot {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--dim);
+}
+.cell-main {
+  display: block;
+  font-weight: 700;
+  font-size: 13.5px;
+}
+.cell-sub {
+  display: block;
+  font-size: 11.5px;
+  color: var(--dim);
+  overflow-wrap: anywhere;
+}
+.cell-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+}
+
+/* فرم‌های بخش‌بندی‌شده در پنل مدیریت */
+.form-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.022);
+  padding: 16px 18px;
+}
+.form-section + .form-section {
+  margin-top: 14px;
+}
+.form-section > h4 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+  margin: 0 0 14px;
+  color: var(--text-soft);
+}
+.form-section > h4::before {
+  content: "";
+  width: 16px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--grad);
+}
+
+@media (max-width: 860px) {
+  .faq-grid,
+  .auth-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .auth-split .auth-intro {
+    text-align: center;
+  }
+  .auth-benefits {
+    max-width: 420px;
+    margin-inline: auto;
+  }
+}

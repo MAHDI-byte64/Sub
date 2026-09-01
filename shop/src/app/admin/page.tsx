@@ -38,8 +38,11 @@ export default async function AdminHome() {
 
   return (
     <div>
-      <div className="card-title">
-        <h1 style={{ fontSize: "1.5rem" }}>داشبورد مدیریت</h1>
+      <div className="page-head">
+        <div>
+          <h1>داشبورد مدیریت</h1>
+          <p>خلاصهٔ فروش و کارهایی که منتظر شما هستند.</p>
+        </div>
         <Link className="btn btn-sm" href="/">
           مشاهده سایت
         </Link>
