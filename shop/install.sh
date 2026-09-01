@@ -3,7 +3,7 @@
 #  فندق | نصب‌کننده سایت فروش VLESS متصل به پنل 3x-ui (سنایی)
 #
 #  نصب سریع:
-#    bash <(curl -fsSL https://raw.githubusercontent.com/mahdi-byte64/Sub/main/shop/install.sh)
+#    bash <(curl -fsSL https://raw.githubusercontent.com/mahdi-byte64/Sub/HEAD/shop/install.sh)
 #
 #  گزینه‌ها:
 #    --node      نصب بدون Docker (Node.js + systemd)
@@ -13,7 +13,8 @@
 set -euo pipefail
 
 REPO="${REPO:-https://github.com/mahdi-byte64/Sub.git}"
-BRANCH="${BRANCH:-main}"
+# اگر BRANCH تعیین نشود، شاخه پیش‌فرض مخزن به‌صورت خودکار تشخیص داده می‌شود
+BRANCH="${BRANCH:-}"
 BASE_DIR="${BASE_DIR:-/opt/fandogh-shop}"
 APP_DIR="${BASE_DIR}/shop"
 APP_PORT="${APP_PORT:-3000}"
@@ -84,7 +85,18 @@ install_node() {
   ok "Node.js $(node -v) نصب شد"
 }
 
+detect_branch() {
+  [ -n "$BRANCH" ] && return
+  local slug
+  slug="$(echo "$REPO" | sed -E 's#.*github\.com[:/]##; s#\.git$##')"
+  BRANCH="$(curl -fsSL "https://api.github.com/repos/${slug}" 2>/dev/null \
+    | grep -m1 '"default_branch"' | cut -d'"' -f4)"
+  [ -n "$BRANCH" ] || BRANCH="main"
+  info "شاخه مخزن: ${BRANCH}"
+}
+
 fetch_source() {
+  detect_branch
   if [ -d "${BASE_DIR}/.git" ]; then
     info "به‌روزرسانی سورس"
     git -C "$BASE_DIR" fetch origin "$BRANCH" --depth 1 >/dev/null 2>&1

@@ -41,7 +41,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/monhacer/AioSubX3/refs/heads
 اکانت تست رایگان، کد تخفیف، تیکت پشتیبانی و اطلاع‌رسانی تلگرامی.
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/mahdi-byte64/Sub/main/shop/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/mahdi-byte64/Sub/HEAD/shop/install.sh)
 ```
 
 راهنمای کامل: [shop/README.md](./shop/README.md)
@@ -94,7 +94,7 @@ card-to-card payments with receipt upload, admin approval and **automatic client
 multi-server/multi-location support, free trial accounts, discount codes, support tickets and Telegram notifications.
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/mahdi-byte64/Sub/main/shop/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/mahdi-byte64/Sub/HEAD/shop/install.sh)
 ```
 
 Full documentation: [shop/README.md](./shop/README.md)

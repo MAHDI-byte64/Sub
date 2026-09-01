@@ -43,10 +43,11 @@
 روی سروری که 3x-ui دارد یا هر سرور دیگری:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/mahdi-byte64/Sub/main/shop/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/mahdi-byte64/Sub/HEAD/shop/install.sh)
 ```
 
 اسکریپت به‌صورت خودکار Docker را نصب، فایل `.env` را با کلید امنیتی تصادفی می‌سازد، حساب مدیر را ایجاد و سرویس را بالا می‌آورد.
+شاخهٔ پیش‌فرض مخزن خودکار تشخیص داده می‌شود؛ برای نصب از شاخه‌ای دیگر: `BRANCH=my-branch bash install.sh`
 
 گزینه‌های دیگر:
 
