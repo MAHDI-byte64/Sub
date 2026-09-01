@@ -1,0 +1,193 @@
+// فندق | مدل داده سایت فروش VLESS متصل به پنل 3x-ui (سنایی)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// کاربران سایت (نقش user یا admin)
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String?
+  role         String    @default("user")
+  telegramId   String?
+  isBlocked    Boolean   @default(false)
+  trialUsedAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  sessions Session[]
+  orders   Order[]
+  services Service[]
+  tickets  Ticket[]
+}
+
+/// نشست‌های ورود (کوکی httpOnly)
+model Session {
+  id        String   @id
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// هر پنل 3x-ui = یک سرور/لوکیشن
+model Panel {
+  id            String    @id @default(cuid())
+  name          String
+  location      String
+  flag          String    @default("🌍")
+  url           String
+  username      String
+  password      String
+  inboundId     Int       @default(1)
+  /// نام (email) کلاینت الگو در پنل؛ هر سرویس جدید کپی دقیق آن ساخته می‌شود
+  templateEmail String?
+  /// الگوی نام‌گذاری کلاینت‌های جدید: {template} {code} {user} {rand}
+  namePattern   String    @default("{template}-{code}")
+  subBase       String?
+  flow          String    @default("")
+  hostOverride  String?
+  isActive      Boolean   @default(true)
+  capacity      Int       @default(0)
+  sortOrder     Int       @default(0)
+  note          String?
+  lastError     String?
+  lastCheckAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  services Service[]
+  orders   Order[]
+}
+
+/// پلن‌های فروش
+model Plan {
+  id          String  @id @default(cuid())
+  title       String
+  subtitle    String?
+  volumeGb    Int     @default(0)
+  days        Int     @default(30)
+  deviceLimit Int     @default(0)
+  priceToman  Int     @default(0)
+  isActive    Boolean @default(true)
+  isPopular   Boolean @default(false)
+  sortOrder   Int     @default(0)
+
+  orders   Order[]
+  services Service[]
+}
+
+/// کدهای تخفیف
+model Discount {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  type      String    @default("percent")
+  value     Int       @default(0)
+  maxUses   Int       @default(0)
+  usedCount Int       @default(0)
+  minAmount Int       @default(0)
+  expiresAt DateTime?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+
+  orders Order[]
+}
+
+/// سفارش خرید یا تمدید (پرداخت کارت‌به‌کارت + تأیید ادمین)
+model Order {
+  id             String    @id @default(cuid())
+  code           String    @unique
+  userId         String
+  planId         String
+  panelId        String?
+  renewServiceId String?
+  amount         Int       @default(0)
+  discountId     String?
+  discountAmount Int       @default(0)
+  payable        Int       @default(0)
+  status         String    @default("awaiting_receipt")
+  receiptFile    String?
+  receiptRef     String?
+  adminNote      String?
+  createdAt      DateTime  @default(now())
+  paidAt         DateTime?
+  reviewedAt     DateTime?
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan     Plan      @relation(fields: [planId], references: [id])
+  panel    Panel?    @relation(fields: [panelId], references: [id])
+  discount Discount? @relation(fields: [discountId], references: [id])
+  service  Service?
+
+  @@index([userId])
+  @@index([status])
+}
+
+/// سرویس تحویل‌شده = یک client داخل inbound پنل
+model Service {
+  id          String    @id @default(cuid())
+  userId      String
+  planId      String?
+  panelId     String
+  orderId     String?   @unique
+  remark      String
+  clientEmail String    @unique
+  uuid        String
+  subId       String
+  inboundId   Int
+  totalBytes  Float     @default(0)
+  usedBytes   Float     @default(0)
+  deviceLimit Int       @default(0)
+  expiresAt   DateTime?
+  isTrial     Boolean   @default(false)
+  status      String    @default("active")
+  lastSyncAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan  Plan?  @relation(fields: [planId], references: [id])
+  panel Panel  @relation(fields: [panelId], references: [id])
+  order Order? @relation(fields: [orderId], references: [id])
+
+  @@index([userId])
+}
+
+/// تیکت پشتیبانی
+model Ticket {
+  id        String   @id @default(cuid())
+  userId    String
+  subject   String
+  status    String   @default("open")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages TicketMessage[]
+
+  @@index([userId])
+}
+
+model TicketMessage {
+  id        String   @id @default(cuid())
+  ticketId  String
+  fromAdmin Boolean  @default(false)
+  body      String
+  createdAt DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}
+
+/// تنظیمات قابل ویرایش در پنل ادمین (شماره کارت، تلگرام، تست رایگان و ...)
+model Setting {
+  key   String @id
+  value String
+}

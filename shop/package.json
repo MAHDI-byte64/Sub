@@ -1,0 +1,40 @@
+{
+  "name": "fandogh-shop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Fandogh VPN shop - VLESS sales site connected to 3x-ui (Sanaei) panels",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "prisma generate && next build",
+    "start": "next start -p ${PORT:-3000}",
+    "db:push": "prisma db push",
+    "db:seed": "prisma db seed",
+    "setup": "prisma generate && prisma db push && npm run db:seed",
+    "mock-panel": "node scripts/mock-xui.mjs",
+    "test:e2e": "bash scripts/test.sh",
+    "test": "bash scripts/test.sh",
+    "test:ui": "bash scripts/ui-test.sh",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "next": "^16.3.4",
+    "qrcode": "1.5.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "server-only": "^0.0.1",
+    "prisma": "^6.19.3",
+    "tsx": "4.19.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "@types/qrcode": "1.5.5",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "playwright-core": "^1.62.1",
+    "typescript": "^5.9.3"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}
