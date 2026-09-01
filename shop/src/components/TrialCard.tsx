@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { requestTrialAction, type ShopState } from "@/app/actions/shop";
+import { faNum } from "@/lib/format";
 import SubmitButton from "./SubmitButton";
 
 export default function TrialCard({
@@ -22,7 +23,8 @@ export default function TrialCard({
         <span className="badge badge-info">یک بار برای هر حساب</span>
       </div>
       <p>
-        می‌توانید یک اکانت {volume} گیگابایتی {days} روزه رایگان بسازید و کیفیت سرویس را قبل از خرید امتحان کنید.
+        می‌توانید یک اکانت {faNum(volume)} گیگابایتی {faNum(days)} روزه رایگان بسازید و کیفیت سرویس را قبل از
+        خرید امتحان کنید.
       </p>
       {state.error ? <div className="alert alert-error">{state.error}</div> : null}
       {state.success ? <div className="alert alert-success">{state.success}</div> : null}

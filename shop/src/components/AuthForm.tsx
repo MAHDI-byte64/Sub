@@ -12,8 +12,16 @@ export default function AuthForm({ mode, next }: { mode: "login" | "register"; n
   return (
     <div className="auth-wrap container">
       <div className="card">
-        <h1 style={{ fontSize: "1.5rem" }}>{mode === "login" ? "ورود به حساب" : "ساخت حساب کاربری"}</h1>
-        <p>
+        <div className="center" style={{ marginBottom: 18 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/fandogh.svg" alt="" width={54} height={54} className="brand-logo" style={{ width: 54, height: 54 }} />
+        </div>
+        <h1 className="center" style={{ fontSize: "1.4rem" }}>
+          <span className="gradient-text">
+            {mode === "login" ? "ورود به حساب" : "ساخت حساب کاربری"}
+          </span>
+        </h1>
+        <p className="center">
           {mode === "login"
             ? "برای مشاهده سرویس‌ها و خرید وارد شوید."
             : "با ایمیل ثبت‌نام کنید؛ کمتر از یک دقیقه طول می‌کشد."}

@@ -4,13 +4,17 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 PORT="${MOCK_PORT:-8899}"
+PORT_V3="${MOCK_PORT_V3:-8898}"
 export DATABASE_URL="file:../data/e2e.db"
 export MOCK_PANEL_URL="http://127.0.0.1:${PORT}"
+export MOCK_PANEL_V3_URL="http://127.0.0.1:${PORT_V3}"
 
-echo "→ راه‌اندازی پنل شبیه‌سازی‌شده روی پورت ${PORT}"
-node scripts/mock-xui.mjs "$PORT" >/tmp/mock-xui.log 2>&1 &
+echo "→ راه‌اندازی پنل شبیه‌سازی‌شده نسخه ۲ (پورت ${PORT}) و نسخه ۳ (پورت ${PORT_V3})"
+node scripts/mock-xui.mjs "$PORT" v2 >/tmp/mock-xui-v2.log 2>&1 &
 MOCK_PID=$!
-trap 'kill $MOCK_PID 2>/dev/null' EXIT
+node scripts/mock-xui.mjs "$PORT_V3" v3 >/tmp/mock-xui-v3.log 2>&1 &
+MOCK_V3_PID=$!
+trap 'kill $MOCK_PID $MOCK_V3_PID 2>/dev/null' EXIT
 sleep 1
 
 rm -f data/e2e.db

@@ -59,10 +59,32 @@ export default async function AdminPanelsPage({
               <input id="url" name="url" defaultValue={editing?.url} required className="ltr" placeholder="https://panel.example.com:2053/mypath" />
             </div>
           </div>
+          <div className="field">
+            <label htmlFor="apiToken">توکن API پنل (روش پیشنهادی برای پنل نسخه ۳)</label>
+            <input
+              id="apiToken"
+              name="apiToken"
+              type="password"
+              className="ltr"
+              autoComplete="off"
+              placeholder={editing?.apiToken ? "توکن ذخیره شده است؛ برای تغییر مقدار جدید بدهید" : "3xui_..."}
+            />
+            <span className="field-hint">
+              در پنل 3x-ui به «تنظیمات → امنیت → API Token» بروید و یک توکن با دسترسی <b>admin</b> بسازید.
+              با توکن، دیگر نیازی به نام کاربری و رمز نیست و اتصال پایدارتر است. پنل‌های نسخه ۲ توکن ندارند؛
+              برای آن‌ها نام کاربری و رمز را پر کنید.
+            </span>
+            {editing?.apiToken ? (
+              <span className="checkbox" style={{ marginTop: 6 }}>
+                <input id="clearApiToken" name="clearApiToken" type="checkbox" />
+                <label htmlFor="clearApiToken">توکن ذخیره‌شده حذف شود و از نام کاربری استفاده شود</label>
+              </span>
+            ) : null}
+          </div>
           <div className="grid grid-3">
             <div className="field">
               <label htmlFor="username">نام کاربری پنل</label>
-              <input id="username" name="username" defaultValue={editing?.username} required className="ltr" />
+              <input id="username" name="username" defaultValue={editing?.username} className="ltr" />
             </div>
             <div className="field">
               <label htmlFor="password">رمز عبور پنل</label>
@@ -72,7 +94,6 @@ export default async function AdminPanelsPage({
                 type="password"
                 className="ltr"
                 placeholder={editing ? "برای تغییر، رمز جدید را وارد کنید" : ""}
-                required={!editing}
               />
             </div>
             <div className="field">
@@ -170,6 +191,16 @@ export default async function AdminPanelsPage({
                     <tr>
                       <th>اینباند</th>
                       <td>#{faNum(panel.inboundId)}</td>
+                    </tr>
+                    <tr>
+                      <th>روش اتصال</th>
+                      <td>
+                        {panel.apiToken ? (
+                          <span className="badge badge-success">توکن API</span>
+                        ) : (
+                          <span className="badge">نام کاربری و رمز</span>
+                        )}
+                      </td>
                     </tr>
                     <tr>
                       <th>کلاینت الگو</th>

@@ -14,7 +14,8 @@ export default async function SiteHeader() {
       <header className="nav">
         <div className="container nav-inner">
           <Link href="/" className="brand">
-            <span className="brand-logo">🌰</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/fandogh.svg" alt="" className="brand-logo" width={40} height={40} />
             <span>{settings.site_name}</span>
           </Link>
           <nav className="nav-links">
@@ -31,6 +32,9 @@ export default async function SiteHeader() {
                     مدیریت
                   </Link>
                 ) : null}
+                <Link className="btn btn-sm" href="/plans">
+                  خرید اشتراک
+                </Link>
                 <Link className="btn btn-sm btn-primary" href="/dashboard">
                   پنل کاربری
                 </Link>
@@ -38,11 +42,11 @@ export default async function SiteHeader() {
               </>
             ) : (
               <>
-                <Link className="btn btn-sm btn-ghost" href="/login">
+                <Link className="btn btn-sm" href="/login">
                   ورود
                 </Link>
-                <Link className="btn btn-sm btn-primary" href="/register">
-                  ثبت‌نام
+                <Link className="btn btn-sm btn-primary" href="/plans">
+                  خرید اشتراک
                 </Link>
               </>
             )}

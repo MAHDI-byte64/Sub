@@ -1,16 +1,12 @@
-import type { XuiInbound } from "./xui";
+import { parseJsonField, type XuiInbound, type XuiJsonField } from "./xui";
 
 /** ساخت لینک کانفیگ از روی اطلاعات اینباند پنل (بدون نیاز به سرویس ساب) */
 
 type Json = Record<string, any>;
 
-function parseJson(value: string | undefined | null): Json {
-  if (!value) return {};
-  try {
-    return JSON.parse(value) as Json;
-  } catch {
-    return {};
-  }
+/** فیلد JSON پنل ممکن است رشته (نسخه ۲) یا آبجکت (نسخه ۳) باشد */
+function parseJson(value: XuiJsonField): Json {
+  return parseJsonField(value) as Json;
 }
 
 export type BuiltLink = {

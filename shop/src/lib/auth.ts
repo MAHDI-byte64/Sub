@@ -1,5 +1,5 @@
 import "server-only";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
@@ -33,6 +33,27 @@ export function validateCredentials(email: string, password: string): string | n
   return null;
 }
 
+/**
+ * آیا درخواست فعلی روی HTTPS است؟
+ *
+ * کوکی نشست فقط وقتی فلگ Secure می‌گیرد که واقعاً روی HTTPS باشیم؛ وگرنه مرورگر
+ * کوکی را ذخیره نمی‌کند و کاربر بعد از ورود دوباره به صفحه لاگین برمی‌گردد
+ * (حالت رایج: اجرای سایت روی http://IP:3000 بدون دامنه و SSL).
+ */
+async function isSecureRequest(): Promise<boolean> {
+  try {
+    const h = await headers();
+    const forwarded = h.get("x-forwarded-proto");
+    if (forwarded) return forwarded.split(",")[0].trim().toLowerCase() === "https";
+    const proto = h.get("x-forwarded-protocol") ?? h.get("x-url-scheme");
+    if (proto) return proto.toLowerCase() === "https";
+    if (h.get("x-forwarded-ssl") === "on" || h.get("front-end-https") === "on") return true;
+  } catch {
+    /* خارج از چرخه درخواست */
+  }
+  return (process.env.APP_URL ?? "").startsWith("https://");
+}
+
 export async function createSession(userId: string): Promise<void> {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
@@ -41,7 +62,7 @@ export async function createSession(userId: string): Promise<void> {
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: await isSecureRequest(),
     path: "/",
     expires: expiresAt,
   });

@@ -11,8 +11,9 @@ export default async function SiteFooter() {
       <div className="container">
         <div className="footer-grid">
           <div>
-            <div className="brand" style={{ marginBottom: 10 }}>
-              <span className="brand-logo">🌰</span>
+            <div className="brand" style={{ marginBottom: 12 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/fandogh.svg" alt="" className="brand-logo" width={40} height={40} />
               <span>{s.site_name}</span>
             </div>
             <p style={{ fontSize: 14 }}>{s.site_description}</p>

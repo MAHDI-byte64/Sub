@@ -29,7 +29,7 @@ export default async function DashboardPage() {
   return (
     <div>
       <div className="card-title">
-        <h1 style={{ fontSize: "1.5rem" }}>سلام {user.name || user.email} 👋</h1>
+        <h1 style={{ fontSize: "1.35rem" }}>سلام {user.name || user.email.split("@")[0]} 👋</h1>
         <Link className="btn btn-sm btn-primary" href="/plans">
           خرید سرویس جدید
         </Link>
