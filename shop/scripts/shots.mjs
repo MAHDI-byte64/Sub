@@ -101,6 +101,12 @@ try {
     return null;
   });
 
+  // یک سفارش پرداخت‌نشده برای نمایش کارت بانکی
+  await user.goto(`${BASE}/plans`, { waitUntil: "domcontentloaded" });
+  await Promise.all([user.waitForURL("**/checkout**"), user.click("a:has-text('خرید این پلن')")]);
+  await Promise.all([user.waitForURL("**/dashboard/orders/**"), user.click("button:has-text('ثبت سفارش')")]);
+  const payUrl = user.url();
+
   const publicPages = [
     ["home", "/"],
     ["plans", "/plans"],
@@ -112,6 +118,7 @@ try {
     ["dashboard", "/dashboard"],
     ["orders", "/dashboard/orders"],
     ["order-detail", orderUrl.replace(BASE, "")],
+    ["payment", payUrl.replace(BASE, "")],
     ["tickets", "/dashboard/tickets"],
     ["profile", "/dashboard/profile"],
   ];

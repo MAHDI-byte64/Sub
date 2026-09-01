@@ -1955,3 +1955,412 @@ tbody tr:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ==========================================================================
+   خرید، پرداخت، سفارش‌ها و آموزش
+   ========================================================================== */
+
+/* سربرگ صفحه */
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.page-head h1 {
+  margin: 0;
+  font-size: clamp(1.25rem, 3.4vw, 1.55rem);
+}
+.page-head p {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+}
+
+/* نوار مراحل خرید */
+.steps-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.step-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 15px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  min-width: 0;
+}
+.step-item i {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+}
+.step-item b {
+  font-size: 13.5px;
+  font-weight: 700;
+  display: block;
+  line-height: 1.5;
+}
+.step-item small {
+  font-size: 11.5px;
+  color: var(--dim);
+}
+.step-item.is-active {
+  border-color: rgba(244, 183, 64, 0.4);
+  background: var(--grad-soft);
+}
+.step-item.is-active i {
+  background: var(--grad);
+  color: #22160a;
+}
+.step-item.is-done i {
+  background: rgba(69, 209, 139, 0.18);
+  color: var(--green);
+}
+
+/* کارت بانکی برای پرداخت کارت‌به‌کارت */
+.bank-card {
+  position: relative;
+  overflow: hidden;
+  padding: 22px;
+  border-radius: 22px;
+  border: 1px solid rgba(244, 183, 64, 0.28);
+  background:
+    radial-gradient(circle at 85% 10%, rgba(244, 183, 64, 0.22), transparent 55%),
+    linear-gradient(145deg, #1d1810, #0d0b12 70%);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+.bank-card::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: -60px;
+  bottom: -80px;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(244, 183, 64, 0.12), transparent 70%);
+}
+.bank-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+.bank-chip {
+  width: 42px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #f7d98a, #c9962a);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  position: relative;
+}
+.bank-chip::before,
+.bank-chip::after {
+  content: "";
+  position: absolute;
+  inset-inline: 6px;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.28);
+}
+.bank-chip::before {
+  top: 11px;
+}
+.bank-chip::after {
+  top: 20px;
+}
+.bank-number {
+  direction: ltr;
+  text-align: center;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: clamp(1.05rem, 4.6vw, 1.5rem);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #fde08a;
+  margin-bottom: 18px;
+  overflow-wrap: anywhere;
+}
+.bank-meta {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  position: relative;
+  z-index: 1;
+}
+.bank-meta small {
+  display: block;
+  font-size: 11px;
+  color: var(--dim);
+  margin-bottom: 2px;
+}
+.bank-meta b {
+  font-size: 14px;
+}
+.amount-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px dashed rgba(244, 183, 64, 0.4);
+  background: rgba(244, 183, 64, 0.07);
+  margin: 16px 0;
+}
+.amount-box span {
+  font-size: 13px;
+  color: var(--muted);
+}
+.amount-box b {
+  font-size: 1.25rem;
+  font-weight: 900;
+  background: linear-gradient(120deg, #fde08a, #f4b740);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* تصویر رسید پرداخت */
+.receipt-img {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  padding: 8px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* فهرست سفارش‌ها به‌صورت کارت */
+.order-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 17px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  transition: 0.18s ease;
+  min-width: 0;
+}
+.order-row:hover {
+  border-color: var(--border-strong);
+  background: rgba(244, 183, 64, 0.05);
+  transform: translateY(-2px);
+}
+.order-row .oi {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border-radius: 14px;
+  font-size: 19px;
+  background: var(--grad-soft);
+  border: 1px solid rgba(244, 183, 64, 0.18);
+}
+.order-row .om {
+  flex: 1;
+  min-width: 0;
+}
+.order-row .om b {
+  display: block;
+  font-size: 14px;
+}
+.order-row .om small {
+  color: var(--dim);
+  font-size: 12px;
+}
+.order-row .oa {
+  text-align: end;
+  flex: 0 0 auto;
+}
+.order-row .oa b {
+  display: block;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* تایم‌لاین آموزش */
+.timeline {
+  position: relative;
+  display: grid;
+  gap: 14px;
+}
+.timeline::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 21px;
+  top: 12px;
+  bottom: 12px;
+  width: 2px;
+  background: linear-gradient(180deg, rgba(244, 183, 64, 0.5), rgba(244, 183, 64, 0.05));
+}
+.timeline-item {
+  position: relative;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding-inline-start: 0;
+}
+.timeline-item .tl-num {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border-radius: 14px;
+  font-weight: 900;
+  color: #22160a;
+  background: var(--grad);
+  box-shadow: var(--shadow-gold);
+}
+.timeline-item h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+.timeline-item p {
+  margin: 0;
+  font-size: 13.5px;
+}
+
+/* کارت برنامه‌ها */
+.app-card {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  transition: 0.18s ease;
+}
+.app-card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-3px);
+}
+.app-card-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 4px;
+}
+.app-card-head span {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  font-size: 20px;
+  background: var(--grad-soft);
+  border: 1px solid rgba(244, 183, 64, 0.18);
+}
+.app-card-head b {
+  font-size: 15px;
+}
+
+/* آیتم تیکت */
+.ticket-item {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  transition: 0.18s ease;
+  min-width: 0;
+}
+.ticket-item:hover {
+  border-color: var(--border-strong);
+  background: rgba(244, 183, 64, 0.05);
+}
+.ticket-item .ti {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  border-radius: 13px;
+  font-size: 17px;
+  background: var(--grad-soft);
+  border: 1px solid rgba(244, 183, 64, 0.18);
+}
+.ticket-item .tm {
+  flex: 1;
+  min-width: 0;
+}
+.ticket-item .tm b {
+  display: block;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.ticket-item .tm small {
+  color: var(--dim);
+  font-size: 12px;
+}
+
+/* میان‌برهای پنل مدیریت */
+.admin-links {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.admin-link {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 14px;
+  font-weight: 600;
+  transition: 0.18s ease;
+}
+.admin-link:hover {
+  border-color: var(--border-strong);
+  background: rgba(244, 183, 64, 0.07);
+  transform: translateY(-2px);
+}
+.admin-link i {
+  font-style: normal;
+  font-size: 19px;
+}
+
+@media (max-width: 860px) {
+  .admin-links {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .steps-bar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .order-row,
+  .ticket-item {
+    flex-wrap: wrap;
+  }
+  .order-row .oa {
+    text-align: start;
+    width: 100%;
+  }
+}

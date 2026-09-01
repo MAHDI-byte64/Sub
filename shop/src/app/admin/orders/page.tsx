@@ -112,7 +112,8 @@ export default async function AdminOrdersPage({
                           <img
                             src={`/api/receipt/${order.receiptFile}`}
                             alt="رسید"
-                            style={{ maxWidth: "100%", maxHeight: 260, borderRadius: 12, border: "1px solid var(--border)" }}
+                            className="receipt-img"
+                            style={{ maxHeight: 280 }}
                           />
                         )}
                       </a>

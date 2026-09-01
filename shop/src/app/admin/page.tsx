@@ -45,6 +45,25 @@ export default async function AdminHome() {
         </Link>
       </div>
 
+      <div className="admin-links" style={{ marginBottom: 18 }}>
+        <Link className="admin-link" href="/admin/orders?status=pending_review">
+          <i>🧾</i>
+          <span>بررسی سفارش‌ها{pending > 0 ? ` (${faNum(pending)})` : ""}</span>
+        </Link>
+        <Link className="admin-link" href="/admin/panels">
+          <i>🖥️</i>
+          <span>سرورهای 3x-ui</span>
+        </Link>
+        <Link className="admin-link" href="/admin/plans">
+          <i>🏷️</i>
+          <span>پلن‌ها و قیمت‌ها</span>
+        </Link>
+        <Link className="admin-link" href="/admin/settings">
+          <i>⚙️</i>
+          <span>تنظیمات سایت</span>
+        </Link>
+      </div>
+
       <div className="grid grid-4">
         <div className="stat">
           <b>{toman(revenue._sum.payable ?? 0, false)}</b>
