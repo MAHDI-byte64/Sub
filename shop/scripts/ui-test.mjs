@@ -91,9 +91,10 @@ try {
   check("تست اتصال به پنل موفق بود", testMsg.includes("اتصال موفق بود"), testMsg);
   check("اتصال از طریق توکن API انجام شد", testMsg.includes("با توکن API"), testMsg);
   check("پنل نسخه ۳ تشخیص داده شد", testMsg.includes("API نسخه ۳"), testMsg);
+  check("کلاینت الگو روی پنل پیدا شد", testMsg.includes("کلاینت الگو «template-vip» پیدا شد"), testMsg);
   check(
-    "کلاینت الگو روی پنل پیدا شد",
-    testMsg.includes("کلاینت الگو «template-vip» در اینباند #1 پیدا شد"),
+    "سرویس روی هر دو اینباند کلاینت الگو ساخته می‌شود",
+    testMsg.includes("روی ۲ اینباند"),
     testMsg,
   );
 
