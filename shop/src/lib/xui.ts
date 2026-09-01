@@ -427,18 +427,34 @@ export class XuiClient {
   }
 
   async addClient(inboundId: number, client: XuiClientSpec | XuiRawClient): Promise<void> {
+    return this.addClientToInbounds([inboundId], client);
+  }
+
+  /**
+   * افزودن یک کلاینت به چند اینباند.
+   * در نسخه ۳ با یک درخواست (inboundIds) و در نسخه ۲ با تکرار درخواست قدیمی
+   * انجام می‌شود — چون پنل نسخه ۲ برای هر اینباند یک رکورد جدا لازم دارد.
+   */
+  async addClientToInbounds(
+    inboundIds: number[],
+    client: XuiClientSpec | XuiRawClient,
+  ): Promise<void> {
+    if (!inboundIds.length) throw new XuiError("اینباندی برای ساخت کلاینت مشخص نشده است.");
+
     if ((await this.apiGeneration()) === "v3") {
       await this.request("/panel/api/clients/add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ client, inboundIds: [inboundId] }),
+        body: JSON.stringify({ client, inboundIds }),
       });
       return;
     }
-    await this.postApi("/panel/api/inbounds/addClient", {
-      id: inboundId,
-      settings: JSON.stringify({ clients: [client] }),
-    });
+    for (const inboundId of inboundIds) {
+      await this.postApi("/panel/api/inbounds/addClient", {
+        id: inboundId,
+        settings: JSON.stringify({ clients: [client] }),
+      });
+    }
   }
 
   async updateClient(

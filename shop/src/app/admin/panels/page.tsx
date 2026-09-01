@@ -233,6 +233,16 @@ export default async function AdminPanelsPage({
                       <td className="ltr mono">{panel.namePattern}</td>
                     </tr>
                     <tr>
+                      <th>ساخت روی چند اینباند</th>
+                      <td>
+                        {panel.multiInbound ? (
+                          <span className="badge badge-success">فعال</span>
+                        ) : (
+                          <span className="badge">خاموش</span>
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
                       <th>سرویس‌های ساخته‌شده</th>
                       <td>
                         {faNum(load.get(panel.id) ?? 0)}

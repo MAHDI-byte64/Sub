@@ -54,6 +54,8 @@ model Panel {
   templateEmail String?
   /// الگوی نام‌گذاری کلاینت‌های جدید: {template} {code} {user} {rand}
   namePattern   String    @default("{template}-{code}")
+  /// سرویس روی همهٔ اینباندهایی ساخته شود که کلاینت الگو در آن‌هاست
+  multiInbound  Boolean   @default(true)
   subBase       String?
   flow          String    @default("")
   hostOverride  String?
@@ -144,6 +146,8 @@ model Service {
   uuid        String
   subId       String
   inboundId   Int
+  /// همهٔ کلاینت‌های این سرویس روی پنل: [{"inboundId":1,"email":"..."}]
+  clientRefs  String?
   totalBytes  Float     @default(0)
   usedBytes   Float     @default(0)
   deviceLimit Int       @default(0)
