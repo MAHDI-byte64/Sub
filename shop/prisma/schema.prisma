@@ -47,6 +47,8 @@ model Panel {
   url           String
   username      String
   password      String
+  /// توکن API پنل نسخه ۳ (تنظیمات → امنیت → API Token)؛ اگر پر باشد به‌جای نام کاربری استفاده می‌شود
+  apiToken      String?
   inboundId     Int       @default(1)
   /// نام (email) کلاینت الگو در پنل؛ هر سرویس جدید کپی دقیق آن ساخته می‌شود
   templateEmail String?

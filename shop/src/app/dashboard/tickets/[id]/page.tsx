@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -18,22 +19,37 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
   if (!ticket) notFound();
 
   const status = TICKET_STATUS[ticket.status] ?? TICKET_STATUS.open;
+  const initial = (user.name || user.email).trim().charAt(0).toUpperCase();
 
   return (
     <div>
-      <div className="card-title">
-        <h1 style={{ fontSize: "1.4rem" }}>{ticket.subject}</h1>
-        <span className={`badge ${status.badge}`}>{status.label}</span>
+      <div className="page-head">
+        <div>
+          <h1>{ticket.subject}</h1>
+          <p>ثبت شده در {faDate(ticket.createdAt, true)}</p>
+        </div>
+        <div className="btn-row">
+          <span className={`badge ${status.badge}`}>{status.label}</span>
+          <Link className="btn btn-sm" href="/dashboard/tickets">
+            بازگشت
+          </Link>
+        </div>
       </div>
 
       <div className="card">
         <div className="chat">
           {ticket.messages.map((msg) => (
-            <div className={`msg${msg.fromAdmin ? " admin" : ""}`} key={msg.id}>
-              <div className="msg-meta">
-                {msg.fromAdmin ? "پشتیبانی" : "شما"} — {faDate(msg.createdAt, true)}
+            <div className={`chat-row${msg.fromAdmin ? " is-admin" : ""}`} key={msg.id}>
+              <span className={`avatar avatar-sm${msg.fromAdmin ? "" : " avatar-muted"}`}>
+                {msg.fromAdmin ? "🎧" : initial}
+              </span>
+              <div className="bubble">
+                <div className="meta">
+                  <b>{msg.fromAdmin ? "پشتیبانی" : "شما"}</b>
+                  <span>{faDate(msg.createdAt, true)}</span>
+                </div>
+                <div className="body">{msg.body}</div>
               </div>
-              <div style={{ whiteSpace: "pre-wrap" }}>{msg.body}</div>
             </div>
           ))}
         </div>

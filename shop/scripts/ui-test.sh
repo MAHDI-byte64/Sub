@@ -7,6 +7,7 @@ PORT="${UI_PORT:-3222}"
 MOCK_PORT="${MOCK_PORT:-8899}"
 export DATABASE_URL="file:../data/uitest.db"
 export MOCK_PANEL_URL="http://127.0.0.1:${MOCK_PORT}"
+export MOCK_API_TOKEN="${MOCK_API_TOKEN:-3xui-test-token}"
 export BASE_URL="http://127.0.0.1:${PORT}"
 export ADMIN_EMAIL="${ADMIN_EMAIL:-admin@example.com}"
 export ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin12345}"
@@ -21,7 +22,7 @@ cleanup() {
   return 0
 }
 
-node scripts/mock-xui.mjs "$MOCK_PORT" >/tmp/mock-xui.log 2>&1 &
+node scripts/mock-xui.mjs "$MOCK_PORT" v3 >/tmp/mock-xui.log 2>&1 &
 MOCK_PID=$!
 setsid node_modules/.bin/next start -p "$PORT" >/tmp/next-uitest.log 2>&1 &
 NEXT_PID=$!

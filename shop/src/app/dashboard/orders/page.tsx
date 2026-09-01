@@ -7,6 +7,15 @@ import { ORDER_STATUS } from "@/lib/status";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "سفارش‌ها" };
 
+const STATUS_ICON: Record<string, string> = {
+  awaiting_receipt: "💳",
+  pending_review: "⏳",
+  approved: "✅",
+  rejected: "⚠️",
+  canceled: "✖️",
+  failed: "⚠️",
+};
+
 export default async function OrdersPage() {
   const user = await requireUser("/dashboard/orders");
   const orders = await db.order.findMany({
@@ -15,52 +24,48 @@ export default async function OrdersPage() {
     orderBy: { createdAt: "desc" },
   });
 
+  const pending = orders.filter((o) => o.status === "awaiting_receipt" || o.status === "pending_review");
+
   return (
     <div>
-      <div className="card-title">
-        <h1 style={{ fontSize: "1.5rem" }}>سفارش‌های من</h1>
+      <div className="page-head">
+        <div>
+          <h1>سفارش‌های من</h1>
+          <p>وضعیت پرداخت و تحویل همهٔ سفارش‌ها اینجاست.</p>
+        </div>
+        <Link className="btn btn-sm btn-primary" href="/plans">
+          سفارش جدید
+        </Link>
       </div>
 
+      {pending.length ? (
+        <div className="alert alert-warn">
+          ⏳ {pending.length === 1 ? "یک سفارش" : `${pending.length} سفارش`} در انتظار پرداخت یا بررسی دارید.
+        </div>
+      ) : null}
+
       {orders.length ? (
-        <div className="card">
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>کد سفارش</th>
-                  <th>پلن</th>
-                  <th>مبلغ</th>
-                  <th>وضعیت</th>
-                  <th>تاریخ</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map((order) => {
-                  const status = ORDER_STATUS[order.status] ?? ORDER_STATUS.awaiting_receipt;
-                  return (
-                    <tr key={order.id}>
-                      <td className="mono">{order.code}</td>
-                      <td>
-                        {order.plan.title}
-                        {order.renewServiceId ? <span className="badge" style={{ marginInlineStart: 6 }}>تمدید</span> : null}
-                      </td>
-                      <td className="nowrap">{toman(order.payable)}</td>
-                      <td>
-                        <span className={`badge ${status.badge}`}>{status.label}</span>
-                      </td>
-                      <td className="nowrap">{faDate(order.createdAt)}</td>
-                      <td>
-                        <Link className="btn btn-sm" href={`/dashboard/orders/${order.code}`}>
-                          جزئیات
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        <div className="grid" style={{ gap: 12 }}>
+          {orders.map((order) => {
+            const status = ORDER_STATUS[order.status] ?? ORDER_STATUS.awaiting_receipt;
+            return (
+              <Link className="order-row" key={order.id} href={`/dashboard/orders/${order.code}`}>
+                <span className="oi">{STATUS_ICON[order.status] ?? "🧾"}</span>
+                <span className="om">
+                  <b>
+                    {order.plan.title}
+                    {order.renewServiceId ? " — تمدید" : ""}
+                  </b>
+                  <small className="mono">{order.code}</small>
+                  <small> · {faDate(order.createdAt)}</small>
+                </span>
+                <span className="oa">
+                  <b>{toman(order.payable)}</b>
+                  <span className={`badge ${status.badge}`}>{status.label}</span>
+                </span>
+              </Link>
+            );
+          })}
         </div>
       ) : (
         <div className="card empty">

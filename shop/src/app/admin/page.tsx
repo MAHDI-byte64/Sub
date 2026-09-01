@@ -38,10 +38,32 @@ export default async function AdminHome() {
 
   return (
     <div>
-      <div className="card-title">
-        <h1 style={{ fontSize: "1.5rem" }}>داشبورد مدیریت</h1>
+      <div className="page-head">
+        <div>
+          <h1>داشبورد مدیریت</h1>
+          <p>خلاصهٔ فروش و کارهایی که منتظر شما هستند.</p>
+        </div>
         <Link className="btn btn-sm" href="/">
           مشاهده سایت
+        </Link>
+      </div>
+
+      <div className="admin-links" style={{ marginBottom: 18 }}>
+        <Link className="admin-link" href="/admin/orders?status=pending_review">
+          <i>🧾</i>
+          <span>بررسی سفارش‌ها{pending > 0 ? ` (${faNum(pending)})` : ""}</span>
+        </Link>
+        <Link className="admin-link" href="/admin/panels">
+          <i>🖥️</i>
+          <span>سرورهای 3x-ui</span>
+        </Link>
+        <Link className="admin-link" href="/admin/plans">
+          <i>🏷️</i>
+          <span>پلن‌ها و قیمت‌ها</span>
+        </Link>
+        <Link className="admin-link" href="/admin/settings">
+          <i>⚙️</i>
+          <span>تنظیمات سایت</span>
         </Link>
       </div>
 

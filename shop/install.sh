@@ -6,9 +6,14 @@
 #    bash <(curl -fsSL https://raw.githubusercontent.com/mahdi-byte64/Sub/HEAD/shop/install.sh)
 #
 #  گزینه‌ها:
+#    --domain=example.com  نصب همراه با Nginx و گواهی SSL رایگان
+#    --email=you@mail.com  ایمیل برای Let's Encrypt (اختیاری)
+#    --ssl                 فقط راه‌اندازی دامنه/Nginx/SSL روی نصب موجود
 #    --node      نصب بدون Docker (Node.js + systemd)
 #    --update    فقط به‌روزرسانی نسخه نصب‌شده
 #    --uninstall حذف کامل (دیتابیس نگه داشته می‌شود)
+#    --logs      نمایش آخرین لاگ‌های سرویس
+#    --status    بررسی وضعیت و پاسخ‌دهی سایت
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -18,6 +23,12 @@ BRANCH="${BRANCH:-}"
 BASE_DIR="${BASE_DIR:-/opt/fandogh-shop}"
 APP_DIR="${BASE_DIR}/shop"
 APP_PORT="${APP_PORT:-3000}"
+# 0.0.0.0 یعنی از بیرون سرور در دسترس باشد؛ برای حالت پشت Nginx مقدار 127.0.0.1 بدهید
+BIND_ADDR="${BIND_ADDR:-0.0.0.0}"
+DOMAIN="${DOMAIN:-}"
+LE_EMAIL="${LE_EMAIL:-}"
+SKIP_SSL="${SKIP_SSL:-0}"
+NGINX_SITE="fandogh-shop"
 SERVICE_NAME="fandogh-shop"
 MODE="docker"
 ACTION="install"
@@ -30,10 +41,16 @@ die()  { echo -e "${C_ERR}✗${C_OFF} $*" >&2; exit 1; }
 
 for arg in "$@"; do
   case "$arg" in
+    --domain=*) DOMAIN="${arg#*=}" ;;
+    --email=*) LE_EMAIL="${arg#*=}" ;;
+    --ssl) ACTION="ssl" ;;
+    --no-ssl) SKIP_SSL=1 ;;
     --node) MODE="node" ;;
     --docker) MODE="docker" ;;
     --update) ACTION="update" ;;
     --uninstall) ACTION="uninstall" ;;
+    --logs) ACTION="logs" ;;
+    --status) ACTION="status" ;;
     -h|--help)
       sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
       exit 0 ;;
@@ -140,6 +157,7 @@ ADMIN_EMAIL="${admin_email}"
 ADMIN_PASSWORD="${admin_pass}"
 PORT=3000
 APP_PORT=${APP_PORT}
+BIND_ADDR=${BIND_ADDR}
 UPLOAD_DIR="/app/data/uploads"
 ENVFILE
   chmod 600 "${APP_DIR}/.env"
@@ -149,11 +167,216 @@ ENVFILE
   warn "این رمز را یادداشت کنید؛ بعد از ورود از بخش پروفایل تغییرش دهید."
 }
 
+open_firewall_ports() {
+  local ports="$*"
+  local p
+  for p in $ports; do
+    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi "Status: active"; then
+      ufw allow "${p}/tcp" >/dev/null 2>&1 || true
+    elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+      firewall-cmd --permanent --add-port="${p}/tcp" >/dev/null 2>&1 || true
+      firewall-cmd --reload >/dev/null 2>&1 || true
+    fi
+  done
+  return 0
+}
+
+install_nginx() {
+  if command -v nginx >/dev/null 2>&1 && command -v certbot >/dev/null 2>&1; then
+    ok "Nginx و Certbot از قبل نصب‌اند"
+    return 0
+  fi
+  info "نصب Nginx و Certbot"
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update -qq
+    apt-get install -y -qq nginx certbot python3-certbot-nginx >/dev/null
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf install -y -q nginx certbot python3-certbot-nginx >/dev/null
+  elif command -v yum >/dev/null 2>&1; then
+    yum install -y -q epel-release >/dev/null 2>&1 || true
+    yum install -y -q nginx certbot python3-certbot-nginx >/dev/null
+  else
+    warn "پکیج‌منیجر ناشناخته؛ Nginx را دستی نصب کنید."
+    return 1
+  fi
+  systemctl enable --now nginx >/dev/null 2>&1 || true
+  ok "Nginx نصب شد"
+  return 0
+}
+
+check_dns() {
+  local domain="$1" server_ip resolved
+  server_ip="$(curl -fsS --max-time 8 https://api.ipify.org 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')"
+  resolved="$(getent ahostsv4 "$domain" 2>/dev/null | awk 'NR==1{print $1}')"
+  if [ -z "$resolved" ]; then
+    warn "دامنه ${domain} به هیچ آی‌پی اشاره نمی‌کند. رکورد A را به ${server_ip} تنظیم کنید."
+    return 1
+  fi
+  if [ -n "$server_ip" ] && [ "$resolved" != "$server_ip" ]; then
+    warn "دامنه ${domain} به ${resolved} اشاره می‌کند ولی آی‌پی این سرور ${server_ip} است."
+    return 1
+  fi
+  ok "رکورد DNS دامنه درست تنظیم شده است (${resolved})"
+  return 0
+}
+
+write_nginx_site() {
+  local domain="$1" conf
+  if [ -d /etc/nginx/sites-available ]; then
+    conf="/etc/nginx/sites-available/${NGINX_SITE}"
+    mkdir -p /etc/nginx/sites-enabled
+    ln -sf "$conf" "/etc/nginx/sites-enabled/${NGINX_SITE}"
+    rm -f /etc/nginx/sites-enabled/default
+  else
+    conf="/etc/nginx/conf.d/${NGINX_SITE}.conf"
+  fi
+
+  cat > "$conf" <<NGINX
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${domain};
+
+    # آپلود رسید پرداخت
+    client_max_body_size 12m;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:${APP_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 120s;
+    }
+}
+NGINX
+
+  mkdir -p /var/www/html
+  if nginx -t >/dev/null 2>&1; then
+    systemctl reload nginx >/dev/null 2>&1 || systemctl restart nginx >/dev/null 2>&1
+    ok "پیکربندی Nginx برای ${domain} نوشته شد"
+    return 0
+  fi
+  warn "پیکربندی Nginx معتبر نیست:"
+  nginx -t 2>&1 | tail -5
+  return 1
+}
+
+obtain_ssl() {
+  local domain="$1" args
+  args=(--nginx -d "$domain" --non-interactive --agree-tos --redirect)
+  if [ -n "$LE_EMAIL" ]; then
+    args+=(-m "$LE_EMAIL")
+  else
+    args+=(--register-unsafely-without-email)
+  fi
+
+  info "دریافت گواهی SSL رایگان برای ${domain}"
+  if certbot "${args[@]}" >/tmp/certbot.log 2>&1; then
+    ok "گواهی SSL نصب و تمدید خودکار آن فعال شد"
+    systemctl enable --now certbot.timer >/dev/null 2>&1 || true
+    return 0
+  fi
+  warn "دریافت گواهی ناموفق بود. آخرین خطوط لاگ:"
+  tail -8 /tmp/certbot.log
+  warn "سایت فعلاً روی HTTP کار می‌کند. بعد از درست‌کردن DNS این دستور را بزنید:"
+  warn "  bash install.sh --ssl --domain=${domain}"
+  return 1
+}
+
+apply_domain_env() {
+  local domain="$1" scheme="$2"
+  local env_file="${APP_DIR}/.env"
+  [ -f "$env_file" ] || return 0
+
+  sed -i "s#^APP_URL=.*#APP_URL=\"${scheme}://${domain}\"#" "$env_file"
+  # پشت Nginx دیگر لازم نیست پورت برنامه از بیرون باز باشد
+  if grep -q '^BIND_ADDR=' "$env_file"; then
+    sed -i "s#^BIND_ADDR=.*#BIND_ADDR=127.0.0.1#" "$env_file"
+  else
+    echo "BIND_ADDR=127.0.0.1" >> "$env_file"
+  fi
+  BIND_ADDR="127.0.0.1"
+
+  info "اعمال تنظیمات دامنه و راه‌اندازی مجدد سرویس"
+  if [ -f "${APP_DIR}/docker-compose.yml" ] && command -v docker >/dev/null 2>&1 \
+     && docker compose -f "${APP_DIR}/docker-compose.yml" ps >/dev/null 2>&1; then
+    (cd "$APP_DIR" && docker compose up -d) >/dev/null 2>&1
+  else
+    systemctl restart "$SERVICE_NAME" >/dev/null 2>&1 || true
+  fi
+  return 0
+}
+
+setup_https() {
+  local domain="$1"
+  [ -n "$domain" ] || return 0
+
+  install_nginx || return 1
+  open_firewall_ports 80 443
+  check_dns "$domain" || warn "با این حال ادامه می‌دهیم؛ اگر گواهی گرفته نشد، DNS را درست کنید و --ssl را دوباره بزنید."
+  write_nginx_site "$domain" || return 1
+
+  if [ "$SKIP_SSL" = "1" ]; then
+    apply_domain_env "$domain" "http"
+    ok "دامنه بدون SSL تنظیم شد: http://${domain}"
+    return 0
+  fi
+
+  if obtain_ssl "$domain"; then
+    apply_domain_env "$domain" "https"
+    ok "سایت روی https://${domain} آماده است"
+  else
+    apply_domain_env "$domain" "http"
+  fi
+  return 0
+}
+
+open_firewall() {
+  [ "$BIND_ADDR" = "127.0.0.1" ] && return 0
+  open_firewall_ports "$APP_PORT"
+  return 0
+}
+
+show_logs() {
+  if [ -f "${APP_DIR}/docker-compose.yml" ] && command -v docker >/dev/null 2>&1 \
+     && docker compose -f "${APP_DIR}/docker-compose.yml" ps >/dev/null 2>&1; then
+    docker compose -f "${APP_DIR}/docker-compose.yml" logs --tail="${1:-60}"
+  else
+    journalctl -u "${SERVICE_NAME}" -n "${1:-60}" --no-pager 2>/dev/null || true
+  fi
+}
+
+wait_for_app() {
+  info "بررسی بالا آمدن سایت (حداکثر ۲ دقیقه)"
+  local i
+  for i in $(seq 1 60); do
+    if curl -fs -o /dev/null --max-time 3 "http://127.0.0.1:${APP_PORT}/" 2>/dev/null; then
+      ok "سایت پاسخ می‌دهد"
+      return 0
+    fi
+    sleep 2
+  done
+  warn "سایت در ۲ دقیقه بالا نیامد. آخرین لاگ‌ها:"
+  show_logs 40
+  echo
+  warn "بعد از رفع مشکل: cd ${APP_DIR} && docker compose up -d"
+  return 1
+}
+
 run_docker() {
   cd "$APP_DIR"
   info "ساخت و اجرای کانتینر (چند دقیقه طول می‌کشد)"
   docker compose up -d --build
-  ok "سرویس در حال اجراست"
+  open_firewall
+  wait_for_app || true
 }
 
 run_node() {
@@ -167,6 +390,8 @@ run_node() {
   npx prisma db seed || true
   mkdir -p data/uploads
 
+  local npm_bin
+  npm_bin="$(command -v npm)"
   cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<UNIT
 [Unit]
 Description=Fandogh VPN Shop
@@ -178,7 +403,7 @@ WorkingDirectory=${APP_DIR}
 EnvironmentFile=${APP_DIR}/.env
 Environment=NODE_ENV=production
 Environment=PORT=${APP_PORT}
-ExecStart=/usr/bin/npm run start
+ExecStart=${npm_bin} run start
 Restart=always
 RestartSec=5
 
@@ -189,6 +414,8 @@ UNIT
   systemctl daemon-reload
   systemctl enable --now "${SERVICE_NAME}" >/dev/null 2>&1
   ok "سرویس systemd با نام ${SERVICE_NAME} فعال شد"
+  open_firewall
+  wait_for_app || true
 }
 
 uninstall() {
@@ -211,23 +438,87 @@ final_note() {
   ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
   echo
   ok "نصب کامل شد 🎉"
-  echo -e "   آدرس سایت: ${C_INFO}http://${ip}:${APP_PORT}${C_OFF}"
-  echo -e "   پنل مدیریت: ${C_INFO}http://${ip}:${APP_PORT}/admin${C_OFF}"
+  if [ -n "$DOMAIN" ]; then
+    local scheme="http"
+    [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ] && scheme="https"
+    echo -e "   آدرس سایت: ${C_INFO}${scheme}://${DOMAIN}${C_OFF}"
+    echo -e "   پنل مدیریت: ${C_INFO}${scheme}://${DOMAIN}/admin${C_OFF}"
+  elif [ "$BIND_ADDR" = "127.0.0.1" ]; then
+    echo -e "   سایت فقط روی ${C_INFO}http://127.0.0.1:${APP_PORT}${C_OFF} باز است (حالت پشت Nginx)."
+  else
+    echo -e "   آدرس سایت: ${C_INFO}http://${ip}:${APP_PORT}${C_OFF}"
+    echo -e "   پنل مدیریت: ${C_INFO}http://${ip}:${APP_PORT}/admin${C_OFF}"
+    echo -e "   ${C_WARN}اگر باز نشد:${C_OFF} فایروال سرور و Security Group پنل ابری را برای پورت ${APP_PORT} باز کنید،"
+    echo -e "   و با ${C_INFO}bash install.sh --status${C_OFF} وضعیت را بررسی کنید."
+  fi
   echo
   echo "گام‌های بعدی:"
   echo "  ۱) وارد /admin شوید و در «سرورها» اطلاعات پنل 3x-ui خود را وارد کنید و «تست اتصال» بگیرید."
   echo "  ۲) در «تنظیمات» شماره کارت، نام صاحب کارت و توکن ربات تلگرام را وارد کنید."
   echo "  ۳) در «پلن‌ها» قیمت‌ها را مطابق نیازتان تغییر دهید."
-  echo "  ۴) برای دامنه و HTTPS، Nginx را طبق راهنمای shop/README.md تنظیم کنید."
+  if [ -z "$DOMAIN" ]; then
+    echo "  ۴) برای دامنه و HTTPS خودکار: bash install.sh --ssl --domain=shop.example.com"
+  else
+    echo "  ۴) گواهی SSL به‌صورت خودکار تمدید می‌شود (certbot.timer)."
+  fi
   echo
   if [ "$MODE" = "docker" ]; then
-    echo "دستورات مفید:  cd ${APP_DIR} && docker compose logs -f | docker compose restart"
+    echo "دستورات مفید:"
+    echo "  bash install.sh --status     بررسی وضعیت"
+    echo "  bash install.sh --logs       آخرین لاگ‌ها"
+    echo "  cd ${APP_DIR} && docker compose restart"
   else
-    echo "دستورات مفید:  systemctl status ${SERVICE_NAME} | journalctl -u ${SERVICE_NAME} -f"
+    echo "دستورات مفید:"
+    echo "  bash install.sh --status     بررسی وضعیت"
+    echo "  bash install.sh --logs       آخرین لاگ‌ها"
+    echo "  systemctl restart ${SERVICE_NAME}"
   fi
 }
 
 case "$ACTION" in
+  ssl)
+    if [ -z "$DOMAIN" ] && [ -t 0 ]; then
+      read -r -p "دامنه سایت (مثلاً shop.example.com): " DOMAIN
+    fi
+    [ -n "$DOMAIN" ] || die "دامنه مشخص نشده است. مثال: bash install.sh --ssl --domain=shop.example.com"
+    if [ -f "${APP_DIR}/.env" ]; then
+      APP_PORT="$(grep -E '^APP_PORT=' "${APP_DIR}/.env" | tail -1 | cut -d= -f2 | tr -d '"')"
+      APP_PORT="${APP_PORT:-3000}"
+    fi
+    setup_https "$DOMAIN"
+    exit 0 ;;
+  logs) show_logs 100; exit 0 ;;
+  status)
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    echo "پوشه نصب: ${APP_DIR}"
+    if [ -f "${APP_DIR}/.env" ]; then
+      APP_PORT="$(grep -E '^APP_PORT=' "${APP_DIR}/.env" | tail -1 | cut -d= -f2 | tr -d '"')"
+      BIND_ADDR="$(grep -E '^BIND_ADDR=' "${APP_DIR}/.env" | tail -1 | cut -d= -f2 | tr -d '"')"
+      APP_PORT="${APP_PORT:-3000}"
+      BIND_ADDR="${BIND_ADDR:-0.0.0.0}"
+DOMAIN="${DOMAIN:-}"
+LE_EMAIL="${LE_EMAIL:-}"
+SKIP_SSL="${SKIP_SSL:-0}"
+NGINX_SITE="fandogh-shop"
+    fi
+    echo "پورت: ${APP_PORT} | آدرس انتشار: ${BIND_ADDR}"
+    if [ -f "${APP_DIR}/docker-compose.yml" ] && command -v docker >/dev/null 2>&1; then
+      docker compose -f "${APP_DIR}/docker-compose.yml" ps 2>/dev/null || true
+    fi
+    systemctl is-active "${SERVICE_NAME}" >/dev/null 2>&1 && echo "سرویس systemd: فعال"
+    if curl -fs -o /dev/null --max-time 5 "http://127.0.0.1:${APP_PORT}/" 2>/dev/null; then
+      ok "سایت از داخل سرور پاسخ می‌دهد: http://127.0.0.1:${APP_PORT}"
+      if [ "$BIND_ADDR" = "127.0.0.1" ]; then
+        warn "پورت فقط روی لوکال‌هاست باز است؛ از بیرون باید از طریق Nginx/دامنه وارد شوید."
+        warn "برای باز کردن مستقیم: در ${APP_DIR}/.env مقدار BIND_ADDR=0.0.0.0 را بگذارید و docker compose up -d بزنید."
+      else
+        echo "   آدرس بیرونی: http://${ip}:${APP_PORT}"
+        warn "اگر از بیرون باز نشد، فایروال سرور و Security Group سرویس ابری را بررسی کنید."
+      fi
+    else
+      die "سایت از داخل سرور هم پاسخ نمی‌دهد. برای دیدن دلیل: bash install.sh --logs"
+    fi
+    exit 0 ;;
   uninstall) uninstall; exit 0 ;;
   update)
     fetch_source
@@ -253,6 +544,14 @@ echo -e "${C_OFF}"
 
 need_packages
 fetch_source
+
+if [ -z "$DOMAIN" ] && [ "$SKIP_SSL" != "1" ] && [ -t 0 ]; then
+  echo
+  echo "اگر دامنه دارید و به آی‌پی این سرور وصل است، اینجا وارد کنید تا Nginx و گواهی SSL"
+  echo "رایگان به‌صورت خودکار تنظیم شوند. برای صرف‌نظر، Enter بزنید."
+  read -r -p "دامنه (اختیاری): " DOMAIN
+fi
+
 if [ "$MODE" = "docker" ]; then
   install_docker
   make_env
@@ -262,4 +561,9 @@ else
   make_env
   run_node
 fi
+
+if [ -n "$DOMAIN" ]; then
+  setup_https "$DOMAIN"
+fi
+
 final_note

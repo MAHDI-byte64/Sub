@@ -37,6 +37,30 @@ export default async function CheckoutPage({
         <p>یک قدم تا فعال‌سازی سرویس شما.</p>
       </div>
 
+      <div className="steps-bar">
+        <div className="step-item is-done">
+          <i>✓</i>
+          <div>
+            <b>انتخاب پلن</b>
+            <small>{plan.title}</small>
+          </div>
+        </div>
+        <div className="step-item is-active">
+          <i>۲</i>
+          <div>
+            <b>ثبت سفارش</b>
+            <small>لوکیشن و کد تخفیف</small>
+          </div>
+        </div>
+        <div className="step-item">
+          <i>۳</i>
+          <div>
+            <b>پرداخت و تحویل</b>
+            <small>کارت‌به‌کارت</small>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-2">
         <div className="card">
           <div className="card-title">

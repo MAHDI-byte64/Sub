@@ -14,7 +14,8 @@
     "test:e2e": "bash scripts/test.sh",
     "test": "bash scripts/test.sh",
     "test:ui": "bash scripts/ui-test.sh",
-    "lint": "next lint"
+    "lint": "next lint",
+    "shots": "bash scripts/shots.sh"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

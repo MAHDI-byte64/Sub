@@ -10,8 +10,13 @@
 
 ## ✨ امکانات
 
+**ظاهر**
+- طراحی تیرهٔ مجلسی با لهجهٔ طلایی، شبکهٔ محو، هاله‌های نوری و شبکهٔ ذرات متحرک (با احترام به «کاهش حرکت»)
+- لوگوی اختصاصی SVG و فونت Vazirmatn که **به‌صورت محلی میزبانی می‌شود** (بدون وابستگی به Google Fonts که در ایران کند/مسدود است)
+- کاملاً واکنش‌گرا؛ روی موبایل منوی پنل به نوار افقی تبدیل می‌شود و هیچ صفحه‌ای سرریز افقی ندارد
+
 **فروشگاه**
-- صفحه فرود، تعرفه‌ها، آموزش اتصال، سوالات متداول، قوانین و تماس با ما (فارسی، RTL، دارک گلاسی)
+- صفحه فرود، تعرفه‌ها، آموزش اتصال، سوالات متداول، قوانین و تماس با ما (فارسی، RTL)
 - ثبت‌نام و ورود با ایمیل و رمز عبور + محدودیت تلاش ناموفق
 - پرداخت **کارت‌به‌کارت** با آپلود رسید و تأیید مدیر
 - **کد تخفیف** درصدی/مبلغی با سقف مصرف، حداقل سفارش و تاریخ انقضا
@@ -51,11 +56,22 @@ bash <(curl -fsSL https://raw.githubusercontent.com/mahdi-byte64/Sub/HEAD/shop/i
 
 گزینه‌های دیگر:
 
+هنگام نصب، دامنه را می‌پرسد؛ اگر وارد کنید **Nginx و گواهی SSL رایگان Let's Encrypt به‌صورت خودکار**
+تنظیم می‌شوند، پورت برنامه روی لوکال‌هاست محدود می‌شود و `APP_URL` روی `https://دامنه` قرار می‌گیرد.
+
 ```bash
+# نصب یک‌مرحله‌ای همراه با دامنه و SSL
+bash install.sh --domain=shop.example.com --email=you@mail.com
+
+bash install.sh --ssl --domain=shop.example.com  # افزودن دامنه/SSL به نصب موجود
 bash install.sh --node       # نصب بدون Docker (Node.js 22 + systemd)
 bash install.sh --update     # به‌روزرسانی نسخه نصب‌شده
+bash install.sh --status     # بررسی وضعیت و پاسخ‌دهی سایت
+bash install.sh --logs       # آخرین لاگ‌های سرویس
 bash install.sh --uninstall  # حذف (دیتابیس در /root نگه داشته می‌شود)
 ```
+
+بعد از نصب، سایت روی `http://IP-سرور:3000` بالا می‌آید. اگر باز نشد، اول `bash install.sh --status` را بزنید.
 
 ## 🐳 نصب دستی با Docker Compose
 
@@ -67,7 +83,8 @@ nano .env                     # AUTH_SECRET و اطلاعات مدیر را عو
 docker compose up -d --build
 ```
 
-سایت روی `http://127.0.0.1:3000` بالا می‌آید (پورت فقط روی لوکال‌هاست باز است تا پشت Nginx قرار بگیرد).
+سایت روی `http://IP-سرور:3000` بالا می‌آید. اگر می‌خواهید پورت فقط از داخل سرور در دسترس باشد (حالت پشت Nginx)،
+در `.env` مقدار `BIND_ADDR=127.0.0.1` را بگذارید و `docker compose up -d` بزنید.
 
 ## 🛠 اجرای محلی برای توسعه
 
@@ -135,15 +152,29 @@ npm run dev       # http://localhost:3000
 
 ---
 
-## 🌐 دامنه و HTTPS با Nginx
+## 🌐 دامنه و HTTPS
+
+ساده‌ترین راه، همان اسکریپت نصب است:
+
+```bash
+bash install.sh --ssl --domain=shop.example.com --email=you@mail.com
+```
+
+این دستور به‌صورت خودکار:
+
+1. رکورد DNS دامنه را بررسی می‌کند (اگر به این سرور اشاره نکند هشدار می‌دهد)
+2. Nginx و Certbot را نصب می‌کند و پورت‌های ۸۰ و ۴۴۳ را در فایروال باز می‌کند
+3. کانفیگ Nginx را با هدرهای `X-Forwarded-*` و `client_max_body_size` مناسب آپلود رسید می‌نویسد
+4. گواهی رایگان Let's Encrypt می‌گیرد و ریدایرکت HTTPS را فعال می‌کند (تمدید خودکار با `certbot.timer`)
+5. در `.env` مقدار `APP_URL` را روی دامنه و `BIND_ADDR` را روی `127.0.0.1` می‌گذارد و سرویس را ری‌استارت می‌کند
+
+اگر گرفتن گواهی ناموفق شود (معمولاً به‌خاطر DNS)، سایت روی HTTP باقی می‌ماند و بعد از درست‌کردن رکورد
+کافی است دوباره `bash install.sh --ssl --domain=...` را بزنید.
+
+<details>
+<summary>کانفیگ دستی Nginx (اگر خودتان تنظیم می‌کنید)</summary>
 
 ```nginx
-server {
-    listen 80;
-    server_name shop.example.com;
-    return 301 https://$host$request_uri;
-}
-
 server {
     listen 443 ssl http2;
     server_name shop.example.com;
@@ -151,7 +182,7 @@ server {
     ssl_certificate     /etc/letsencrypt/live/shop.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/shop.example.com/privkey.pem;
 
-    client_max_body_size 10m;   # برای آپلود رسید
+    client_max_body_size 12m;
 
     location / {
         proxy_pass http://127.0.0.1:3000;
@@ -166,13 +197,9 @@ server {
 }
 ```
 
-سپس گواهی رایگان بگیرید:
+هدر `X-Forwarded-Proto` مهم است: کوکی نشست فقط وقتی فلگ `Secure` می‌گیرد که سایت واقعاً روی HTTPS باشد.
 
-```bash
-certbot --nginx -d shop.example.com
-```
-
-و در `.env` مقدار `APP_URL` را روی دامنه تنظیم کنید.
+</details>
 
 ---
 
@@ -190,7 +217,10 @@ certbot --nginx -d shop.example.com
 | `AUTH_SECRET` | کلید تصادفی؛ حتماً عوض شود |
 | `APP_URL` | آدرس عمومی سایت |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | حساب مدیری که هنگام seed ساخته می‌شود |
-| `PORT` | پورت اجرای برنامه |
+| `PORT` | پورت داخلی برنامه (داخل کانتینر) |
+| `APP_PORT` | پورتی که روی سرور باز می‌شود (پیش‌فرض `3000`) |
+| `BIND_ADDR` | `0.0.0.0` یعنی از بیرون در دسترس (پیش‌فرض)، `127.0.0.1` یعنی فقط از داخل سرور (پشت Nginx) |
+| `EXTRA_ORIGINS` | دامنه‌های اضافی مجاز برای Server Actions (با کاما جدا کنید) — معمولاً لازم نیست |
 | `UPLOAD_DIR` | مسیر ذخیره رسیدهای پرداخت |
 
 **ربات تلگرام:** با [@BotFather](https://t.me/BotFather) یک ربات بسازید، توکن را در تنظیمات وارد کنید،
@@ -201,8 +231,9 @@ certbot --nginx -d shop.example.com
 ## 🧪 تست‌ها
 
 ```bash
-npm test        # تست منطق فروش و اتصال به پنل روی یک پنل 3x-ui شبیه‌سازی‌شده
-npm run test:ui # تست کامل رابط کاربری با مرورگر واقعی (نیازمند playwright-core و Chromium)
+npm test        # تست منطق فروش و اتصال به پنل (هر دو نسل API پنل)
+npm run test:ui # تست کامل رابط کاربری با مرورگر واقعی
+npm run shots   # اسکرین‌شات از همه صفحات در موبایل و دسکتاپ + بررسی سرریز افقی
 ```
 
 `scripts/mock-xui.mjs` یک پنل 3x-ui ساختگی است که `login`، `list`، `addClient`، `updateClient`،
@@ -243,6 +274,9 @@ shop/
 
 | مشکل | راه‌حل |
 | --- | --- |
+| بعد از ورود، هر تغییری من را به صفحه لاگین برمی‌گرداند | در نسخه‌های قدیمی، کوکی نشست روی HTTP ذخیره نمی‌شد. الان کوکی فقط روی HTTPS فلگ `Secure` می‌گیرد؛ اگر پشت Nginx هستید مطمئن شوید هدر `X-Forwarded-Proto $scheme` تنظیم شده است. |
+| با `http://IP:3000` باز نمی‌شود | `bash install.sh --status` را بزنید. اگر از داخل سرور پاسخ می‌دهد اما از بیرون نه: پورت را در فایروال سرور (`ufw allow 3000/tcp`) و در Security Group سرویس ابری باز کنید، و مطمئن شوید در `.env` مقدار `BIND_ADDR=0.0.0.0` است. |
+| از داخل سرور هم پاسخ نمی‌دهد | `bash install.sh --logs` را ببینید؛ معمولاً یا کانتینر بالا نیامده یا پورت اشغال است (`ss -ltnp \| grep 3000`). |
 | «پنل کوکی نشست برنگرداند» | نام کاربری/رمز یا base path پنل اشتباه است. |
 | «اتصال به پنل برقرار نشد» | آدرس/پورت پنل یا فایروال را بررسی کنید (`curl -k https://IP:PORT/`). |
 | «اینباند انتخابی در این پنل نیست» | شناسه اینباند را از خروجی تست اتصال بردارید. |

@@ -22,8 +22,11 @@ export default async function AdminPanelsPage({
 
   return (
     <div>
-      <div className="card-title">
-        <h1 style={{ fontSize: "1.5rem" }}>سرورها (پنل 3x-ui)</h1>
+      <div className="page-head">
+        <div>
+          <h1>سرورها (پنل 3x-ui)</h1>
+          <p>هر سرور یک پنل 3x-ui است؛ کلاینت‌ها از روی «کلاینت الگو» ساخته می‌شوند.</p>
+        </div>
         {editing ? (
           <Link className="btn btn-sm" href="/admin/panels">
             + افزودن سرور جدید
@@ -39,6 +42,8 @@ export default async function AdminPanelsPage({
         </div>
         <ActionForm action={savePanelAction} submitLabel={editing ? "ذخیره تغییرات" : "افزودن سرور"}>
           {editing ? <input type="hidden" name="id" value={editing.id} /> : null}
+          <div className="form-section">
+            <h4>مشخصات نمایشی</h4>
           <div className="grid grid-2">
             <div className="field">
               <label htmlFor="name">نام سرور (داخلی)</label>
@@ -59,10 +64,36 @@ export default async function AdminPanelsPage({
               <input id="url" name="url" defaultValue={editing?.url} required className="ltr" placeholder="https://panel.example.com:2053/mypath" />
             </div>
           </div>
+          </div>
+
+          <div className="form-section">
+            <h4>اتصال به پنل</h4>
+          <div className="field">
+            <label htmlFor="apiToken">توکن API پنل (روش پیشنهادی برای پنل نسخه ۳)</label>
+            <input
+              id="apiToken"
+              name="apiToken"
+              type="password"
+              className="ltr"
+              autoComplete="off"
+              placeholder={editing?.apiToken ? "توکن ذخیره شده است؛ برای تغییر مقدار جدید بدهید" : "3xui_..."}
+            />
+            <span className="field-hint">
+              در پنل 3x-ui به «تنظیمات → امنیت → API Token» بروید و یک توکن با دسترسی <b>admin</b> بسازید.
+              با توکن، دیگر نیازی به نام کاربری و رمز نیست و اتصال پایدارتر است. پنل‌های نسخه ۲ توکن ندارند؛
+              برای آن‌ها نام کاربری و رمز را پر کنید.
+            </span>
+            {editing?.apiToken ? (
+              <span className="checkbox" style={{ marginTop: 6 }}>
+                <input id="clearApiToken" name="clearApiToken" type="checkbox" />
+                <label htmlFor="clearApiToken">توکن ذخیره‌شده حذف شود و از نام کاربری استفاده شود</label>
+              </span>
+            ) : null}
+          </div>
           <div className="grid grid-3">
             <div className="field">
               <label htmlFor="username">نام کاربری پنل</label>
-              <input id="username" name="username" defaultValue={editing?.username} required className="ltr" />
+              <input id="username" name="username" defaultValue={editing?.username} className="ltr" />
             </div>
             <div className="field">
               <label htmlFor="password">رمز عبور پنل</label>
@@ -72,7 +103,6 @@ export default async function AdminPanelsPage({
                 type="password"
                 className="ltr"
                 placeholder={editing ? "برای تغییر، رمز جدید را وارد کنید" : ""}
-                required={!editing}
               />
             </div>
             <div className="field">
@@ -80,6 +110,10 @@ export default async function AdminPanelsPage({
               <input id="inboundId" name="inboundId" type="number" min={1} defaultValue={editing?.inboundId ?? 1} required />
             </div>
           </div>
+          </div>
+
+          <div className="form-section">
+            <h4>کلاینت الگو و نام‌گذاری</h4>
           <div className="grid grid-2">
             <div className="field">
               <label htmlFor="templateEmail">نام کلاینت الگو در پنل</label>
@@ -110,6 +144,10 @@ export default async function AdminPanelsPage({
               </span>
             </div>
           </div>
+          </div>
+
+          <div className="form-section">
+            <h4>لینک اشتراک و کانفیگ</h4>
           <div className="grid grid-3">
             <div className="field">
               <label htmlFor="subBase">آدرس پایه لینک اشتراک</label>
@@ -127,6 +165,10 @@ export default async function AdminPanelsPage({
               <span className="field-hint">خالی بگذارید تا از کلاینت الگو برداشته شود.</span>
             </div>
           </div>
+          </div>
+
+          <div className="form-section">
+            <h4>ظرفیت و وضعیت</h4>
           <div className="grid grid-3">
             <div className="field">
               <label htmlFor="capacity">ظرفیت (تعداد سرویس، ۰ = نامحدود)</label>
@@ -144,6 +186,7 @@ export default async function AdminPanelsPage({
           <div className="checkbox">
             <input id="isActive" name="isActive" type="checkbox" defaultChecked={editing ? editing.isActive : true} />
             <label htmlFor="isActive">این سرور فعال باشد و در فروش نمایش داده شود</label>
+          </div>
           </div>
         </ActionForm>
       </div>
@@ -170,6 +213,16 @@ export default async function AdminPanelsPage({
                     <tr>
                       <th>اینباند</th>
                       <td>#{faNum(panel.inboundId)}</td>
+                    </tr>
+                    <tr>
+                      <th>روش اتصال</th>
+                      <td>
+                        {panel.apiToken ? (
+                          <span className="badge badge-success">توکن API</span>
+                        ) : (
+                          <span className="badge">نام کاربری و رمز</span>
+                        )}
+                      </td>
                     </tr>
                     <tr>
                       <th>کلاینت الگو</th>

@@ -12,6 +12,7 @@ export function panelClient(panel: Panel): XuiClient {
     url: panel.url,
     username: panel.username,
     password: panel.password,
+    apiToken: panel.apiToken,
     insecure: true,
   });
 }
@@ -428,6 +429,19 @@ export async function serviceLinks(serviceId: string): Promise<{
   const subscription = buildSubscriptionUrl(service.panel.subBase, service.panel.url, service.subId);
   try {
     const client = panelClient(service.panel);
+
+    // پنل نسخه ۳ خودش لینک‌های آماده را می‌دهد؛ دقیق‌ترین منبع همان است
+    const panelLinks = await client.getClientLinks(service.clientEmail);
+    if (panelLinks?.length) {
+      return {
+        subscription,
+        configs: panelLinks.map((uri) => ({
+          label: uri.split("://")[0]?.toUpperCase() || "CONFIG",
+          uri,
+        })),
+      };
+    }
+
     const inbound = await client.getInbound(service.inboundId);
     const host = resolveHost(service.panel.hostOverride, inbound.listen, service.panel.url);
     const current = await findServiceClient(client, service);
@@ -473,7 +487,7 @@ export async function removeService(serviceId: string): Promise<void> {
     include: { panel: true },
   });
   try {
-    await panelClient(service.panel).deleteClient(service.inboundId, service.uuid);
+    await panelClient(service.panel).deleteClient(service.inboundId, service.uuid, service.clientEmail);
   } catch {
     // اگر روی پنل نبود، فقط از دیتابیس حذف می‌کنیم
   }

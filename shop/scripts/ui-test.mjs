@@ -12,6 +12,7 @@ const BASE = process.env.BASE_URL || "http://127.0.0.1:3222";
 const MOCK = process.env.MOCK_PANEL_URL || "http://127.0.0.1:8899";
 const EXECUTABLE = process.env.CHROMIUM_PATH || "/opt/pw-browsers/chromium";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@example.com";
+const API_TOKEN = process.env.MOCK_API_TOKEN || "3xui-test-token";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin12345";
 
 let passed = 0;
@@ -58,12 +59,23 @@ try {
   await login(admin, ADMIN_EMAIL, ADMIN_PASSWORD);
   check("ورود مدیر انجام شد", admin.url().includes("/admin"), admin.url());
 
+  // روی HTTP ساده کوکی نباید Secure باشد وگرنه مرورگر ذخیره‌اش نمی‌کند
+  const cookies = await adminCtx.cookies();
+  const session = cookies.find((c) => c.name === "fandogh_session");
+  check("کوکی نشست ساخته شد", Boolean(session), cookies.map((c) => c.name));
+  check(
+    "کوکی روی HTTP فلگ Secure ندارد (باگ برگشت به صفحه لاگین)",
+    session ? session.secure === false : false,
+    session?.secure,
+  );
+  check("کوکی httpOnly است", session ? session.httpOnly === true : false, session?.httpOnly);
+
   await admin.goto(`${BASE}/admin/panels`, { waitUntil: "domcontentloaded" });
   await admin.fill("#name", "MOCK-UI");
   await admin.fill("#location", "آلمان - تست UI");
   await admin.fill("#url", MOCK);
-  await admin.fill("#username", "admin");
-  await admin.fill("#password", "admin");
+  // فقط توکن API می‌دهیم (بدون نام کاربری) تا ثابت شود مسیر رسمی API کار می‌کند
+  await admin.fill("#apiToken", API_TOKEN);
   await admin.fill("#inboundId", "1");
   await admin.fill("#subBase", "https://sub.test.local/sub");
   await admin.fill("#templateEmail", "template-vip");
@@ -77,6 +89,8 @@ try {
   await testAlert.waitFor({ timeout: 20000 });
   const testMsg = (await testAlert.textContent()) ?? "";
   check("تست اتصال به پنل موفق بود", testMsg.includes("اتصال موفق بود"), testMsg);
+  check("اتصال از طریق توکن API انجام شد", testMsg.includes("با توکن API"), testMsg);
+  check("پنل نسخه ۳ تشخیص داده شد", testMsg.includes("API نسخه ۳"), testMsg);
   check(
     "کلاینت الگو روی پنل پیدا شد",
     testMsg.includes("کلاینت الگو «template-vip» در اینباند #1 پیدا شد"),

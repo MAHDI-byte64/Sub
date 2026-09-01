@@ -17,7 +17,10 @@ export default function PlanCard({ plan, href }: { plan: Plan; href?: string }) 
         <li>{deviceLabel(plan.deviceLimit)}</li>
         <li>پشتیبانی از همه دستگاه‌ها</li>
       </ul>
-      <Link className="btn btn-primary btn-block" href={href ?? `/checkout?plan=${plan.id}`}>
+      <Link
+        className={`btn btn-block${plan.isPopular ? " btn-primary" : ""}`}
+        href={href ?? `/checkout?plan=${plan.id}`}
+      >
         خرید این پلن
       </Link>
     </article>

@@ -148,6 +148,8 @@ export async function savePanelAction(_prev: AdminState, formData: FormData): Pr
 
   const id = str(formData, "id");
   const password = str(formData, "password");
+  const apiToken = str(formData, "apiToken");
+  const clearToken = checked(formData, "clearApiToken");
   const data: Record<string, unknown> = {
     name: str(formData, "name"),
     location: str(formData, "location"),
@@ -165,19 +167,32 @@ export async function savePanelAction(_prev: AdminState, formData: FormData): Pr
     note: str(formData, "note") || null,
     isActive: checked(formData, "isActive"),
   };
-  if (!data.name || !data.url || !data.username) {
-    return { error: "نام، آدرس پنل و نام کاربری الزامی است." };
+  if (!data.name || !data.url) {
+    return { error: "نام و آدرس پنل الزامی است." };
   }
   if (!/^https?:\/\//i.test(String(data.url))) {
     return { error: "آدرس پنل باید با http:// یا https:// شروع شود." };
   }
 
   if (id) {
+    const existing = await db.panel.findUnique({ where: { id } });
+    if (!existing) return { error: "سرور پیدا نشد." };
+
     if (password) data.password = password;
+    if (clearToken) data.apiToken = null;
+    else if (apiToken) data.apiToken = apiToken;
+
+    const willHaveToken = clearToken ? false : Boolean(apiToken || existing.apiToken);
+    if (!willHaveToken && !data.username) {
+      return { error: "یا توکن API را وارد کنید یا نام کاربری و رمز پنل را." };
+    }
     await db.panel.update({ where: { id }, data });
   } else {
-    if (!password) return { error: "رمز عبور پنل الزامی است." };
+    if (!apiToken && (!data.username || !password)) {
+      return { error: "یا توکن API پنل را وارد کنید، یا نام کاربری و رمز عبور پنل را." };
+    }
     data.password = password;
+    data.apiToken = apiToken || null;
     await db.panel.create({ data: data as never });
   }
 
@@ -248,10 +263,16 @@ export async function testPanelAction(_prev: AdminState, formData: FormData): Pr
       (moved ? " (شناسه اینباند خودکار اصلاح شد)" : "")
     : "کلاینت الگو تعیین نشده است؛ کانفیگ‌ها با تنظیمات پیش‌فرض ساخته می‌شوند.";
 
+  const tokenNote =
+    result.generation === "v3" && result.authMode !== "token"
+      ? " | پیشنهاد: این پنل نسخه ۳ است؛ بهتر است به‌جای نام کاربری از «توکن API» استفاده کنید."
+      : "";
+
   return {
     success:
       `${result.message} | اینباندها: ${list} | ${templateNote}` +
-      (names.length ? ` | کلاینت‌های اینباند: ${names.join("، ")}` : ""),
+      (names.length ? ` | کلاینت‌های اینباند: ${names.join("، ")}` : "") +
+      tokenNote,
   };
 }
 
