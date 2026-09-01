@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { asBool, getSettings } from "@/lib/settings";
 import { syncUserServices } from "@/lib/provision";
+import { faDate, faNum, formatBytes, remainingDays } from "@/lib/format";
 import ServiceCard from "@/components/ServiceCard";
 import TrialCard from "@/components/TrialCard";
 
@@ -16,7 +17,7 @@ export default async function DashboardPage() {
   const [services, settings, panels, pendingOrders] = await Promise.all([
     db.service.findMany({
       where: { userId: user.id },
-      include: { panel: true },
+      include: { panel: true, plan: true },
       orderBy: { createdAt: "desc" },
     }),
     getSettings(),
@@ -25,6 +26,20 @@ export default async function DashboardPage() {
   ]);
 
   const trialAvailable = asBool(settings.trial_enabled) && !user.trialUsedAt && panels.length > 0;
+
+  // خلاصهٔ وضعیت برای نوار بالای پنل
+  const activeServices = services.filter((s) => s.status === "active");
+  const hasUnlimited = activeServices.some((s) => s.totalBytes <= 0);
+  const remainingBytes = activeServices.reduce(
+    (sum, s) => sum + (s.totalBytes > 0 ? Math.max(0, s.totalBytes - s.usedBytes) : 0),
+    0,
+  );
+  const usedBytes = services.reduce((sum, s) => sum + s.usedBytes, 0);
+  const nextExpiry = activeServices
+    .map((s) => s.expiresAt)
+    .filter((d): d is Date => Boolean(d))
+    .sort((a, b) => a.getTime() - b.getTime())[0];
+  const nextExpiryDays = remainingDays(nextExpiry);
 
   return (
     <div>
@@ -39,6 +54,34 @@ export default async function DashboardPage() {
         <div className="alert alert-warn">
           شما {pendingOrders} سفارش در انتظار پرداخت یا بررسی دارید.{" "}
           <Link href="/dashboard/orders">مشاهده سفارش‌ها</Link>
+        </div>
+      ) : null}
+
+      {services.length ? (
+        <div className="summary-strip">
+          <div className="summary-tile">
+            <span>🌐 سرویس فعال</span>
+            <b>{faNum(activeServices.length)}</b>
+          </div>
+          <div className="summary-tile">
+            <span>📦 حجم باقی‌مانده</span>
+            <b>{hasUnlimited && remainingBytes === 0 ? "نامحدود" : formatBytes(remainingBytes, "۰")}</b>
+          </div>
+          <div className="summary-tile">
+            <span>📊 مجموع مصرف</span>
+            <b>{formatBytes(usedBytes, "۰")}</b>
+          </div>
+          <div className="summary-tile">
+            <span>⏳ نزدیک‌ترین انقضا</span>
+            <b>
+              {nextExpiry
+                ? nextExpiryDays !== null && nextExpiryDays > 0
+                  ? `${faNum(nextExpiryDays)} روز`
+                  : "منقضی"
+                : "—"}
+            </b>
+            {nextExpiry ? <small className="dim">{faDate(nextExpiry)}</small> : null}
+          </div>
         </div>
       ) : null}
 

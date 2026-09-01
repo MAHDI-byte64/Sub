@@ -56,7 +56,14 @@ bash <(curl -fsSL https://raw.githubusercontent.com/mahdi-byte64/Sub/HEAD/shop/i
 
 گزینه‌های دیگر:
 
+هنگام نصب، دامنه را می‌پرسد؛ اگر وارد کنید **Nginx و گواهی SSL رایگان Let's Encrypt به‌صورت خودکار**
+تنظیم می‌شوند، پورت برنامه روی لوکال‌هاست محدود می‌شود و `APP_URL` روی `https://دامنه` قرار می‌گیرد.
+
 ```bash
+# نصب یک‌مرحله‌ای همراه با دامنه و SSL
+bash install.sh --domain=shop.example.com --email=you@mail.com
+
+bash install.sh --ssl --domain=shop.example.com  # افزودن دامنه/SSL به نصب موجود
 bash install.sh --node       # نصب بدون Docker (Node.js 22 + systemd)
 bash install.sh --update     # به‌روزرسانی نسخه نصب‌شده
 bash install.sh --status     # بررسی وضعیت و پاسخ‌دهی سایت
@@ -145,15 +152,29 @@ npm run dev       # http://localhost:3000
 
 ---
 
-## 🌐 دامنه و HTTPS با Nginx
+## 🌐 دامنه و HTTPS
+
+ساده‌ترین راه، همان اسکریپت نصب است:
+
+```bash
+bash install.sh --ssl --domain=shop.example.com --email=you@mail.com
+```
+
+این دستور به‌صورت خودکار:
+
+1. رکورد DNS دامنه را بررسی می‌کند (اگر به این سرور اشاره نکند هشدار می‌دهد)
+2. Nginx و Certbot را نصب می‌کند و پورت‌های ۸۰ و ۴۴۳ را در فایروال باز می‌کند
+3. کانفیگ Nginx را با هدرهای `X-Forwarded-*` و `client_max_body_size` مناسب آپلود رسید می‌نویسد
+4. گواهی رایگان Let's Encrypt می‌گیرد و ریدایرکت HTTPS را فعال می‌کند (تمدید خودکار با `certbot.timer`)
+5. در `.env` مقدار `APP_URL` را روی دامنه و `BIND_ADDR` را روی `127.0.0.1` می‌گذارد و سرویس را ری‌استارت می‌کند
+
+اگر گرفتن گواهی ناموفق شود (معمولاً به‌خاطر DNS)، سایت روی HTTP باقی می‌ماند و بعد از درست‌کردن رکورد
+کافی است دوباره `bash install.sh --ssl --domain=...` را بزنید.
+
+<details>
+<summary>کانفیگ دستی Nginx (اگر خودتان تنظیم می‌کنید)</summary>
 
 ```nginx
-server {
-    listen 80;
-    server_name shop.example.com;
-    return 301 https://$host$request_uri;
-}
-
 server {
     listen 443 ssl http2;
     server_name shop.example.com;
@@ -161,7 +182,7 @@ server {
     ssl_certificate     /etc/letsencrypt/live/shop.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/shop.example.com/privkey.pem;
 
-    client_max_body_size 10m;   # برای آپلود رسید
+    client_max_body_size 12m;
 
     location / {
         proxy_pass http://127.0.0.1:3000;
@@ -176,22 +197,9 @@ server {
 }
 ```
 
-سپس گواهی رایگان بگیرید:
+هدر `X-Forwarded-Proto` مهم است: کوکی نشست فقط وقتی فلگ `Secure` می‌گیرد که سایت واقعاً روی HTTPS باشد.
 
-```bash
-certbot --nginx -d shop.example.com
-```
-
-و در `.env` این دو مقدار را تنظیم کنید و سرویس را دوباره بالا بیاورید:
-
-```bash
-APP_URL="https://shop.example.com"
-BIND_ADDR=127.0.0.1      # دیگر نیازی نیست پورت ۳۰۰۰ از بیرون باز باشد
-```
-
-```bash
-cd /opt/fandogh-shop/shop && docker compose up -d
-```
+</details>
 
 ---
 
