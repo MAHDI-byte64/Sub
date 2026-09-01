@@ -12,13 +12,15 @@ export default async function AdminServicesPage({
   searchParams: Promise<{ msg?: string; type?: string }>;
 }) {
   const { msg, type } = await searchParams;
-  const [services, active] = await Promise.all([
+  const [services, active, expired, usageAgg] = await Promise.all([
     db.service.findMany({
       orderBy: { createdAt: "desc" },
       include: { user: true, panel: true, plan: true },
       take: 200,
     }),
     db.service.count({ where: { status: "active" } }),
+    db.service.count({ where: { status: "expired" } }),
+    db.service.aggregate({ _sum: { usedBytes: true } }),
   ]);
 
   return (
@@ -35,6 +37,25 @@ export default async function AdminServicesPage({
       </div>
 
       <Flash msg={msg} type={type} />
+
+      <div className="summary-strip">
+        <div className="summary-tile">
+          <span>🌐 سرویس فعال</span>
+          <b>{faNum(active)}</b>
+        </div>
+        <div className="summary-tile">
+          <span>⌛ منقضی</span>
+          <b>{faNum(expired)}</b>
+        </div>
+        <div className="summary-tile">
+          <span>📦 کل سرویس‌ها</span>
+          <b>{faNum(services.length)}</b>
+        </div>
+        <div className="summary-tile">
+          <span>📊 مجموع مصرف</span>
+          <b>{formatBytes(usageAgg._sum.usedBytes ?? 0, "۰")}</b>
+        </div>
+      </div>
 
       <div className="card data-card">
         <div className="data-head">

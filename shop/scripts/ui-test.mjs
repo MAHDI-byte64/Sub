@@ -149,7 +149,7 @@ try {
   check("سرویس در پنل کاربری نمایش داده شد", await user.isVisible("text=لینک اشتراک"));
   check("لینک اشتراک ساخته شد", (await user.textContent("body")).includes("https://sub.test.local/sub/"));
 
-  await user.click("a:has-text('مشاهده کانفیگ و QR')");
+  await user.click("a:has-text('کانفیگ و QR')");
   await user.waitForSelector("text=کانفیگ مستقیم", { timeout: 20000 });
   const detail = await user.textContent("body");
   check("کانفیگ VLESS نمایش داده شد", detail.includes("vless://"), detail.slice(0, 200));

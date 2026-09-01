@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
-import { faDate } from "@/lib/format";
+import { faDate, faNum, toman } from "@/lib/format";
 import { TICKET_STATUS } from "@/lib/status";
 import TicketReplyForm from "@/components/TicketReplyForm";
 
@@ -15,6 +15,15 @@ export default async function AdminTicketDetail({ params }: { params: Promise<{ 
   });
   if (!ticket) notFound();
 
+  const [services, orders, spent] = await Promise.all([
+    db.service.count({ where: { userId: ticket.userId } }),
+    db.order.count({ where: { userId: ticket.userId, status: "approved" } }),
+    db.order.aggregate({
+      where: { userId: ticket.userId, status: "approved" },
+      _sum: { payable: true },
+    }),
+  ]);
+
   const status = TICKET_STATUS[ticket.status] ?? TICKET_STATUS.open;
   const initial = (ticket.user.name || ticket.user.email).trim().charAt(0).toUpperCase();
 
@@ -22,15 +31,26 @@ export default async function AdminTicketDetail({ params }: { params: Promise<{ 
     <div>
       <div className="page-head">
         <div>
-          <h1>{ticket.subject}</h1>
+          <h1>پاسخ به تیکت</h1>
           <p className="ltr mono">{ticket.user.email}</p>
         </div>
-        <div className="btn-row">
-          <span className={`badge ${status.badge}`}>{status.label}</span>
-          <Link className="btn btn-sm" href="/admin/tickets">
-            بازگشت
-          </Link>
+        <Link className="btn btn-sm" href="/admin/tickets">
+          ← همه تیکت‌ها
+        </Link>
+      </div>
+
+      <div className="thread-head">
+        <span className={`tc-icon ${ticket.status === "open" ? "is-open" : ""}`}>{initial}</span>
+        <div className="th-main">
+          <h2>{ticket.subject}</h2>
+          <div className="th-meta">
+            <span>🕒 ثبت: {faDate(ticket.createdAt, true)}</span>
+            <span>💬 {faNum(ticket.messages.length)} پیام</span>
+            <span>🌐 {faNum(services)} سرویس</span>
+            <span>🛒 {faNum(orders)} خرید · {toman(spent._sum.payable ?? 0)}</span>
+          </div>
         </div>
+        <span className={`badge ${status.badge}`}>{status.label}</span>
       </div>
 
       <div className="card">
@@ -50,7 +70,12 @@ export default async function AdminTicketDetail({ params }: { params: Promise<{ 
             </div>
           ))}
         </div>
-        <TicketReplyForm ticketId={ticket.id} closed={ticket.status === "closed"} />
+        <TicketReplyForm
+          ticketId={ticket.id}
+          closed={ticket.status === "closed"}
+          initial="🎧"
+          placeholder="پاسخ پشتیبانی…"
+        />
       </div>
     </div>
   );

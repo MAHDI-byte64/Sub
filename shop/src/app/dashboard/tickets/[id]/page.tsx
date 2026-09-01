@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { faDate } from "@/lib/format";
+import { faDate, faNum } from "@/lib/format";
 import { TICKET_STATUS } from "@/lib/status";
 import TicketReplyForm from "@/components/TicketReplyForm";
 
@@ -20,20 +20,34 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
 
   const status = TICKET_STATUS[ticket.status] ?? TICKET_STATUS.open;
   const initial = (user.name || user.email).trim().charAt(0).toUpperCase();
+  const answers = ticket.messages.filter((m) => m.fromAdmin).length;
 
   return (
     <div>
       <div className="page-head">
         <div>
-          <h1>{ticket.subject}</h1>
-          <p>ثبت شده در {faDate(ticket.createdAt, true)}</p>
+          <h1>گفتگوی پشتیبانی</h1>
+          <p>پاسخ‌ها همین‌جا نمایش داده می‌شوند؛ نیازی به ایمیل یا تلگرام نیست.</p>
         </div>
-        <div className="btn-row">
-          <span className={`badge ${status.badge}`}>{status.label}</span>
-          <Link className="btn btn-sm" href="/dashboard/tickets">
-            بازگشت
-          </Link>
+        <Link className="btn btn-sm" href="/dashboard/tickets">
+          ← همه تیکت‌ها
+        </Link>
+      </div>
+
+      <div className="thread-head">
+        <span className={`tc-icon ${ticket.status === "open" ? "is-open" : ""}`}>
+          {ticket.status === "closed" ? "🔒" : "💬"}
+        </span>
+        <div className="th-main">
+          <h2>{ticket.subject}</h2>
+          <div className="th-meta">
+            <span>🕒 ثبت: {faDate(ticket.createdAt, true)}</span>
+            <span>🔄 آخرین فعالیت: {faDate(ticket.updatedAt, true)}</span>
+            <span>💬 {faNum(ticket.messages.length)} پیام</span>
+            <span>🎧 {faNum(answers)} پاسخ پشتیبانی</span>
+          </div>
         </div>
+        <span className={`badge ${status.badge}`}>{status.label}</span>
       </div>
 
       <div className="card">
@@ -53,7 +67,11 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
             </div>
           ))}
         </div>
-        <TicketReplyForm ticketId={ticket.id} closed={ticket.status === "closed"} />
+        <TicketReplyForm
+          ticketId={ticket.id}
+          closed={ticket.status === "closed"}
+          initial={initial}
+        />
       </div>
     </div>
   );

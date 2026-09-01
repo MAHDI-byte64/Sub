@@ -25,6 +25,30 @@ export default async function AdminHome() {
       db.ticket.count({ where: { status: "open" } }),
     ]);
 
+  // درآمد هفت روز گذشته برای نمودار
+  const since = new Date();
+  since.setHours(0, 0, 0, 0);
+  since.setDate(since.getDate() - 6);
+  const weekOrders = await db.order.findMany({
+    where: { status: "approved", reviewedAt: { gte: since } },
+    select: { payable: true, reviewedAt: true },
+  });
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(since);
+    d.setDate(since.getDate() + i);
+    return d;
+  });
+  const WEEKDAY = ["ی", "د", "س", "چ", "پ", "ج", "ش"];
+  const buckets = days.map((day) => {
+    const next = new Date(day);
+    next.setDate(day.getDate() + 1);
+    return weekOrders
+      .filter((o) => o.reviewedAt && o.reviewedAt >= day && o.reviewedAt < next)
+      .reduce((sum, o) => sum + o.payable, 0);
+  });
+  const maxBucket = Math.max(...buckets, 1);
+  const weekTotal = buckets.reduce((a, b) => a + b, 0);
+
   const todo = [
     panels === 0 ? { text: "هنوز هیچ سرور 3x-ui اضافه نکرده‌اید.", href: "/admin/panels" } : null,
     plans === 0 ? { text: "هیچ پلن فعالی وجود ندارد.", href: "/admin/plans" } : null,
@@ -102,6 +126,28 @@ export default async function AdminHome() {
         <div className="stat">
           <b>{faNum(openTickets)}</b>
           <span>تیکت باز</span>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-title">
+          <h3>📈 درآمد هفت روز گذشته</h3>
+          <span className="badge badge-info">{toman(weekTotal)}</span>
+        </div>
+        <div className="mini-chart">
+          {buckets.map((value, i) => (
+            <span
+              key={days[i].toISOString()}
+              className={`bar${value === 0 ? " is-empty" : ""}`}
+              style={{ height: `${Math.max(6, Math.round((value / maxBucket) * 100))}%` }}
+              title={`${faDate(days[i])} — ${toman(value)}`}
+            />
+          ))}
+        </div>
+        <div className="mini-labels">
+          {days.map((d) => (
+            <span key={d.toISOString()}>{WEEKDAY[d.getDay()]}</span>
+          ))}
         </div>
       </div>
 

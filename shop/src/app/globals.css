@@ -2609,3 +2609,212 @@ tbody tr:hover {
     margin-inline: auto;
   }
 }
+
+/* ==========================================================================
+   تیکت‌ها، نمودار کوچک و کارت‌های آماری
+   ========================================================================== */
+
+/* نمودار میله‌ای کوچک (درآمد هفته) */
+.mini-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 92px;
+  padding-top: 8px;
+}
+.mini-chart .bar {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  border-radius: 8px 8px 4px 4px;
+  background: linear-gradient(180deg, rgba(244, 183, 64, 0.9), rgba(196, 130, 26, 0.35));
+  box-shadow: 0 0 14px rgba(244, 183, 64, 0.25);
+  transition: filter 0.18s ease;
+  min-height: 4px;
+}
+.mini-chart .bar:hover {
+  filter: brightness(1.25);
+}
+.mini-chart .bar.is-empty {
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: none;
+}
+.mini-labels {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.mini-labels span {
+  flex: 1;
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* کارت تیکت */
+.ticket-card {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  transition: 0.18s ease;
+  min-width: 0;
+}
+.ticket-card:hover {
+  border-color: var(--border-strong);
+  background: rgba(244, 183, 64, 0.05);
+  transform: translateY(-2px);
+}
+.ticket-card .tc-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 50px;
+  height: 50px;
+  flex: 0 0 auto;
+  border-radius: 16px;
+  font-size: 20px;
+  background: var(--grad-soft);
+  border: 1px solid rgba(244, 183, 64, 0.2);
+}
+.ticket-card .tc-icon.is-open::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  inset-inline-end: -3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--amber);
+  border: 2px solid #0b0910;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.7);
+}
+.ticket-card .tc-icon.is-answered::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  inset-inline-end: -3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--green);
+  border: 2px solid #0b0910;
+  box-shadow: 0 0 10px rgba(69, 209, 139, 0.7);
+}
+.ticket-card .tc-body {
+  flex: 1;
+  min-width: 0;
+}
+.ticket-card .tc-body b {
+  display: block;
+  font-size: 14.5px;
+  margin-bottom: 2px;
+  overflow-wrap: anywhere;
+}
+.ticket-card .tc-body .tc-preview {
+  display: block;
+  font-size: 12.5px;
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ticket-card .tc-body .tc-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--dim);
+}
+.ticket-card .tc-side {
+  flex: 0 0 auto;
+  text-align: end;
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+
+/* سربرگ گفتگو */
+.thread-head {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  flex-wrap: wrap;
+  padding: 18px 20px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(circle at 90% 0%, rgba(244, 183, 64, 0.12), transparent 55%),
+    rgba(255, 255, 255, 0.035);
+  margin-bottom: 16px;
+}
+.thread-head .th-main {
+  flex: 1;
+  min-width: 0;
+}
+.thread-head h2 {
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+  overflow-wrap: anywhere;
+}
+.thread-head .th-meta {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+/* نویسندهٔ پاسخ */
+.composer {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.composer .composer-body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+.composer textarea {
+  min-height: 96px;
+}
+.composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* پیشنهاد موضوع تیکت */
+.subject-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+@media (max-width: 620px) {
+  .ticket-card {
+    flex-wrap: wrap;
+  }
+  .ticket-card .tc-side {
+    width: 100%;
+    justify-items: start;
+    text-align: start;
+  }
+  .composer {
+    gap: 8px;
+  }
+}

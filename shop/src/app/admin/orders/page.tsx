@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { approveOrderAction, rejectOrderAction } from "@/app/actions/admin";
-import { faDate, toman } from "@/lib/format";
+import { faDate, faNum, toman } from "@/lib/format";
 import { ORDER_STATUS } from "@/lib/status";
 import ActionForm from "@/components/ActionForm";
 import Flash from "@/components/Flash";
@@ -24,12 +24,20 @@ export default async function AdminOrdersPage({
   const { status: statusParam, msg, type } = await searchParams;
   const status = statusParam || "pending_review";
 
-  const orders = await db.order.findMany({
-    where: status === "all" ? {} : { status },
-    include: { user: true, plan: true, panel: true, service: true },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
+  const [orders, pendingCount, approvedAgg, todayAgg] = await Promise.all([
+    db.order.findMany({
+      where: status === "all" ? {} : { status },
+      include: { user: true, plan: true, panel: true, service: true },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    }),
+    db.order.count({ where: { status: "pending_review" } }),
+    db.order.aggregate({ where: { status: "approved" }, _sum: { payable: true }, _count: { _all: true } }),
+    db.order.aggregate({
+      where: { status: "approved", reviewedAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
+      _sum: { payable: true },
+    }),
+  ]);
 
   return (
     <div>
@@ -41,6 +49,25 @@ export default async function AdminOrdersPage({
       </div>
 
       <Flash msg={msg} type={type} />
+
+      <div className="summary-strip">
+        <div className="summary-tile">
+          <span>⏳ در انتظار بررسی</span>
+          <b>{faNum(pendingCount)}</b>
+        </div>
+        <div className="summary-tile">
+          <span>✅ سفارش تأییدشده</span>
+          <b>{faNum(approvedAgg._count._all)}</b>
+        </div>
+        <div className="summary-tile">
+          <span>💰 درآمد کل</span>
+          <b>{toman(approvedAgg._sum.payable ?? 0, false)}</b>
+        </div>
+        <div className="summary-tile">
+          <span>📅 درآمد امروز</span>
+          <b>{toman(todayAgg._sum.payable ?? 0, false)}</b>
+        </div>
+      </div>
 
       <div className="tabs">
         {FILTERS.map((f) => (

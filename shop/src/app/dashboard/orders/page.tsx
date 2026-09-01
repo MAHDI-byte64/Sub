@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { faDate, toman } from "@/lib/format";
+import { faDate, faNum, toman } from "@/lib/format";
 import { ORDER_STATUS } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +25,8 @@ export default async function OrdersPage() {
   });
 
   const pending = orders.filter((o) => o.status === "awaiting_receipt" || o.status === "pending_review");
+  const approved = orders.filter((o) => o.status === "approved");
+  const spent = approved.reduce((sum, o) => sum + o.payable, 0);
 
   return (
     <div>
@@ -37,6 +39,27 @@ export default async function OrdersPage() {
           سفارش جدید
         </Link>
       </div>
+
+      {orders.length ? (
+        <div className="summary-strip">
+          <div className="summary-tile">
+            <span>🧾 کل سفارش‌ها</span>
+            <b>{faNum(orders.length)}</b>
+          </div>
+          <div className="summary-tile">
+            <span>✅ خرید موفق</span>
+            <b>{faNum(approved.length)}</b>
+          </div>
+          <div className="summary-tile">
+            <span>💰 مجموع پرداختی</span>
+            <b>{toman(spent, false)}</b>
+          </div>
+          <div className="summary-tile">
+            <span>🕒 آخرین سفارش</span>
+            <b>{orders[0] ? faDate(orders[0].createdAt) : "—"}</b>
+          </div>
+        </div>
+      ) : null}
 
       {pending.length ? (
         <div className="alert alert-warn">
