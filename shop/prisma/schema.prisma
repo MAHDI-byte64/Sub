@@ -40,24 +40,28 @@ model Session {
 
 /// هر پنل 3x-ui = یک سرور/لوکیشن
 model Panel {
-  id           String    @id @default(cuid())
-  name         String
-  location     String
-  flag         String    @default("🌍")
-  url          String
-  username     String
-  password     String
-  inboundId    Int       @default(1)
-  subBase      String?
-  flow         String    @default("")
-  hostOverride String?
-  isActive     Boolean   @default(true)
-  capacity     Int       @default(0)
-  sortOrder    Int       @default(0)
-  note         String?
-  lastError    String?
-  lastCheckAt  DateTime?
-  createdAt    DateTime  @default(now())
+  id            String    @id @default(cuid())
+  name          String
+  location      String
+  flag          String    @default("🌍")
+  url           String
+  username      String
+  password      String
+  inboundId     Int       @default(1)
+  /// نام (email) کلاینت الگو در پنل؛ هر سرویس جدید کپی دقیق آن ساخته می‌شود
+  templateEmail String?
+  /// الگوی نام‌گذاری کلاینت‌های جدید: {template} {code} {user} {rand}
+  namePattern   String    @default("{template}-{code}")
+  subBase       String?
+  flow          String    @default("")
+  hostOverride  String?
+  isActive      Boolean   @default(true)
+  capacity      Int       @default(0)
+  sortOrder     Int       @default(0)
+  note          String?
+  lastError     String?
+  lastCheckAt   DateTime?
+  createdAt     DateTime  @default(now())
 
   services Service[]
   orders   Order[]

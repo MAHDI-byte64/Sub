@@ -80,6 +80,36 @@ export default async function AdminPanelsPage({
               <input id="inboundId" name="inboundId" type="number" min={1} defaultValue={editing?.inboundId ?? 1} required />
             </div>
           </div>
+          <div className="grid grid-2">
+            <div className="field">
+              <label htmlFor="templateEmail">نام کلاینت الگو در پنل</label>
+              <input
+                id="templateEmail"
+                name="templateEmail"
+                defaultValue={editing?.templateEmail ?? ""}
+                className="ltr"
+                placeholder="مثلاً template-vip"
+              />
+              <span className="field-hint">
+                یک کلاینت با تنظیمات دلخواه در پنل بسازید و نامش را اینجا بنویسید؛ هر سرویس فروخته‌شده
+                کپی دقیق همان کلاینت خواهد بود و فقط نام، UUID، لینک اشتراک، حجم و تاریخ انقضایش فرق می‌کند.
+              </span>
+            </div>
+            <div className="field">
+              <label htmlFor="namePattern">الگوی نام‌گذاری کلاینت‌های جدید</label>
+              <input
+                id="namePattern"
+                name="namePattern"
+                defaultValue={editing?.namePattern ?? "{template}-{code}"}
+                className="ltr"
+                placeholder="{template}-{code}"
+              />
+              <span className="field-hint">
+                متغیرها: {"{template}"} نام کلاینت الگو، {"{code}"} کد سفارش، {"{user}"} نام کاربر،
+                {" "}{"{rand}"} حروف تصادفی. در صورت تکراری بودن، خودکار پسوند تصادفی اضافه می‌شود.
+              </span>
+            </div>
+          </div>
           <div className="grid grid-3">
             <div className="field">
               <label htmlFor="subBase">آدرس پایه لینک اشتراک</label>
@@ -94,6 +124,7 @@ export default async function AdminPanelsPage({
             <div className="field">
               <label htmlFor="flow">Flow (برای Reality)</label>
               <input id="flow" name="flow" defaultValue={editing?.flow ?? ""} className="ltr" placeholder="xtls-rprx-vision" />
+              <span className="field-hint">خالی بگذارید تا از کلاینت الگو برداشته شود.</span>
             </div>
           </div>
           <div className="grid grid-3">
@@ -139,6 +170,14 @@ export default async function AdminPanelsPage({
                     <tr>
                       <th>اینباند</th>
                       <td>#{faNum(panel.inboundId)}</td>
+                    </tr>
+                    <tr>
+                      <th>کلاینت الگو</th>
+                      <td className="ltr mono">{panel.templateEmail || "—"}</td>
+                    </tr>
+                    <tr>
+                      <th>الگوی نام‌گذاری</th>
+                      <td className="ltr mono">{panel.namePattern}</td>
                     </tr>
                     <tr>
                       <th>سرویس‌های ساخته‌شده</th>

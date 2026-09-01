@@ -155,6 +155,8 @@ export async function savePanelAction(_prev: AdminState, formData: FormData): Pr
     url: str(formData, "url").replace(/\/+$/, ""),
     username: str(formData, "username"),
     inboundId: num(formData, "inboundId", 1),
+    templateEmail: str(formData, "templateEmail") || null,
+    namePattern: str(formData, "namePattern") || "{template}-{code}",
     subBase: str(formData, "subBase") || null,
     flow: str(formData, "flow"),
     hostOverride: str(formData, "hostOverride") || null,
@@ -200,12 +202,56 @@ export async function testPanelAction(_prev: AdminState, formData: FormData): Pr
   revalidatePath("/admin/panels");
 
   if (!result.ok) return { error: `اتصال ناموفق: ${result.message}` };
-  const inbound = result.inbounds.find((i) => i.id === panel.inboundId);
+
+  const { parseInboundClients } = await import("@/lib/xui");
   const list = result.inbounds
     .map((i) => `#${i.id} ${i.remark || i.protocol} (${i.protocol}:${i.port})`)
     .join(" — ");
+
+  const template = panel.templateEmail?.trim();
+  let inboundId = panel.inboundId;
+  let moved = false;
+
+  if (template) {
+    const holder = result.inbounds.find((i) =>
+      parseInboundClients(i).some((c) => String(c.email ?? "").toLowerCase() === template.toLowerCase()),
+    );
+    if (!holder) {
+      const all = result.inbounds
+        .flatMap((i) => parseInboundClients(i).map((c) => String(c.email ?? "")))
+        .filter(Boolean);
+      return {
+        error:
+          `اتصال برقرار شد اما کلاینت الگو با نام «${template}» در هیچ اینباندی پیدا نشد. ` +
+          `کلاینت‌های موجود: ${all.join("، ") || "—"}`,
+      };
+    }
+    if (holder.id !== panel.inboundId) {
+      inboundId = holder.id;
+      moved = true;
+      await db.panel.update({ where: { id: panel.id }, data: { inboundId } });
+      revalidatePath("/admin/panels");
+    }
+  } else if (!result.inbounds.some((i) => i.id === panel.inboundId)) {
+    return { error: `اتصال برقرار شد اما اینباند #${panel.inboundId} در این پنل نیست. اینباندها: ${list}` };
+  }
+
+  const selected = result.inbounds.find((i) => i.id === inboundId);
+  const names = selected
+    ? parseInboundClients(selected)
+        .map((c) => String(c.email ?? ""))
+        .filter(Boolean)
+    : [];
+
+  const templateNote = template
+    ? `کلاینت الگو «${template}» در اینباند #${inboundId} پیدا شد ✅` +
+      (moved ? " (شناسه اینباند خودکار اصلاح شد)" : "")
+    : "کلاینت الگو تعیین نشده است؛ کانفیگ‌ها با تنظیمات پیش‌فرض ساخته می‌شوند.";
+
   return {
-    success: `${result.message}${inbound ? "" : " ⚠️ اینباند انتخابی در این پنل نیست!"} | ${list}`,
+    success:
+      `${result.message} | اینباندها: ${list} | ${templateNote}` +
+      (names.length ? ` | کلاینت‌های اینباند: ${names.join("، ")}` : ""),
   };
 }
 

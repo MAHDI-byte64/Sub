@@ -66,14 +66,22 @@ try {
   await admin.fill("#password", "admin");
   await admin.fill("#inboundId", "1");
   await admin.fill("#subBase", "https://sub.test.local/sub");
-  await admin.fill("#flow", "xtls-rprx-vision");
+  await admin.fill("#templateEmail", "template-vip");
+  await admin.fill("#namePattern", "{template}-{code}");
   await admin.click("form:has(#name) button[type=submit]");
   await admin.waitForSelector("text=سرور ذخیره شد", { timeout: 20000 });
   check("سرور ذخیره شد", true);
 
   await admin.click("button:has-text('تست اتصال')");
-  await admin.waitForSelector("text=اتصال موفق بود", { timeout: 20000 });
-  check("تست اتصال به پنل موفق بود", true);
+  const testAlert = admin.locator("form:has(button:has-text('تست اتصال')) .alert").first();
+  await testAlert.waitFor({ timeout: 20000 });
+  const testMsg = (await testAlert.textContent()) ?? "";
+  check("تست اتصال به پنل موفق بود", testMsg.includes("اتصال موفق بود"), testMsg);
+  check(
+    "کلاینت الگو روی پنل پیدا شد",
+    testMsg.includes("کلاینت الگو «template-vip» در اینباند #1 پیدا شد"),
+    testMsg,
+  );
 
   console.log("→ ثبت‌نام کاربر و خرید");
   const userCtx = await browser.newContext({ locale: "fa-IR" });
@@ -119,6 +127,8 @@ try {
   check("سفارش تأیید و سرویس ساخته شد", approveMsg.includes("تحویل شد"), approveMsg);
   await admin.goto(`${BASE}/admin/services`, { waitUntil: "domcontentloaded" });
   check("سرویس در فهرست مدیریت ثبت شد", await admin.isVisible("text=آلمان - تست UI"));
+  const servicesText = (await admin.textContent("body")) ?? "";
+  check("نام کلاینت از روی کلاینت الگو ساخته شد", /template-vip-FD-[0-9A-F]+/.test(servicesText), servicesText.match(/template-vip-\S*/)?.[0]);
 
   console.log("→ بررسی تحویل سرویس به کاربر");
   await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });

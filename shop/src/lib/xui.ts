@@ -123,6 +123,19 @@ export type XuiClientStat = {
   reset?: number;
 };
 
+/** کلاینت خام همان‌طور که در settings اینباند ذخیره شده است */
+export type XuiRawClient = Record<string, unknown> & { id?: string; email?: string };
+
+/** استخراج کلاینت‌های یک اینباند از فیلد settings */
+export function parseInboundClients(inbound: Pick<XuiInbound, "settings">): XuiRawClient[] {
+  try {
+    const settings = JSON.parse(inbound.settings || "{}") as { clients?: XuiRawClient[] };
+    return Array.isArray(settings.clients) ? settings.clients : [];
+  } catch {
+    return [];
+  }
+}
+
 export type XuiClientSpec = {
   id: string;
   email: string;
@@ -306,14 +319,19 @@ export class XuiClient {
     return res.obj;
   }
 
-  async addClient(inboundId: number, client: XuiClientSpec): Promise<void> {
+  /** کلاینت‌های موجود روی یک اینباند (برای خواندن کلاینت الگو) */
+  async listClients(inboundId: number): Promise<XuiRawClient[]> {
+    return parseInboundClients(await this.getInbound(inboundId));
+  }
+
+  async addClient(inboundId: number, client: XuiClientSpec | XuiRawClient): Promise<void> {
     await this.postApi("/panel/api/inbounds/addClient", {
       id: inboundId,
       settings: JSON.stringify({ clients: [client] }),
     });
   }
 
-  async updateClient(inboundId: number, clientId: string, client: XuiClientSpec): Promise<void> {
+  async updateClient(inboundId: number, clientId: string, client: XuiClientSpec | XuiRawClient): Promise<void> {
     await this.postApi(`/panel/api/inbounds/updateClient/${clientId}`, {
       id: inboundId,
       settings: JSON.stringify({ clients: [client] }),

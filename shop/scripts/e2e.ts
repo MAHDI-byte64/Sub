@@ -15,6 +15,7 @@ import {
   serviceLinks,
   syncService,
 } from "../src/lib/provision";
+import type { XuiRawClient } from "../src/lib/xui";
 import { saveSettings } from "../src/lib/settings";
 
 const MOCK = process.env.MOCK_PANEL_URL || "http://127.0.0.1:8899";
@@ -61,7 +62,9 @@ async function main() {
       password: "admin",
       inboundId: 1,
       subBase: "https://sub.test.local/sub",
-      flow: "xtls-rprx-vision",
+      flow: "",
+      templateEmail: "template-vip",
+      namePattern: "{template}-{code}",
       isActive: true,
     },
   });
@@ -101,6 +104,21 @@ async function main() {
   })(), service.expiresAt);
   check("محدودیت کاربر همزمان ثبت شد", service.deviceLimit === 2);
 
+  console.log("→ بررسی کپی‌شدن دقیق از کلاینت الگو");
+  const clients = await panelClient(panel).listClients(1);
+  const template = clients.find((c) => c.email === "template-vip") as XuiRawClient;
+  const created = clients.find((c) => c.email === service.clientEmail) as XuiRawClient;
+
+  check("کلاینت جدید روی اینباند ساخته شد", Boolean(created), service.clientEmail);
+  check("نام طبق الگوی {template}-{code} ساخته شد", service.clientEmail === "template-vip-FD-TEST01", service.clientEmail);
+  check("UUID با کلاینت الگو فرق دارد", created?.id !== template?.id);
+  check("subId با کلاینت الگو فرق دارد", created?.subId !== template?.subId);
+  check("flow از کلاینت الگو کپی شد", created?.flow === "xtls-rprx-vision", created?.flow);
+  check("tgId از کلاینت الگو کپی شد", created?.tgId === "999888777", created?.tgId);
+  check("فیلدهای اضافه (comment) هم کپی شد", created?.comment === "vip-template", created?.comment);
+  check("محدودیت کاربر از پلن گرفته شد (نه الگو)", created?.limitIp === 2, created?.limitIp);
+  check("حجم و انقضا از پلن گرفته شد", created?.totalGB === 10 * GB && created?.expiryTime !== 0, [created?.totalGB, created?.expiryTime]);
+
   console.log("→ بررسی ساخته‌شدن کلاینت روی خود پنل");
   const stat = await panelClient(panel).getClientTraffics(service.clientEmail);
   check("کلاینت در پنل وجود دارد", Boolean(stat), stat);
@@ -139,6 +157,11 @@ async function main() {
     return days > 59.5 && days < 60.5;
   })(), renewed.expiresAt);
   check("لینک اشتراک بعد از تمدید تغییر نکرد", renewed.subId === service.subId);
+  const afterRenew = (await panelClient(panel).listClients(1)).find((c) => c.email === service.clientEmail);
+  check("تنظیمات کپی‌شده بعد از تمدید حفظ شد", afterRenew?.comment === "vip-template" && afterRenew?.tgId === "999888777", [
+    afterRenew?.comment,
+    afterRenew?.tgId,
+  ]);
 
   console.log("→ اکانت تست رایگان");
   const trialUser = await db.user.create({ data: { email: "trial@test.local", passwordHash: "scrypt:x:y" } });
@@ -151,6 +174,57 @@ async function main() {
     secondTrialBlocked = true;
   }
   check("تست رایگان دوم مسدود شد", secondTrialBlocked);
+
+  console.log("→ پیدا کردن کلاینت الگو در اینباند دیگر");
+  await db.panel.update({
+    where: { id: panel.id },
+    data: { templateEmail: "template-alt", inboundId: 1 },
+  });
+  const altOrder = await db.order.create({
+    data: {
+      code: "FD-TEST04",
+      userId: user.id,
+      planId: plan.id,
+      panelId: panel.id,
+      amount: plan.priceToman,
+      payable: plan.priceToman,
+      status: "pending_review",
+    },
+  });
+  const altService = await fulfillOrder(altOrder.id);
+  const altPanel = await db.panel.findUniqueOrThrow({ where: { id: panel.id } });
+  check("سرویس روی اینباند کلاینت الگو ساخته شد", altService.inboundId === 2, altService.inboundId);
+  check("شناسه اینباند سرور خودکار اصلاح شد", altPanel.inboundId === 2, altPanel.inboundId);
+  const altClients = await panelClient(panel).listClients(2);
+  const altCreated = altClients.find((c) => c.email === altService.clientEmail);
+  check("تنظیمات از کلاینت الگوی اینباند دوم کپی شد", altCreated?.comment === "alt-template", altCreated?.comment);
+  const altLinks = await serviceLinks(altService.id);
+  check("کانفیگ اینباند دوم (WS+TLS) درست ساخته شد",
+    altLinks.configs[0]?.uri.includes("type=ws") && altLinks.configs[0]?.uri.includes("security=tls"),
+    altLinks.configs[0]?.uri);
+  await db.panel.update({ where: { id: panel.id }, data: { templateEmail: "template-vip", inboundId: 1 } });
+
+  console.log("→ خطای کلاینت الگوی نامعتبر");
+  await db.panel.update({ where: { id: panel.id }, data: { templateEmail: "does-not-exist" } });
+  const badOrder = await db.order.create({
+    data: {
+      code: "FD-TEST03",
+      userId: user.id,
+      planId: plan.id,
+      panelId: panel.id,
+      amount: plan.priceToman,
+      payable: plan.priceToman,
+      status: "pending_review",
+    },
+  });
+  let templateErrorShown = false;
+  try {
+    await fulfillOrder(badOrder.id);
+  } catch (err) {
+    templateErrorShown = (err as Error).message.includes("کلاینت الگو");
+  }
+  check("نبودن کلاینت الگو با خطای روشن گزارش شد", templateErrorShown);
+  await db.panel.update({ where: { id: panel.id }, data: { templateEmail: "template-vip" } });
 
   console.log("→ حذف سرویس");
   await removeService(trial.id);

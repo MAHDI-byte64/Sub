@@ -4,7 +4,7 @@ import type { Panel, Plan, Service } from "@prisma/client";
 import { db } from "./db";
 import { GB } from "./format";
 import { asNum, getSettings } from "./settings";
-import { XuiClient, XuiError, type XuiClientSpec } from "./xui";
+import { XuiClient, XuiError, parseInboundClients, type XuiRawClient } from "./xui";
 import { buildClientLink, buildSubscriptionUrl, resolveHost } from "./vless";
 
 export function panelClient(panel: Panel): XuiClient {
@@ -39,8 +39,127 @@ export async function pickPanel(preferredPanelId?: string | null): Promise<Panel
   return pool.reduce((best, p) => ((load.get(p.id) ?? 0) < (load.get(best.id) ?? 0) ? p : best), pool[0]);
 }
 
-function makeClientEmail(prefix: string): string {
-  return `${prefix}-${randomBytes(3).toString("hex")}`.toLowerCase();
+/* -------------------------------------------------------------------------- */
+/*                       ساخت کلاینت بر پایه «کلاینت الگو»                      */
+/* -------------------------------------------------------------------------- */
+
+export type PlanShape = Pick<Plan, "volumeGb" | "days" | "deviceLimit">;
+
+type ClientOverrides = {
+  uuid: string;
+  email: string;
+  subId: string;
+  totalBytes: number;
+  expiryTime: number;
+  /** صفر یا منفی یعنی «از کلاینت الگو بردار» */
+  deviceLimit: number;
+  /** خالی یعنی «از کلاینت الگو بردار» */
+  flow: string;
+  enable?: boolean;
+};
+
+/**
+ * کلاینت جدید را دقیقاً از روی کلاینت الگوی پنل می‌سازد و فقط فیلدهای
+ * هویتی و سهمیه را عوض می‌کند؛ بقیه تنظیمات (flow، tgId، comment، security و …)
+ * همان چیزی می‌ماند که مدیر روی پنل تعریف کرده است.
+ */
+export function buildClientFromTemplate(template: XuiRawClient | null, o: ClientOverrides): XuiRawClient {
+  const client: XuiRawClient = { ...(template ?? {}) };
+
+  client.id = o.uuid;
+  client.email = o.email;
+  client.subId = o.subId;
+  client.totalGB = Math.max(0, Math.round(o.totalBytes));
+  client.expiryTime = Math.max(0, Math.round(o.expiryTime));
+  client.enable = o.enable ?? true;
+  client.reset = 0;
+
+  // محدودیت کاربر همزمان: مقدار پلن اولویت دارد، وگرنه مقدار الگو
+  if (o.deviceLimit > 0) client.limitIp = o.deviceLimit;
+  else if (typeof client.limitIp !== "number") client.limitIp = 0;
+
+  // flow: مقدار تنظیم‌شده روی سرور اولویت دارد، وگرنه مقدار الگو
+  if (o.flow) client.flow = o.flow;
+  else if (typeof client.flow !== "string") client.flow = "";
+
+  if (typeof client.tgId !== "string" && typeof client.tgId !== "number") client.tgId = "";
+
+  return client;
+}
+
+/** فقط حروف و ارقام مجاز برای نام کلاینت */
+function slug(input: string, max = 40): string {
+  return (
+    input
+      .trim()
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, max) || "user"
+  );
+}
+
+/** جایگزینی متغیرهای الگوی نام‌گذاری */
+export function renderClientName(
+  pattern: string,
+  vars: { template: string; code: string; user: string; rand: string },
+): string {
+  const result = (pattern || "{template}-{code}").replace(
+    /\{(template|code|user|rand)\}/g,
+    (_, key: keyof typeof vars) => vars[key] ?? "",
+  );
+  return slug(result.replace(/-{2,}/g, "-"), 60);
+}
+
+function uniqueName(name: string, taken: Set<string>): string {
+  if (!taken.has(name.toLowerCase())) return name;
+  for (let i = 0; i < 20; i += 1) {
+    const candidate = slug(`${name}-${randomBytes(2).toString("hex")}`, 60);
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+  throw new XuiError("ساخت نام یکتا برای کلاینت ممکن نشد.");
+}
+
+function nameSet(clients: XuiRawClient[]): Set<string> {
+  return new Set(clients.map((c) => String(c.email ?? "").toLowerCase()).filter(Boolean));
+}
+
+function findByEmail(clients: XuiRawClient[], email: string): XuiRawClient | undefined {
+  return clients.find((c) => String(c.email ?? "").toLowerCase() === email.toLowerCase());
+}
+
+/**
+ * کلاینت الگو را پیدا می‌کند.
+ * اگر در اینباند تنظیم‌شده نبود، بقیه اینباندهای پنل هم جستجو می‌شوند تا مدیر
+ * مجبور نباشد شناسه اینباند را دستی درست کند.
+ */
+export async function loadTemplate(
+  client: XuiClient,
+  panel: Panel,
+): Promise<{ template: XuiRawClient | null; taken: Set<string>; inboundId: number }> {
+  const wanted = panel.templateEmail?.trim();
+  const inbound = await client.getInbound(panel.inboundId).catch((err: unknown) => {
+    if (!wanted) throw err;
+    return null;
+  });
+
+  const clients = inbound ? parseInboundClients(inbound) : [];
+  if (!wanted) return { template: null, taken: nameSet(clients), inboundId: panel.inboundId };
+
+  const template = findByEmail(clients, wanted);
+  if (template) return { template, taken: nameSet(clients), inboundId: panel.inboundId };
+
+  // جستجو در سایر اینباندهای همین پنل
+  for (const other of await client.listInbounds()) {
+    if (other.id === panel.inboundId) continue;
+    const otherClients = parseInboundClients(other);
+    const found = findByEmail(otherClients, wanted);
+    if (found) return { template: found, taken: nameSet(otherClients), inboundId: other.id };
+  }
+
+  throw new XuiError(
+    `کلاینت الگو با نام «${wanted}» در هیچ‌کدام از اینباندهای این پنل پیدا نشد. ` +
+      `نام کلاینت الگو را در تنظیمات سرور اصلاح کنید یا آن کلاینت را در پنل بسازید.`,
+  );
 }
 
 function planBytes(volumeGb: number): number {
@@ -51,65 +170,58 @@ function expiryFrom(days: number, from = Date.now()): number {
   return days > 0 ? from + days * 86_400_000 : 0;
 }
 
-type SpecInput = {
-  uuid: string;
-  email: string;
-  subId: string;
-  totalBytes: number;
-  expiryTime: number;
-  deviceLimit: number;
-  flow: string;
-};
+/* -------------------------------------------------------------------------- */
+/*                                تحویل سرویس                                 */
+/* -------------------------------------------------------------------------- */
 
-function toSpec(input: SpecInput): XuiClientSpec {
-  return {
-    id: input.uuid,
-    email: input.email,
-    subId: input.subId,
-    totalGB: Math.max(0, Math.round(input.totalBytes)),
-    expiryTime: Math.max(0, Math.round(input.expiryTime)),
-    limitIp: Math.max(0, input.deviceLimit),
-    flow: input.flow || "",
-    enable: true,
-    tgId: "",
-    reset: 0,
-  };
-}
-
-/** ساخت سرویس تازه روی پنل و ثبت آن در دیتابیس */
-export type PlanShape = Pick<Plan, "volumeGb" | "days" | "deviceLimit">;
-
+/** ساخت سرویس تازه روی پنل (کپی از کلاینت الگو) و ثبت آن در دیتابیس */
 export async function createServiceOnPanel(params: {
   userId: string;
+  userEmail: string;
   plan: PlanShape;
   planId: string | null;
   panel: Panel;
   orderId?: string | null;
   isTrial?: boolean;
-  emailPrefix: string;
+  /** کد سفارش یا شناسه کوتاه برای نام‌گذاری */
+  code: string;
   remark: string;
 }): Promise<Service> {
-  const { userId, plan, planId, panel, orderId, isTrial = false, emailPrefix, remark } = params;
+  const { userId, userEmail, plan, planId, panel, orderId, isTrial = false, code, remark } = params;
   const client = panelClient(panel);
+  const { template, taken, inboundId } = await loadTemplate(client, panel);
+
+  // اگر کلاینت الگو در اینباند دیگری بود، تنظیمات سرور اصلاح می‌شود
+  if (inboundId !== panel.inboundId) {
+    await db.panel.update({ where: { id: panel.id }, data: { inboundId } });
+  }
 
   const uuid = randomUUID();
   const subId = randomBytes(8).toString("hex");
-  const email = makeClientEmail(emailPrefix);
   const totalBytes = planBytes(plan.volumeGb);
   const expiryTime = expiryFrom(plan.days);
 
-  await client.addClient(
-    panel.inboundId,
-    toSpec({
-      uuid,
-      email,
-      subId,
-      totalBytes,
-      expiryTime,
-      deviceLimit: plan.deviceLimit,
-      flow: panel.flow,
+  const name = uniqueName(
+    renderClientName(panel.namePattern, {
+      template: slug(panel.templateEmail?.trim() || panel.name, 24),
+      code: slug(code, 24),
+      user: slug(userEmail.split("@")[0] ?? "user", 24),
+      rand: randomBytes(3).toString("hex"),
     }),
+    taken,
   );
+
+  const spec = buildClientFromTemplate(template, {
+    uuid,
+    email: name,
+    subId,
+    totalBytes,
+    expiryTime,
+    deviceLimit: plan.deviceLimit,
+    flow: panel.flow,
+  });
+
+  await client.addClient(inboundId, spec);
 
   return db.service.create({
     data: {
@@ -118,13 +230,13 @@ export async function createServiceOnPanel(params: {
       panelId: panel.id,
       orderId: orderId ?? null,
       remark,
-      clientEmail: email,
+      clientEmail: name,
       uuid,
       subId,
-      inboundId: panel.inboundId,
+      inboundId,
       totalBytes,
       usedBytes: 0,
-      deviceLimit: plan.deviceLimit,
+      deviceLimit: typeof spec.limitIp === "number" ? spec.limitIp : plan.deviceLimit,
       expiresAt: expiryTime ? new Date(expiryTime) : null,
       isTrial,
       status: "active",
@@ -133,14 +245,31 @@ export async function createServiceOnPanel(params: {
   });
 }
 
+/** پیدا کردن کلاینت فعلی سرویس روی پنل */
+async function findServiceClient(
+  client: XuiClient,
+  service: Service,
+): Promise<XuiRawClient | null> {
+  const clients = await client.listClients(service.inboundId).catch(() => [] as XuiRawClient[]);
+  return (
+    clients.find((c) => String(c.id ?? "") === service.uuid) ??
+    clients.find((c) => String(c.email ?? "").toLowerCase() === service.clientEmail.toLowerCase()) ??
+    null
+  );
+}
+
 /** تمدید سرویس موجود: افزودن حجم و زمان روی همان کلاینت پنل */
 export async function renewServiceOnPanel(service: Service, plan: Plan): Promise<Service> {
   const panel = await db.panel.findUniqueOrThrow({ where: { id: service.panelId } });
   const client = panelClient(panel);
 
+  const current = await findServiceClient(client, service);
   const stat = await client.getClientTraffics(service.clientEmail).catch(() => null);
-  const currentTotal = stat?.total ?? service.totalBytes;
-  const currentExpiry = stat?.expiryTime ?? (service.expiresAt ? service.expiresAt.getTime() : 0);
+
+  const currentTotal = stat?.total ?? (typeof current?.totalGB === "number" ? current.totalGB : service.totalBytes);
+  const currentExpiry =
+    stat?.expiryTime ??
+    (typeof current?.expiryTime === "number" ? current.expiryTime : service.expiresAt?.getTime() ?? 0);
 
   const addBytes = planBytes(plan.volumeGb);
   // اگر یکی از دو طرف نامحدود باشد، نتیجه نامحدود می‌ماند
@@ -148,7 +277,7 @@ export async function renewServiceOnPanel(service: Service, plan: Plan): Promise
   const base = currentExpiry && currentExpiry > Date.now() ? currentExpiry : Date.now();
   const newExpiry = plan.days > 0 ? (currentExpiry === 0 ? 0 : expiryFrom(plan.days, base)) : 0;
 
-  const spec = toSpec({
+  const spec = buildClientFromTemplate(current, {
     uuid: service.uuid,
     email: service.clientEmail,
     subId: service.subId,
@@ -162,7 +291,7 @@ export async function renewServiceOnPanel(service: Service, plan: Plan): Promise
     await client.updateClient(service.inboundId, service.uuid, spec);
   } catch (err) {
     if (!(err instanceof XuiError)) throw err;
-    // اگر کلاینت روی پنل حذف شده باشد، دوباره می‌سازیمش
+    // اگر کلاینت روی پنل حذف شده باشد، دوباره ساخته می‌شود
     await client.addClient(service.inboundId, spec);
   }
 
@@ -172,7 +301,7 @@ export async function renewServiceOnPanel(service: Service, plan: Plan): Promise
       planId: plan.id,
       totalBytes: newTotal,
       expiresAt: newExpiry ? new Date(newExpiry) : null,
-      deviceLimit: plan.deviceLimit || service.deviceLimit,
+      deviceLimit: typeof spec.limitIp === "number" ? spec.limitIp : service.deviceLimit,
       status: "active",
       usedBytes: (stat?.up ?? 0) + (stat?.down ?? 0),
       lastSyncAt: new Date(),
@@ -198,11 +327,12 @@ export async function fulfillOrder(orderId: string): Promise<Service> {
   const settings = await getSettings();
   const service = await createServiceOnPanel({
     userId: order.userId,
+    userEmail: order.user.email,
     plan: order.plan,
     planId: order.planId,
     panel,
     orderId: order.id,
-    emailPrefix: order.code.toLowerCase(),
+    code: order.code,
     remark: `${settings.site_name} | ${order.plan.title}`,
   });
   await db.order.update({
@@ -227,11 +357,12 @@ export async function createTrialService(userId: string, panelId?: string | null
 
   const service = await createServiceOnPanel({
     userId,
+    userEmail: user.email,
     plan: trialPlan,
     planId: null,
     panel,
     isTrial: true,
-    emailPrefix: `trial-${randomBytes(3).toString("hex")}`,
+    code: `trial-${randomBytes(3).toString("hex")}`,
     remark: `${settings.site_name} | تست رایگان`,
   });
 
@@ -299,7 +430,9 @@ export async function serviceLinks(serviceId: string): Promise<{
     const client = panelClient(service.panel);
     const inbound = await client.getInbound(service.inboundId);
     const host = resolveHost(service.panel.hostOverride, inbound.listen, service.panel.url);
-    const link = buildClientLink(inbound, service.uuid, service.remark, host, service.panel.flow);
+    const current = await findServiceClient(client, service);
+    const flow = typeof current?.flow === "string" && current.flow ? current.flow : service.panel.flow;
+    const link = buildClientLink(inbound, service.uuid, service.remark, host, flow);
     return { subscription, configs: link ? [link] : [] };
   } catch (err) {
     return { subscription, configs: [], error: (err as Error).message };
@@ -313,7 +446,9 @@ export async function setServiceEnabled(serviceId: string, enabled: boolean): Pr
     include: { panel: true },
   });
   const client = panelClient(service.panel);
-  const spec = toSpec({
+  const current = await findServiceClient(client, service);
+
+  const spec = buildClientFromTemplate(current, {
     uuid: service.uuid,
     email: service.clientEmail,
     subId: service.subId,
@@ -321,8 +456,9 @@ export async function setServiceEnabled(serviceId: string, enabled: boolean): Pr
     expiryTime: service.expiresAt ? service.expiresAt.getTime() : 0,
     deviceLimit: service.deviceLimit,
     flow: service.panel.flow,
+    enable: enabled,
   });
-  spec.enable = enabled;
+
   await client.updateClient(service.inboundId, service.uuid, spec);
   await db.service.update({
     where: { id: service.id },
