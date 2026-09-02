@@ -114,6 +114,11 @@ try {
   await blockExternal(guestCtx);
   const guest = await guestCtx.newPage();
 
+  // اعلان پوش روشن شود تا کارت آن در صفحه اعلان‌ها دیده شود
+  await admin.goto(`${BASE}/admin/settings`, { waitUntil: "domcontentloaded" });
+  await admin.click("button:has-text('فعال‌سازی اعلان پوش')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 30000 });
+
   // چند بررسی سلامت تا صفحه پایش داده داشته باشد
   for (let i = 0; i < 3; i += 1) {
     await admin.goto(`${BASE}/admin/monitor`, { waitUntil: "domcontentloaded" });

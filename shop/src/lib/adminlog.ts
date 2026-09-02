@@ -29,6 +29,8 @@ export const ACTION_LABELS: Record<string, { label: string; icon: string }> = {
   wallet_adjusted: { label: "تنظیم کیف پول", icon: "💰" },
   settings_saved: { label: "ذخیره تنظیمات", icon: "⚙️" },
   telegram_tested: { label: "تست ربات تلگرام", icon: "✈️" },
+  push_enabled: { label: "فعال‌سازی اعلان پوش", icon: "🔔" },
+  push_broadcast: { label: "ارسال اطلاعیه پوش", icon: "📣" },
   telegram_webhook_set: { label: "فعال‌سازی ربات تلگرام", icon: "🤖" },
   ticket_replied: { label: "پاسخ به تیکت", icon: "💬" },
   backup_downloaded: { label: "دانلود پشتیبان", icon: "💾" },

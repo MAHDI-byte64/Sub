@@ -20,6 +20,7 @@ import {
 } from "@/lib/provision";
 import { logAdmin } from "@/lib/adminlog";
 import { checkPanel, runPanelChecks } from "@/lib/monitor";
+import { broadcastPush, ensureVapidKeys, sendPushToUser } from "@/lib/push";
 import { creditWallet, debitWallet } from "@/lib/wallet";
 import { notifyUser } from "@/lib/notify";
 import { payReferralBonus } from "@/lib/referral";
@@ -607,6 +608,60 @@ export async function rotateServiceAdminAction(_prev: AdminState, formData: Form
   } catch (err) {
     return { error: `بازتولید کانفیگ ناموفق بود: ${(err as Error).message}` };
   }
+}
+
+/* ------------------------------ اعلان پوش ------------------------------ */
+
+/** ساخت کلیدهای VAPID و روشن‌کردن اعلان پوش */
+export async function enablePushAction(_prev: AdminState, _formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const keys = await ensureVapidKeys();
+  await saveSettings({ push_enabled: "1" });
+  await logAdmin("push_enabled");
+  revalidatePath("/admin/settings");
+  return {
+    success: `اعلان پوش فعال شد. کلید عمومی: ${keys.publicKey.slice(0, 12)}… (کاربران از صفحهٔ اعلان‌ها روشنش می‌کنند)`,
+  };
+}
+
+/** ارسال یک پوش آزمایشی به خود مدیر */
+export async function testPushAction(_prev: AdminState, _formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const admin = await getCurrentUser();
+  if (!admin) return { error: "دسترسی مدیریتی ندارید." };
+
+  const sent = await sendPushToUser(admin.id, {
+    title: "🔔 پیام آزمایشی فندق",
+    body: "اگر این پیام را می‌بینید، اعلان پوش درست کار می‌کند.",
+    url: "/admin",
+  });
+  return sent
+    ? { success: `پیام آزمایشی به ${faNum(sent)} دستگاه شما فرستاده شد.` }
+    : {
+        error:
+          "هیچ دستگاهی برای حساب شما ثبت نشده است. اول از صفحهٔ «اعلان‌ها» در پنل کاربری، اعلان را روی همین مرورگر روشن کنید.",
+      };
+}
+
+/** اطلاعیه برای همهٔ کاربرانی که اعلان را روشن کرده‌اند */
+export async function broadcastPushAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const title = str(formData, "title");
+  const body = str(formData, "body");
+  const url = str(formData, "url") || "/dashboard";
+  if (!title) return { error: "عنوان اطلاعیه لازم است." };
+
+  const { users, sent } = await broadcastPush({ title, body, url, tag: "announcement" });
+  await logAdmin("push_broadcast", title, `${sent} دستگاه`);
+  return sent
+    ? { success: `اطلاعیه به ${faNum(sent)} دستگاه از ${faNum(users)} کاربر فرستاده شد.` }
+    : { error: "هیچ کاربری اعلان پوش را روشن نکرده است." };
 }
 
 /* ------------------------------ پایش سرورها ------------------------------ */

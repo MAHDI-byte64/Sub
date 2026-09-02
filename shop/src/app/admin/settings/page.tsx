@@ -1,5 +1,12 @@
 import { getSettings, SETTING_DEFS } from "@/lib/settings";
-import { saveSettingsAction, setupTelegramWebhookAction, testTelegramAction } from "@/app/actions/admin";
+import {
+  broadcastPushAction,
+  enablePushAction,
+  saveSettingsAction,
+  setupTelegramWebhookAction,
+  testPushAction,
+  testTelegramAction,
+} from "@/app/actions/admin";
 import ActionForm from "@/components/ActionForm";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +50,18 @@ export default async function AdminSettingsPage() {
           <a className="btn btn-sm" href="/api/admin/export/users">
             ⬇ خروجی کاربران
           </a>
+          <ActionForm
+            action={enablePushAction}
+            submitLabel="🔔 فعال‌سازی اعلان پوش"
+            buttonClass="btn btn-sm"
+            inline
+          />
+          <ActionForm
+            action={testPushAction}
+            submitLabel="📲 پوش آزمایشی"
+            buttonClass="btn btn-sm"
+            inline
+          />
         </div>
         <p className="field-hint" style={{ marginTop: 10 }}>
           با فعال‌سازی ربات، اعلان هر تیکت در تلگرام قابل «ریپلای» می‌شود و پاسخ شما مستقیم برای مشتری
@@ -51,6 +70,31 @@ export default async function AdminSettingsPage() {
         <p className="field-hint">
           فایل پشتیبان شامل کل دیتابیس (کاربران، سفارش‌ها، سرویس‌ها و تنظیمات) است؛ جای امنی نگه دارید.
         </p>
+      </div>
+
+      <div className="card">
+        <div className="card-title">
+          <h3>📣 اطلاعیه پوش</h3>
+          <span className="badge badge-info">به همهٔ کاربران</span>
+        </div>
+        <p className="field-hint">
+          برای کاربرانی که اعلان را روی مرورگر/گوشی‌شان روشن کرده‌اند فرستاده می‌شود؛ مثلاً اعلام تخفیف
+          یا اطلاع‌رسانی قطعی سرور.
+        </p>
+        <ActionForm action={broadcastPushAction} submitLabel="ارسال اطلاعیه">
+          <div className="field">
+            <label htmlFor="push-title">عنوان</label>
+            <input id="push-title" name="title" placeholder="مثلاً: تخفیف ۲۰٪ نوروزی" />
+          </div>
+          <div className="field">
+            <label htmlFor="push-body">متن</label>
+            <input id="push-body" name="body" placeholder="متن کوتاه اطلاعیه" />
+          </div>
+          <div className="field">
+            <label htmlFor="push-url">لینک باز شونده</label>
+            <input id="push-url" name="url" defaultValue="/plans" className="ltr" />
+          </div>
+        </ActionForm>
       </div>
 
       <ActionForm action={saveSettingsAction} submitLabel="ذخیره همه تنظیمات">

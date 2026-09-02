@@ -101,6 +101,17 @@ export const SETTING_DEFS: SettingDef[] = [
     hint: "برای جلوگیری از فشار روی پنل. مدیر محدودیتی ندارد.",
   },
 
+  {
+    key: "push_enabled",
+    label: "اعلان پوش مرورگر",
+    type: "bool",
+    group: "اطلاع‌رسانی",
+    default: "0",
+    hint: "بعد از روشن‌کردن، دکمهٔ «فعال‌سازی اعلان پوش» را در همین صفحه بزنید تا کلیدها ساخته شوند.",
+  },
+  { key: "vapid_public", label: "کلید عمومی VAPID (خودکار)", type: "text", group: "اطلاع‌رسانی", default: "" },
+  { key: "vapid_private", label: "کلید خصوصی VAPID (خودکار)", type: "password", group: "اطلاع‌رسانی", default: "" },
+
   { key: "expiry_reminder_days", label: "یادآوری انقضا چند روز قبل", type: "number", group: "اطلاع‌رسانی", default: "3" },
   { key: "quota_warn_percent", label: "هشدار اتمام حجم در چند درصد", type: "number", group: "اطلاع‌رسانی", default: "85" },
 

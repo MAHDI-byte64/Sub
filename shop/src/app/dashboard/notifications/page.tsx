@@ -5,15 +5,18 @@ import { NOTIFICATION_ICONS } from "@/lib/notify";
 import { faDate, faNum, relativeTime } from "@/lib/format";
 import ActionForm from "@/components/ActionForm";
 import { markNotificationsReadAction } from "@/app/actions/shop";
+import { pushPublicKey } from "@/lib/push";
+import PushToggle from "@/components/PushToggle";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "اعلان‌ها" };
 
 export default async function NotificationsPage() {
   const user = await requireUser("/dashboard/notifications");
-  const [items, unread] = await Promise.all([
+  const [items, unread, vapidKey] = await Promise.all([
     db.notification.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 60 }),
     db.notification.count({ where: { userId: user.id, readAt: null } }),
+    pushPublicKey(),
   ]);
 
   return (
@@ -25,7 +28,7 @@ export default async function NotificationsPage() {
         </div>
         {unread ? (
           <ActionForm
-            action={async () => markNotificationsReadAction()}
+            action={markNotificationsReadAction}
             submitLabel={`خوانده شد (${faNum(unread)})`}
             buttonClass="btn btn-sm"
             inline
@@ -34,6 +37,12 @@ export default async function NotificationsPage() {
           <span className="badge badge-success">همه خوانده شده</span>
         )}
       </div>
+
+      {vapidKey ? (
+        <div className="card">
+          <PushToggle publicKey={vapidKey} />
+        </div>
+      ) : null}
 
       {items.length ? (
         <div className="card">

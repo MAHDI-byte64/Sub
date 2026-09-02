@@ -24,6 +24,16 @@ import { runMaintenance } from "../src/lib/scheduler";
 import { checkPanel, probePanel, pruneChecks, uptimeStats } from "../src/lib/monitor";
 import { gatewayReady, startPayment, verifyPayment } from "../src/lib/gateway";
 import { completePaidOrder } from "../src/lib/orders";
+import {
+  broadcastPush,
+  ensureVapidKeys,
+  pushPublicKey,
+  pushReady,
+  removeSubscription,
+  saveSubscription,
+  sendPushToUser,
+} from "../src/lib/push";
+import { notifyUser } from "../src/lib/notify";
 import { XuiClient, type XuiRawClient } from "../src/lib/xui";
 import { serviceRefs } from "../src/lib/provision";
 
@@ -47,6 +57,7 @@ function check(label: string, condition: boolean, extra?: unknown) {
 }
 
 async function reset() {
+  await db.pushSub.deleteMany();
   await db.panelCheck.deleteMany();
   await db.ticketMessage.deleteMany();
   await db.ticket.deleteMany();
@@ -906,6 +917,58 @@ async function gatewayScenario() {
   check("با خاموش‌بودن درگاه، پرداخت آنلاین در دسترس نیست", !gatewayReady(await getSettings()));
 }
 
+/** اعلان پوش: کلیدها، اشتراک دستگاه و مقاوم‌بودن در برابر خطا */
+async function pushScenario() {
+  console.log("\n══════ اعلان پوش ══════");
+  await reset();
+  await saveSettings({ push_enabled: "0", vapid_public: "", vapid_private: "" });
+
+  check("وقتی پوش خاموش است، کلید عمومی داده نمی‌شود", (await pushPublicKey()) === null);
+
+  const keys = await ensureVapidKeys();
+  check("کلید VAPID ساخته شد", keys.publicKey.length > 40 && keys.privateKey.length > 20);
+  const again = await ensureVapidKeys();
+  check("کلید دوباره ساخته نمی‌شود", again.publicKey === keys.publicKey);
+  check("تا وقتی پوش روشن نشده، آماده نیست", !(await pushReady()));
+
+  await saveSettings({ push_enabled: "1" });
+  check("بعد از روشن‌کردن، پوش آماده است", await pushReady());
+  check("کلید عمومی به مرورگر داده می‌شود", (await pushPublicKey()) === keys.publicKey);
+
+  const user = await db.user.create({
+    data: { email: "push@test.local", passwordHash: "scrypt:x:y" },
+  });
+
+  const endpoint = "https://push.example.com/endpoint/abc";
+  await saveSubscription(user.id, { endpoint, keys: { p256dh: "key-1", auth: "auth-1" } }, "Test/1.0");
+  await saveSubscription(user.id, { endpoint, keys: { p256dh: "key-2", auth: "auth-2" } }, "Test/1.0");
+  const subs = await db.pushSub.findMany({ where: { userId: user.id } });
+  check("اشتراک تکراری یک ردیف می‌ماند", subs.length === 1, subs.length);
+  check("کلیدهای اشتراک به‌روزرسانی شد", subs[0].p256dh === "key-2", subs[0].p256dh);
+
+  // اشتراک ساختگی: ارسال باید بی‌سروصدا شکست بخورد، نه اینکه خطا بدهد
+  const sent = await sendPushToUser(user.id, { title: "تست", body: "متن" });
+  check("ارسال به اشتراک نامعتبر خطا نمی‌دهد", sent === 0, sent);
+
+  const broadcast = await broadcastPush({ title: "اطلاعیه" });
+  check("اطلاعیه همگانی هم امن است", broadcast.users === 1 && broadcast.sent === 0, broadcast);
+
+  await notifyUser({
+    userId: user.id,
+    kind: "announcement",
+    title: "اعلان با پوش روشن",
+    body: "باید ثبت شود حتی اگر پوش شکست بخورد",
+  });
+  const note = await db.notification.findFirst({ where: { userId: user.id } });
+  check("اعلان درون‌سایتی با وجود شکست پوش ثبت شد", Boolean(note), note?.title);
+
+  await removeSubscription(endpoint);
+  check("اشتراک حذف شد", (await db.pushSub.count()) === 0);
+
+  await saveSettings({ push_enabled: "0" });
+  check("با خاموش‌کردن، ارسال پوش انجام نمی‌شود", (await sendPushToUser(user.id, { title: "x" })) === 0);
+}
+
 async function main() {
   await scenario({
     label: "پنل نسخه ۲ — ورود با نام کاربری و رمز",
@@ -932,6 +995,7 @@ async function main() {
   await walletScenario();
   await monitorScenario();
   await gatewayScenario();
+  await pushScenario();
 
   console.log("\n══════ بررسی توکن نامعتبر ══════");
   const badToken = new XuiClient({

@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "./db";
+import { sendPushToUser } from "./push";
 
 export type NotifyInput = {
   userId: string;
@@ -40,6 +41,18 @@ export async function notifyUser(input: NotifyInput): Promise<void> {
     });
   } catch {
     /* اعلان نباید جریان اصلی را متوقف کند */
+  }
+
+  // همان اعلان روی گوشی/مرورگر کاربر هم می‌رود (اگر اجازه داده باشد)
+  try {
+    await sendPushToUser(input.userId, {
+      title: `${NOTIFICATION_ICONS[input.kind] ?? "🔔"} ${input.title}`,
+      body: input.body ?? "",
+      url: input.href ?? "/dashboard/notifications",
+      tag: input.kind,
+    });
+  } catch {
+    /* پوش هم نباید جریان اصلی را متوقف کند */
   }
 }
 

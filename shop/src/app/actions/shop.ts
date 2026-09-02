@@ -409,7 +409,10 @@ export async function rotateServiceAction(_prev: ShopState, formData: FormData):
 }
 
 /** خوانده‌شدن همه اعلان‌ها */
-export async function markNotificationsReadAction(): Promise<ShopState> {
+export async function markNotificationsReadAction(
+  _prev?: ShopState,
+  _formData?: FormData,
+): Promise<ShopState> {
   const user = await getCurrentUser();
   if (!user) return { error: "ابتدا وارد حساب خود شوید." };
 

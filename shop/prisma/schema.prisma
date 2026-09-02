@@ -35,6 +35,7 @@ model User {
   walletTxs     WalletTx[]
   referredBy    User?          @relation("Referrals", fields: [referredById], references: [id])
   referrals     User[]         @relation("Referrals")
+  pushSubs      PushSub[]
 }
 
 /// تراکنش کیف پول (مثبت = شارژ، منفی = برداشت)
@@ -124,6 +125,21 @@ model Panel {
   checks   PanelCheck[]
   /// پلن‌هایی که فقط روی این سرور فروخته می‌شوند (خالی = همه پلن‌ها)
   plans    Plan[]    @relation("PlanPanels")
+}
+
+/// دستگاه‌هایی که اعلان پوش را روشن کرده‌اند
+model PushSub {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 /// تاریخچهٔ بررسی سلامت سرورها (برای درصد آپتایم و نمودار پینگ)

@@ -260,6 +260,41 @@ try {
   const statusBody = (await guest.textContent("body")) ?? "";
   check("صفحه وضعیت عمومی کار می‌کند", statusBody.includes("وضعیت سرورها") && statusBody.includes("آلمان - تست UI"));
 
+  console.log("→ اپ نصب‌شدنی و اعلان پوش");
+  const manifestRes = await guest.request.get(`${BASE}/manifest.webmanifest`);
+  const manifest = await manifestRes.json();
+  check("مانیفست PWA سرو می‌شود", manifestRes.ok(), manifestRes.status());
+  check("مانیفست نام و آیکون دارد", Boolean(manifest.name) && manifest.icons.length >= 2, manifest.icons?.length);
+  check("حالت نمایش standalone است", manifest.display === "standalone", manifest.display);
+  check("آیکون maskable دارد", manifest.icons.some((i) => i.purpose === "maskable"));
+
+  const swRes = await guest.request.get(`${BASE}/sw.js`);
+  check("سرویس‌ورکر سرو می‌شود", swRes.ok() && (await swRes.text()).includes("notificationclick"));
+  const offlineRes = await guest.request.get(`${BASE}/offline.html`);
+  check("صفحه آفلاین آماده است", offlineRes.ok() && (await offlineRes.text()).includes("اینترنت در دسترس نیست"));
+
+  await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
+  await user.waitForTimeout(1500);
+  const swReady = await user.evaluate(async () => {
+    const reg = await navigator.serviceWorker.getRegistration();
+    return Boolean(reg);
+  });
+  check("سرویس‌ورکر در مرورگر ثبت شد", swReady);
+
+  await admin.goto(`${BASE}/admin/settings`, { waitUntil: "domcontentloaded" });
+  await admin.click("button:has-text('فعال‌سازی اعلان پوش')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 20000 });
+  const pushMsg = (await admin.textContent(".alert-success, .alert-error")) ?? "";
+  check("اعلان پوش با ساخت کلید فعال شد", pushMsg.includes("اعلان پوش فعال شد"), pushMsg);
+
+  await user.goto(`${BASE}/dashboard/notifications`, { waitUntil: "domcontentloaded" });
+  const notifBody = (await user.textContent("body")) ?? "";
+  check("کلید روشن‌کردن اعلان به کاربر نشان داده شد", notifBody.includes("اعلان روی این دستگاه"), {
+    url: user.url(),
+    heading: await user.textContent("h1").catch(() => "-"),
+    hasPushBox: await user.locator(".push-box").count(),
+  });
+
   console.log("→ حالت تعمیر و نگهداری");
   await admin.goto(`${BASE}/admin/settings`, { waitUntil: "domcontentloaded" });
   await admin.check("#maintenance_mode");
