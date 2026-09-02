@@ -14,12 +14,21 @@ export async function createTicketAction(_prev: TicketState, formData: FormData)
 
   const subject = String(formData.get("subject") || "").trim();
   const body = String(formData.get("body") || "").trim();
+  const serviceId = String(formData.get("serviceId") || "").trim();
   if (subject.length < 3) return { error: "موضوع تیکت را بنویسید." };
   if (body.length < 5) return { error: "متن پیام را کامل‌تر بنویسید." };
+
+  // سرویس مرتبط باید متعلق به همین کاربر باشد
+  let linkedService: string | null = null;
+  if (serviceId) {
+    const owned = await db.service.findFirst({ where: { id: serviceId, userId: user.id } });
+    if (owned) linkedService = owned.id;
+  }
 
   const ticket = await db.ticket.create({
     data: {
       userId: user.id,
+      serviceId: linkedService,
       subject,
       messages: { create: { body, fromAdmin: false } },
     },

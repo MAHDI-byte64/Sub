@@ -80,6 +80,25 @@ export async function logoutAction(): Promise<void> {
   redirect("/");
 }
 
+export async function revokeOtherSessionsAction(
+  _prev: AuthState & { success?: string },
+): Promise<AuthState & { success?: string }> {
+  const { getCurrentUser, currentSessionId } = await import("@/lib/auth");
+  const user = await getCurrentUser();
+  if (!user) return { error: "ابتدا وارد حساب خود شوید." };
+
+  const current = await currentSessionId();
+  const result = await db.session.deleteMany({
+    where: { userId: user.id, ...(current ? { id: { not: current } } : {}) },
+  });
+
+  return {
+    success: result.count
+      ? `از ${result.count} دستگاه دیگر خارج شدید.`
+      : "دستگاه دیگری وارد نشده است.",
+  };
+}
+
 export async function changePasswordAction(_prev: AuthState & { success?: string }, formData: FormData) {
   const { getCurrentUser } = await import("@/lib/auth");
   const user = await getCurrentUser();

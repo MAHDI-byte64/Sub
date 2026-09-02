@@ -1,20 +1,28 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { currentSessionId, describeDevice, requireUser } from "@/lib/auth";
 import { faDate, faNum, formatBytes } from "@/lib/format";
 import ChangePasswordForm from "@/components/ChangePasswordForm";
+import RevokeSessionsButton from "@/components/RevokeSessionsButton";
+import { relativeTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "پروفایل" };
 
 export default async function ProfilePage() {
   const user = await requireUser("/dashboard/profile");
-  const [row, orders, services, usage, tickets] = await Promise.all([
+  const [row, orders, services, usage, tickets, sessions, sessionId] = await Promise.all([
     db.user.findUniqueOrThrow({ where: { id: user.id } }),
     db.order.count({ where: { userId: user.id, status: "approved" } }),
     db.service.count({ where: { userId: user.id } }),
     db.service.aggregate({ where: { userId: user.id }, _sum: { usedBytes: true } }),
     db.ticket.count({ where: { userId: user.id } }),
+    db.session.findMany({
+      where: { userId: user.id, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    }),
+    currentSessionId(),
   ]);
 
   const initial = (row.name || row.email).trim().charAt(0).toUpperCase();
@@ -91,6 +99,39 @@ export default async function ProfilePage() {
               تیکت پشتیبانی
             </Link>
           </div>
+        </div>
+
+        <div className="card">
+          <div className="card-title">
+            <h3>📱 دستگاه‌های واردشده</h3>
+            <span className="badge badge-info">{faNum(sessions.length)} نشست فعال</span>
+          </div>
+          <p className="field-hint">
+            اگر دستگاهی را نمی‌شناسید، از همه خارج شوید و رمز عبورتان را عوض کنید.
+          </p>
+          <div className="svc-meta" style={{ marginBottom: 14 }}>
+            {sessions.map((session) => {
+              const device = describeDevice(session.userAgent);
+              const isCurrent = session.id === sessionId;
+              return (
+                <div className={`meta-row${isCurrent ? "" : ""}`} key={session.id}>
+                  <span>
+                    {device.icon} {device.name}
+                  </span>
+                  <b>
+                    {isCurrent ? (
+                      <span className="badge badge-success">همین دستگاه</span>
+                    ) : (
+                      <span className="dim" style={{ fontWeight: 500 }}>
+                        ورود {relativeTime(session.createdAt)}
+                      </span>
+                    )}
+                  </b>
+                </div>
+              );
+            })}
+          </div>
+          <RevokeSessionsButton count={Math.max(0, sessions.length - 1)} />
         </div>
 
         <div className="card">

@@ -86,6 +86,36 @@ export function remainingDays(expiresAt: Date | null | undefined): number | null
   return Math.ceil(ms / 86_400_000);
 }
 
+/** «۳ ساعت پیش» — برای فهرست‌ها خواناتر از تاریخ کامل است */
+export function relativeTime(date: Date | string | null | undefined): string {
+  if (!date) return "—";
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return "—";
+
+  const diff = Date.now() - d.getTime();
+  const abs = Math.abs(diff);
+  const future = diff < 0;
+  const suffix = future ? "دیگر" : "پیش";
+
+  if (abs < 60_000) return "چند لحظه پیش";
+  if (abs < 3_600_000) return `${faNum(Math.round(abs / 60_000))} دقیقه ${suffix}`;
+  if (abs < 86_400_000) return `${faNum(Math.round(abs / 3_600_000))} ساعت ${suffix}`;
+  if (abs < 7 * 86_400_000) return `${faNum(Math.round(abs / 86_400_000))} روز ${suffix}`;
+  return faDate(d);
+}
+
+/** «۲ ساعت و ۱۵ دقیقه» برای نمایش مدت */
+export function durationLabel(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "—";
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 60) return `${faNum(minutes)} دقیقه`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours < 24) return rest ? `${faNum(hours)} ساعت و ${faNum(rest)} دقیقه` : `${faNum(hours)} ساعت`;
+  const days = Math.floor(hours / 24);
+  return `${faNum(days)} روز`;
+}
+
 export function planVolumeLabel(volumeGb: number): string {
   return volumeGb > 0 ? `${faNum(volumeGb)} گیگابایت` : "حجم نامحدود";
 }

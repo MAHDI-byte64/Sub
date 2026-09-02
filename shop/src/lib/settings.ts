@@ -31,6 +31,22 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "trial_days", label: "مدت تست (روز)", type: "number", group: "تست رایگان", default: "1" },
   { key: "trial_device_limit", label: "تعداد کاربر همزمان تست", type: "number", group: "تست رایگان", default: "1" },
 
+  {
+    key: "canned_replies",
+    label: "پاسخ‌های آماده پشتیبانی (هر خط یک پاسخ)",
+    type: "textarea",
+    group: "پشتیبانی",
+    default: [
+      "سلام، ممنون از پیام شما. در حال بررسی هستیم و تا چند دقیقه دیگر نتیجه را اعلام می‌کنیم.",
+      "لطفاً لینک اشتراک را در برنامه یک بار «به‌روزرسانی» (Update Subscription) کنید و نتیجه را بگویید.",
+      "سرور شما تعویض شد. لطفاً لینک اشتراک را به‌روزرسانی کنید و دوباره امتحان کنید.",
+      "سرویس شما تمدید شد. حجم و زمان جدید در پنل کاربری قابل مشاهده است.",
+      "مشکل برطرف شد. اگر باز هم تکرار شد همین‌جا بنویسید. روز خوبی داشته باشید 🌹",
+    ].join("\n"),
+    hint: "در صفحه پاسخ به تیکت، این‌ها به‌صورت دکمه‌های یک‌کلیکی نمایش داده می‌شوند.",
+  },
+  { key: "support_hours", label: "ساعات پاسخ‌گویی", type: "text", group: "پشتیبانی", default: "۲۴ ساعته، هر روز هفته" },
+
   { key: "telegram_bot_token", label: "توکن ربات تلگرام", type: "password", group: "اطلاع‌رسانی", default: "", hint: "برای اطلاع‌رسانی سفارش‌ها به ادمین." },
   { key: "telegram_admin_chat_id", label: "آیدی عددی چت ادمین", type: "text", group: "اطلاع‌رسانی", default: "" },
   { key: "notify_on_new_order", label: "اطلاع‌رسانی سفارش جدید", type: "bool", group: "اطلاع‌رسانی", default: "1" },

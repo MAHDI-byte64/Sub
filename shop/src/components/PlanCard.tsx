@@ -11,6 +11,11 @@ export default function PlanCard({ plan, href }: { plan: Plan; href?: string }) 
       <div className="plan-price">
         {toman(plan.priceToman, false)} <span>تومان</span>
       </div>
+      {plan.volumeGb > 0 && plan.priceToman > 0 ? (
+        <span className="plan-value">
+          هر گیگابایت حدود {toman(Math.round(plan.priceToman / plan.volumeGb))}
+        </span>
+      ) : null}
       <ul className="plan-features">
         <li>{planVolumeLabel(plan.volumeGb)}</li>
         <li>{planDaysLabel(plan.days)}</li>
