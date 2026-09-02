@@ -26,6 +26,14 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "payment_note", label: "توضیح صفحه پرداخت", type: "textarea", group: "پرداخت", default: "پس از واریز، تصویر رسید را در همین صفحه بارگذاری کنید. سفارش شما حداکثر تا ۳۰ دقیقه بررسی و سرویس تحویل داده می‌شود." },
   { key: "order_expire_minutes", label: "مهلت پرداخت سفارش (دقیقه)", type: "number", group: "پرداخت", default: "60" },
 
+  { key: "wallet_enabled", label: "کیف پول فعال باشد", type: "bool", group: "کیف پول و دعوت", default: "1", hint: "کاربر می‌تواند حساب را شارژ کند و خرید آنی انجام دهد." },
+  { key: "min_topup", label: "حداقل مبلغ شارژ (تومان)", type: "number", group: "کیف پول و دعوت", default: "50000" },
+  { key: "referral_percent", label: "درصد پاداش دعوت", type: "number", group: "کیف پول و دعوت", default: "10", hint: "درصدی از اولین خرید کاربر دعوت‌شده که به کیف پول دعوت‌کننده اضافه می‌شود. صفر = غیرفعال." },
+  { key: "auto_renew_enabled", label: "تمدید خودکار از کیف پول", type: "bool", group: "کیف پول و دعوت", default: "1" },
+
+  { key: "expiry_reminder_days", label: "یادآوری انقضا چند روز قبل", type: "number", group: "اطلاع‌رسانی", default: "3" },
+  { key: "quota_warn_percent", label: "هشدار اتمام حجم در چند درصد", type: "number", group: "اطلاع‌رسانی", default: "85" },
+
   { key: "trial_enabled", label: "اکانت تست رایگان فعال باشد", type: "bool", group: "تست رایگان", default: "1" },
   { key: "trial_volume_gb", label: "حجم تست (گیگابایت)", type: "number", group: "تست رایگان", default: "1" },
   { key: "trial_days", label: "مدت تست (روز)", type: "number", group: "تست رایگان", default: "1" },
@@ -49,6 +57,14 @@ export const SETTING_DEFS: SettingDef[] = [
 
   { key: "telegram_bot_token", label: "توکن ربات تلگرام", type: "password", group: "اطلاع‌رسانی", default: "", hint: "برای اطلاع‌رسانی سفارش‌ها به ادمین." },
   { key: "telegram_admin_chat_id", label: "آیدی عددی چت ادمین", type: "text", group: "اطلاع‌رسانی", default: "" },
+  {
+    key: "telegram_webhook_secret",
+    label: "کلید امنیتی وب‌هوک (خودکار)",
+    type: "password",
+    group: "اطلاع‌رسانی",
+    default: "",
+    hint: "با فعال‌سازی ربات به‌صورت خودکار ساخته می‌شود؛ نیازی به تغییر دستی نیست.",
+  },
   { key: "notify_on_new_order", label: "اطلاع‌رسانی سفارش جدید", type: "bool", group: "اطلاع‌رسانی", default: "1" },
   { key: "notify_on_ticket", label: "اطلاع‌رسانی تیکت جدید", type: "bool", group: "اطلاع‌رسانی", default: "1" },
 ];

@@ -40,12 +40,24 @@ export async function registerAction(_prev: AuthState, formData: FormData): Prom
   if (exists) return { error: "این ایمیل قبلاً ثبت شده است. وارد شوید." };
 
   const isFirstUser = (await db.user.count()) === 0;
+
+  // کد دعوت: اگر با لینک معرف آمده باشد ثبت می‌شود
+  const refCode = String(formData.get("ref") || "").trim().toUpperCase();
+  let referredById: string | null = null;
+  if (refCode) {
+    const inviter = await db.user.findFirst({ where: { referralCode: refCode } });
+    if (inviter) referredById = inviter.id;
+  }
+
+  const { randomBytes } = await import("node:crypto");
   const user = await db.user.create({
     data: {
       email,
       name: name || null,
       passwordHash: hashPassword(password),
       role: isFirstUser ? "admin" : "user",
+      referredById,
+      referralCode: randomBytes(4).toString("hex").toUpperCase(),
     },
   });
 

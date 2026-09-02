@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { deviceLabel, planDaysLabel, planVolumeLabel, toman } from "@/lib/format";
+import { asBool, getSettings } from "@/lib/settings";
 import CheckoutForm from "@/components/CheckoutForm";
 
 export const dynamic = "force-dynamic";
@@ -29,12 +30,14 @@ export default async function CheckoutPage({
   if (!plan) notFound();
 
   const allowedIds = plan.panels.map((p) => p.id);
-  const [panels, renewService] = await Promise.all([
+  const [panels, renewService, settings, wallet] = await Promise.all([
     db.panel.findMany({
       where: { isActive: true, ...(allowedIds.length ? { id: { in: allowedIds } } : {}) },
       orderBy: { sortOrder: "asc" },
     }),
     renewId ? db.service.findFirst({ where: { id: renewId, userId: user.id } }) : Promise.resolve(null),
+    getSettings(),
+    db.user.findUniqueOrThrow({ where: { id: user.id }, select: { balance: true } }),
   ]);
 
   return (
@@ -93,6 +96,7 @@ export default async function CheckoutPage({
             plan={{ id: plan.id, title: plan.title, priceToman: plan.priceToman, priceLabel: toman(plan.priceToman) }}
             panels={panels.map((p) => ({ id: p.id, flag: p.flag, location: p.location }))}
             renew={renewService ? { id: renewService.id, remark: renewService.remark } : null}
+            wallet={{ enabled: asBool(settings.wallet_enabled), balance: wallet.balance }}
           />
         </div>
       </div>

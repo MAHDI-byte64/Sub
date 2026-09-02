@@ -5,6 +5,7 @@ import { describeDevice } from "@/lib/auth";
 import { faDate, faNum, formatBytes, relativeTime, toman } from "@/lib/format";
 import { ORDER_STATUS, TICKET_STATUS } from "@/lib/status";
 import {
+  adjustWalletAction,
   createServiceForUserAction,
   extendServiceAction,
   resetServiceTrafficAction,
@@ -38,7 +39,7 @@ export default async function AdminUserDetail({
   });
   if (!user) notFound();
 
-  const [plans, panels, spent] = await Promise.all([
+  const [plans, panels, spent, walletTxs] = await Promise.all([
     db.plan.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" }, include: { panels: true } }),
     db.panel.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
     db.order.aggregate({
@@ -46,6 +47,7 @@ export default async function AdminUserDetail({
       _sum: { payable: true },
       _count: { _all: true },
     }),
+    db.walletTx.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 8 }),
   ]);
 
   const initial = (user.name || user.email).charAt(0).toUpperCase();
@@ -115,6 +117,10 @@ export default async function AdminUserDetail({
         <div className="summary-tile">
           <span>📊 مجموع مصرف</span>
           <b>{formatBytes(totalUsed, "۰")}</b>
+        </div>
+        <div className="summary-tile">
+          <span>💰 موجودی کیف پول</span>
+          <b>{toman(user.balance, false)}</b>
         </div>
       </div>
 
@@ -257,7 +263,7 @@ export default async function AdminUserDetail({
                       return (
                         <tr key={order.id}>
                           <td className="mono nowrap">{order.code}</td>
-                          <td>{order.plan.title}</td>
+                          <td>{order.plan?.title ?? "شارژ کیف پول"}</td>
                           <td className="nowrap">{toman(order.payable)}</td>
                           <td>
                             <span className={`badge ${status.badge}`}>{status.label}</span>
@@ -272,6 +278,38 @@ export default async function AdminUserDetail({
             ) : (
               <p className="dim">سفارشی ثبت نکرده است.</p>
             )}
+          </div>
+
+          <div className="card">
+            <div className="card-title">
+              <h3>💰 کیف پول</h3>
+              <span className="badge badge-info">{toman(user.balance)}</span>
+            </div>
+            <ActionForm action={adjustWalletAction} submitLabel="اعمال" buttonClass="btn btn-sm btn-primary">
+              <input type="hidden" name="userId" value={user.id} />
+              <div className="grid grid-2">
+                <div className="field">
+                  <label htmlFor="wallet-amount">مبلغ (منفی = کسر)</label>
+                  <input id="wallet-amount" name="amount" type="number" step={10000} placeholder="مثلاً 100000" />
+                </div>
+                <div className="field">
+                  <label htmlFor="wallet-note">علت</label>
+                  <input id="wallet-note" name="note" placeholder="مثلاً هدیه تولد" />
+                </div>
+              </div>
+            </ActionForm>
+            {walletTxs.length ? (
+              <div className="svc-meta" style={{ marginTop: 12 }}>
+                {walletTxs.map((tx) => (
+                  <div className="meta-row" key={tx.id}>
+                    <span>{tx.note ?? tx.kind}</span>
+                    <b style={{ color: tx.amount > 0 ? "var(--green)" : "var(--red)" }}>
+                      {tx.amount > 0 ? "+" : "−"} {toman(Math.abs(tx.amount))}
+                    </b>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="card">

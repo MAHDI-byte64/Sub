@@ -127,6 +127,8 @@ try {
     ["orders", "/dashboard/orders"],
     ["order-detail", orderUrl.replace(BASE, "")],
     ["payment", payUrl.replace(BASE, "")],
+    ["wallet", "/dashboard/wallet"],
+    ["notifications", "/dashboard/notifications"],
     ["tickets", "/dashboard/tickets"],
     ["profile", "/dashboard/profile"],
   ];

@@ -141,7 +141,11 @@ try {
   const approveMsg = (await admin.textContent(".alert-success, .alert-error")) ?? "";
   check("سفارش تأیید و سرویس ساخته شد", approveMsg.includes("تحویل شد"), approveMsg);
   await admin.goto(`${BASE}/admin/services`, { waitUntil: "domcontentloaded" });
-  check("سرویس در فهرست مدیریت ثبت شد", await admin.isVisible("text=آلمان - تست UI"));
+  // در جدول سرویس‌ها بگرد (فیلترِ سرور هم همین نام را به‌عنوان option دارد)
+  check(
+    "سرویس در فهرست مدیریت ثبت شد",
+    (await admin.locator("table td", { hasText: "آلمان - تست UI" }).count()) > 0,
+  );
   const servicesText = (await admin.textContent("body")) ?? "";
   check("نام کلاینت از روی کلاینت الگو ساخته شد", /template-vip-FD-[0-9A-F]+/.test(servicesText), servicesText.match(/template-vip-\S*/)?.[0]);
 

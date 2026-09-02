@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { asBool, getSettings } from "@/lib/settings";
 import { syncUserServices } from "@/lib/provision";
-import { faDate, faNum, formatBytes, remainingDays } from "@/lib/format";
+import { faDate, faNum, formatBytes, remainingDays, toman } from "@/lib/format";
 import ServiceCard from "@/components/ServiceCard";
 import TrialCard from "@/components/TrialCard";
 
@@ -14,7 +14,7 @@ export default async function DashboardPage() {
   const user = await requireUser();
   await syncUserServices(user.id);
 
-  const [services, settings, panels, pendingOrders] = await Promise.all([
+  const [services, settings, panels, pendingOrders, wallet, unread] = await Promise.all([
     db.service.findMany({
       where: { userId: user.id },
       include: { panel: true, plan: true },
@@ -23,6 +23,8 @@ export default async function DashboardPage() {
     getSettings(),
     db.panel.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
     db.order.count({ where: { userId: user.id, status: { in: ["awaiting_receipt", "pending_review"] } } }),
+    db.user.findUniqueOrThrow({ where: { id: user.id }, select: { balance: true } }),
+    db.notification.count({ where: { userId: user.id, readAt: null } }),
   ]);
 
   const trialAvailable = asBool(settings.trial_enabled) && !user.trialUsedAt && panels.length > 0;
@@ -50,6 +52,13 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
+      {unread > 0 ? (
+        <div className="alert alert-info">
+          🔔 {faNum(unread)} اعلان خوانده‌نشده دارید.{" "}
+          <Link href="/dashboard/notifications">مشاهده اعلان‌ها</Link>
+        </div>
+      ) : null}
+
       {pendingOrders > 0 ? (
         <div className="alert alert-warn">
           شما {pendingOrders} سفارش در انتظار پرداخت یا بررسی دارید.{" "}
@@ -70,6 +79,13 @@ export default async function DashboardPage() {
           <div className="summary-tile">
             <span>📊 مجموع مصرف</span>
             <b>{formatBytes(usedBytes, "۰")}</b>
+          </div>
+          <div className="summary-tile">
+            <span>💰 کیف پول</span>
+            <b>{toman(wallet.balance, false)}</b>
+            <small className="dim">
+              <Link href="/dashboard/wallet">شارژ حساب</Link>
+            </small>
           </div>
           <div className="summary-tile">
             <span>⏳ نزدیک‌ترین انقضا</span>
@@ -96,7 +112,11 @@ export default async function DashboardPage() {
       {services.length ? (
         <div className="grid" style={{ marginTop: 16 }}>
           {services.map((service) => (
-            <ServiceCard key={service.id} service={service} />
+            <ServiceCard
+              key={service.id}
+              service={service}
+              autoRenewEnabled={asBool(settings.auto_renew_enabled) && asBool(settings.wallet_enabled)}
+            />
           ))}
         </div>
       ) : (

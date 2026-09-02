@@ -18,7 +18,10 @@ import {
   syncService,
 } from "@/lib/provision";
 import { logAdmin } from "@/lib/adminlog";
-import { notifyAdmin as notifyTelegram } from "@/lib/telegram";
+import { creditWallet, debitWallet } from "@/lib/wallet";
+import { notifyUser } from "@/lib/notify";
+import { payReferralBonus } from "@/lib/referral";
+import { notifyAdmin as notifyTelegram, telegramApi } from "@/lib/telegram";
 import { faNum, toman } from "@/lib/format";
 
 export type AdminState = { error?: string; success?: string };
@@ -64,6 +67,25 @@ export async function approveOrderAction(_prev: AdminState, formData: FormData):
   if (!order) return { error: "سفارش پیدا نشد." };
   if (order.status === "approved") return { error: "این سفارش قبلاً تأیید شده است." };
 
+  // سفارش شارژ کیف پول: فقط اعتبار اضافه می‌شود
+  if (order.kind === "topup") {
+    await creditWallet(order.userId, order.payable, "topup", `شارژ با سفارش ${order.code}`, order.id);
+    await db.order.update({
+      where: { id: order.id },
+      data: { status: "approved", reviewedAt: new Date() },
+    });
+    await notifyUser({
+      userId: order.userId,
+      kind: "wallet_credit",
+      title: "کیف پول شما شارژ شد",
+      body: `${toman(order.payable)} به موجودی شما اضافه شد.`,
+      href: "/dashboard/wallet",
+    });
+    await logAdmin("order_approved", order.code, `شارژ کیف پول ${toman(order.payable)} — ${order.user.email}`);
+    revalidatePath("/admin/orders");
+    flash("/admin/orders?status=pending_review", `کیف پول ${order.user.email} شارژ شد.`);
+  }
+
   try {
     await fulfillOrder(order.id);
   } catch (err) {
@@ -71,6 +93,15 @@ export async function approveOrderAction(_prev: AdminState, formData: FormData):
     await db.order.update({ where: { id: order.id }, data: { adminNote: `خطای تحویل: ${message}` } });
     return { error: `تحویل سرویس ناموفق بود: ${message}` };
   }
+
+  await payReferralBonus(order.userId, order.payable);
+  await notifyUser({
+    userId: order.userId,
+    kind: "order_approved",
+    title: "سرویس شما فعال شد",
+    body: `${order.plan?.title ?? "سرویس"} آماده استفاده است.`,
+    href: "/dashboard",
+  });
 
   if (order.discountId) {
     await db.discount.update({
@@ -80,10 +111,10 @@ export async function approveOrderAction(_prev: AdminState, formData: FormData):
   }
 
   await notifyAdmin(
-    `✅ سفارش ${order.code} تأیید و سرویس «${order.plan.title}» برای ${order.user.email} ساخته شد.`,
+    `✅ سفارش ${order.code} تأیید و سرویس «${order.plan?.title ?? "—"}» برای ${order.user.email} ساخته شد.`,
     "system",
   );
-  await logAdmin("order_approved", order.code, `${order.plan.title} — ${order.user.email}`);
+  await logAdmin("order_approved", order.code, `${order.plan?.title ?? "شارژ کیف پول"} — ${order.user.email}`);
 
   revalidatePath("/admin/orders");
   revalidatePath("/dashboard");
@@ -104,6 +135,13 @@ export async function rejectOrderAction(_prev: AdminState, formData: FormData): 
     data: { status: "rejected", adminNote: note, reviewedAt: new Date() },
   });
   await logAdmin("order_rejected", order.code, note);
+  await notifyUser({
+    userId: order.userId,
+    kind: "order_rejected",
+    title: `سفارش ${order.code} تأیید نشد`,
+    body: note,
+    href: `/dashboard/orders/${order.code}`,
+  });
   revalidatePath("/admin/orders");
   flash("/admin/orders?status=pending_review", `سفارش ${order.code} رد شد.`);
 }
@@ -625,4 +663,83 @@ export async function testTelegramAction(_prev: AdminState, _formData: FormData)
   );
   await logAdmin("telegram_tested");
   return { success: "پیام آزمایشی ارسال شد. تلگرام خود را بررسی کنید." };
+}
+
+/** افزایش یا کاهش دستی موجودی کیف پول کاربر */
+export async function adjustWalletAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const userId = str(formData, "userId");
+  const amount = num(formData, "amount");
+  const note = str(formData, "note") || "تنظیم توسط مدیر";
+  if (!amount) return { error: "مبلغ را وارد کنید (منفی برای کسر)." };
+
+  const user = await db.user.findUnique({ where: { id: userId } });
+  if (!user) return { error: "کاربر پیدا نشد." };
+
+  try {
+    if (amount > 0) {
+      await creditWallet(userId, amount, "admin", note);
+      await notifyUser({
+        userId,
+        kind: "wallet_credit",
+        title: "کیف پول شما شارژ شد",
+        body: `${toman(amount)} توسط پشتیبانی اضافه شد. (${note})`,
+        href: "/dashboard/wallet",
+      });
+    } else {
+      await debitWallet(userId, Math.abs(amount), "admin", note);
+    }
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
+
+  await logAdmin("wallet_adjusted", user.email, `${amount > 0 ? "+" : ""}${amount} — ${note}`);
+  revalidatePath(`/admin/users/${userId}`);
+  return { success: `کیف پول ${user.email} به‌روزرسانی شد.` };
+}
+
+/** فعال‌سازی وب‌هوک ربات تلگرام تا بتوان از تلگرام به تیکت‌ها پاسخ داد */
+export async function setupTelegramWebhookAction(_prev: AdminState, _formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const { getSettings, saveSettings: persist } = await import("@/lib/settings");
+  const settings = await getSettings();
+
+  if (!settings.telegram_bot_token?.trim()) {
+    return { error: "ابتدا توکن ربات را وارد و ذخیره کنید." };
+  }
+
+  const appUrl = (process.env.APP_URL || "").replace(/\/+$/, "");
+  if (!appUrl.startsWith("https://")) {
+    return {
+      error:
+        "تلگرام فقط آدرس HTTPS را می‌پذیرد. ابتدا دامنه و SSL را تنظیم کنید (bash install.sh --ssl --domain=…) و APP_URL را روی همان دامنه بگذارید.",
+    };
+  }
+
+  const { randomBytes } = await import("node:crypto");
+  const secret = settings.telegram_webhook_secret?.trim() || randomBytes(16).toString("hex");
+  await persist({ telegram_webhook_secret: secret });
+
+  const result = await telegramApi("setWebhook", {
+    url: `${appUrl}/api/telegram/webhook`,
+    secret_token: secret,
+    allowed_updates: ["message"],
+    drop_pending_updates: true,
+  });
+
+  if (!result.ok) {
+    return { error: `فعال‌سازی ناموفق بود: ${result.description ?? "خطای نامشخص"}` };
+  }
+
+  await notifyTelegram(
+    "🤖 ربات پشتیبانی فعال شد. حالا می‌توانید اعلان هر تیکت را ریپلای کنید تا پاسخ برای مشتری ثبت شود. /help",
+    "system",
+  );
+  await logAdmin("telegram_webhook_set", appUrl);
+  revalidatePath("/admin/settings");
+  return { success: "ربات فعال شد. یک پیام راهنما در تلگرام برایتان فرستادیم." };
 }

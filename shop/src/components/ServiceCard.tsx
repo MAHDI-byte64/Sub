@@ -4,11 +4,15 @@ import { buildSubscriptionUrl } from "@/lib/vless";
 import { faDate, faNum, formatBytes, remainingDays } from "@/lib/format";
 import CopyButton from "./CopyButton";
 import UsageRing from "./UsageRing";
+import AutoRenewToggle from "./AutoRenewToggle";
+import { toman } from "@/lib/format";
 
 export default function ServiceCard({
   service,
+  autoRenewEnabled = false,
 }: {
   service: Service & { panel: Panel; plan?: Plan | null };
+  autoRenewEnabled?: boolean;
 }) {
   const sub = buildSubscriptionUrl(service.panel.subBase, service.panel.url, service.subId);
 
@@ -109,6 +113,14 @@ export default function ServiceCard({
           <CopyButton value={sub} />
         </div>
       </div>
+
+      {autoRenewEnabled && service.plan && !service.isTrial ? (
+        <AutoRenewToggle
+          serviceId={service.id}
+          enabled={service.autoRenew}
+          price={toman(service.plan.priceToman)}
+        />
+      ) : null}
 
       <div className="svc-actions">
         <Link className="btn btn-sm btn-primary" href={`/dashboard/services/${service.id}`}>

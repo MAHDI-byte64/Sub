@@ -23,8 +23,11 @@ export const ACTION_LABELS: Record<string, { label: string; icon: string }> = {
   user_blocked: { label: "مسدود کردن کاربر", icon: "⛔" },
   user_unblocked: { label: "آزادسازی کاربر", icon: "✅" },
   user_trial_reset: { label: "آزادسازی تست رایگان", icon: "🎁" },
+  wallet_adjusted: { label: "تنظیم کیف پول", icon: "💰" },
   settings_saved: { label: "ذخیره تنظیمات", icon: "⚙️" },
   telegram_tested: { label: "تست ربات تلگرام", icon: "✈️" },
+  telegram_webhook_set: { label: "فعال‌سازی ربات تلگرام", icon: "🤖" },
+  ticket_replied: { label: "پاسخ به تیکت", icon: "💬" },
   backup_downloaded: { label: "دانلود پشتیبان", icon: "💾" },
 };
 

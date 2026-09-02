@@ -19,12 +19,54 @@ model User {
   telegramId   String?
   isBlocked    Boolean   @default(false)
   trialUsedAt  DateTime?
+  /// موجودی کیف پول به تومان
+  balance      Int       @default(0)
+  /// کد دعوت این کاربر (برای معرفی به دیگران)
+  referralCode String?   @unique
+  /// کاربری که این حساب را دعوت کرده است
+  referredById String?
   createdAt    DateTime  @default(now())
 
-  sessions Session[]
-  orders   Order[]
-  services Service[]
-  tickets  Ticket[]
+  sessions      Session[]
+  orders        Order[]
+  services      Service[]
+  tickets       Ticket[]
+  notifications Notification[]
+  walletTxs     WalletTx[]
+  referredBy    User?          @relation("Referrals", fields: [referredById], references: [id])
+  referrals     User[]         @relation("Referrals")
+}
+
+/// تراکنش کیف پول (مثبت = شارژ، منفی = برداشت)
+model WalletTx {
+  id        String   @id @default(cuid())
+  userId    String
+  amount    Int
+  kind      String
+  note      String?
+  orderId   String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// اعلان درون‌سایتی برای کاربر
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  kind      String
+  title     String
+  body      String?
+  href      String?
+  serviceId String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
 }
 
 /// نشست‌های ورود (کوکی httpOnly)
@@ -115,7 +157,11 @@ model Order {
   id             String    @id @default(cuid())
   code           String    @unique
   userId         String
-  planId         String
+  /// plan = خرید سرویس، topup = شارژ کیف پول
+  kind           String    @default("plan")
+  /// card = کارت‌به‌کارت، wallet = پرداخت از کیف پول
+  payMethod      String    @default("card")
+  planId         String?
   panelId        String?
   renewServiceId String?
   amount         Int       @default(0)
@@ -131,7 +177,7 @@ model Order {
   reviewedAt     DateTime?
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan     Plan      @relation(fields: [planId], references: [id])
+  plan     Plan?     @relation(fields: [planId], references: [id])
   panel    Panel?    @relation(fields: [panelId], references: [id])
   discount Discount? @relation(fields: [discountId], references: [id])
   service  Service?
@@ -159,6 +205,8 @@ model Service {
   deviceLimit Int       @default(0)
   expiresAt   DateTime?
   isTrial     Boolean   @default(false)
+  /// تمدید خودکار از کیف پول در زمان انقضا
+  autoRenew   Boolean   @default(false)
   status      String    @default("active")
   lastSyncAt  DateTime?
   createdAt   DateTime  @default(now())

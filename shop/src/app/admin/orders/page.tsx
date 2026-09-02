@@ -115,7 +115,7 @@ export default async function AdminOrdersPage({
               <div className="card" key={order.id}>
                 <div className="card-title">
                   <h3>
-                    <span className="mono">{order.code}</span> — {order.plan.title}
+                    <span className="mono">{order.code}</span> — {order.plan?.title ?? "شارژ کیف پول"}
                     {order.renewServiceId ? <span className="badge" style={{ marginInlineStart: 6 }}>تمدید</span> : null}
                   </h3>
                   <span className={`badge ${badge.badge}`}>{badge.label}</span>

@@ -76,7 +76,7 @@ export default async function OrdersPage() {
                 <span className="oi">{STATUS_ICON[order.status] ?? "🧾"}</span>
                 <span className="om">
                   <b>
-                    {order.plan.title}
+                    {order.plan?.title ?? "شارژ کیف پول"}
                     {order.renewServiceId ? " — تمدید" : ""}
                   </b>
                   <small className="mono">{order.code}</small>

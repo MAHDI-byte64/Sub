@@ -12,7 +12,15 @@ const BENEFITS = [
   { icon: "🎧", text: "پشتیبانی ۲۴ ساعته با تیکت داخل پنل" },
 ];
 
-export default function AuthForm({ mode, next }: { mode: "login" | "register"; next: string }) {
+export default function AuthForm({
+  mode,
+  next,
+  referral,
+}: {
+  mode: "login" | "register";
+  next: string;
+  referral?: string;
+}) {
   const action = mode === "login" ? loginAction : registerAction;
   const [state, formAction] = useActionState<AuthState, FormData>(action, {});
 
@@ -39,6 +47,11 @@ export default function AuthForm({ mode, next }: { mode: "login" | "register"; n
             ? "سرویس‌ها، مصرف لحظه‌ای، تمدید و تیکت‌های پشتیبانی؛ همه در یک صفحه."
             : "با ایمیل ثبت‌نام کنید و بلافاصله اکانت تست رایگان بگیرید."}
         </p>
+        {referral ? (
+          <div className="alert alert-success" style={{ marginTop: 14 }}>
+            🎁 با لینک دعوت وارد شده‌اید؛ بعد از اولین خرید، پاداش دعوت‌کننده هم واریز می‌شود.
+          </div>
+        ) : null}
         <ul className="auth-benefits">
           {BENEFITS.map((b) => (
             <li key={b.text}>
@@ -59,6 +72,7 @@ export default function AuthForm({ mode, next }: { mode: "login" | "register"; n
 
         <form action={formAction} className="form">
           <input type="hidden" name="next" value={next} />
+          {referral ? <input type="hidden" name="ref" value={referral} /> : null}
           {mode === "register" ? (
             <div className="field">
               <label htmlFor="name">نام (اختیاری)</label>

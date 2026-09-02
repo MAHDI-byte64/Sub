@@ -438,27 +438,32 @@ export async function fulfillOrder(orderId: string): Promise<Service> {
     include: { plan: { include: { panels: true } }, user: true },
   });
 
+  if (!order.plan) {
+    throw new XuiError("این سفارش پلن ندارد (سفارش شارژ کیف پول) و سرویسی برای تحویل نیست.");
+  }
+  const orderPlan = order.plan;
+
   if (order.renewServiceId) {
     const service = await db.service.findUniqueOrThrow({ where: { id: order.renewServiceId } });
-    const renewed = await renewServiceOnPanel(service, order.plan);
+    const renewed = await renewServiceOnPanel(service, orderPlan);
     await db.order.update({ where: { id: order.id }, data: { status: "approved", reviewedAt: new Date() } });
     return renewed;
   }
 
   const panel = await pickPanel(
     order.panelId,
-    order.plan.panels.map((p) => p.id),
+    orderPlan.panels.map((p) => p.id),
   );
   const settings = await getSettings();
   const service = await createServiceOnPanel({
     userId: order.userId,
     userEmail: order.user.email,
-    plan: order.plan,
-    planId: order.planId,
+    plan: orderPlan,
+    planId: orderPlan.id,
     panel,
     orderId: order.id,
     code: order.code,
-    remark: `${settings.site_name} | ${order.plan.title}`,
+    remark: `${settings.site_name} | ${orderPlan.title}`,
   });
   await db.order.update({
     where: { id: order.id },

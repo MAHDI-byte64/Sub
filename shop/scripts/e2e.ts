@@ -16,6 +16,8 @@ import {
   syncService,
 } from "../src/lib/provision";
 import { saveSettings } from "../src/lib/settings";
+import { creditWallet, debitWallet } from "../src/lib/wallet";
+import { runMaintenance } from "../src/lib/scheduler";
 import { XuiClient, type XuiRawClient } from "../src/lib/xui";
 import { serviceRefs } from "../src/lib/provision";
 
@@ -385,6 +387,158 @@ async function planPanelScenario() {
   );
 }
 
+/** کیف پول، پاداش دعوت، یادآوری انقضا و تمدید خودکار */
+async function walletScenario() {
+  console.log("\n══════ کیف پول، اعلان‌ها و تمدید خودکار ══════");
+  await reset();
+  await saveSettings({
+    trial_enabled: "0",
+    wallet_enabled: "1",
+    auto_renew_enabled: "1",
+    referral_percent: "10",
+    expiry_reminder_days: "3",
+    quota_warn_percent: "85",
+  });
+
+  const panel = await db.panel.create({
+    data: {
+      name: "W", location: "آلمان", flag: "🇩🇪", url: MOCK_V2,
+      username: "admin", password: "admin", inboundId: 1,
+      templateEmail: "template-vip", multiInbound: false, isActive: true,
+    },
+  });
+  const plan = await db.plan.create({
+    data: { title: "ماهانه", volumeGb: 10, days: 30, deviceLimit: 1, priceToman: 100_000 },
+  });
+
+  const inviter = await db.user.create({
+    data: { email: "inviter@test.local", passwordHash: "x", referralCode: "INV123" },
+  });
+  const buyer = await db.user.create({
+    data: { email: "buyer-wallet@test.local", passwordHash: "x", referredById: inviter.id },
+  });
+
+  // --- عملیات پایه کیف پول
+  await creditWallet(buyer.id, 300_000, "topup", "شارژ آزمایشی");
+  const afterCredit = await db.user.findUniqueOrThrow({ where: { id: buyer.id } });
+  check("شارژ کیف پول ثبت شد", afterCredit.balance === 300_000, afterCredit.balance);
+
+  await debitWallet(buyer.id, 100_000, "purchase", "خرید آزمایشی");
+  const afterDebit = await db.user.findUniqueOrThrow({ where: { id: buyer.id } });
+  check("برداشت از کیف پول درست بود", afterDebit.balance === 200_000, afterDebit.balance);
+
+  let insufficient = false;
+  try {
+    await debitWallet(buyer.id, 999_000_000, "purchase", "بیش از موجودی");
+  } catch {
+    insufficient = true;
+  }
+  check("برداشت بیش از موجودی جلوگیری شد", insufficient);
+
+  const txCount = await db.walletTx.count({ where: { userId: buyer.id } });
+  check("تراکنش‌ها ثبت شدند", txCount === 2, txCount);
+
+  // --- پاداش دعوت روی اولین خرید
+  const order = await db.order.create({
+    data: {
+      code: "FD-W-01", userId: buyer.id, planId: plan.id, panelId: panel.id,
+      amount: plan.priceToman, payable: plan.priceToman, status: "pending_review",
+    },
+  });
+  const service = await fulfillOrder(order.id);
+  const { payReferralBonus } = await import("../src/lib/referral");
+  await payReferralBonus(buyer.id, plan.priceToman);
+
+  const inviterAfter = await db.user.findUniqueOrThrow({ where: { id: inviter.id } });
+  check("پاداش دعوت ۱۰٪ واریز شد", inviterAfter.balance === 10_000, inviterAfter.balance);
+  const referralNote = await db.notification.findFirst({
+    where: { userId: inviter.id, kind: "referral" },
+  });
+  check("اعلان پاداش دعوت ساخته شد", Boolean(referralNote));
+
+  // --- یادآوری انقضا (۲ روز مانده)
+  await db.service.update({
+    where: { id: service.id },
+    data: {
+      expiresAt: new Date(Date.now() + 2 * 86_400_000),
+      lastSyncAt: new Date(),
+      status: "active",
+    },
+  });
+  await runMaintenance();
+  const reminder = await db.notification.findFirst({
+    where: { userId: buyer.id, kind: "expiry_soon", serviceId: service.id },
+  });
+  check("یادآوری انقضا برای کاربر ساخته شد", Boolean(reminder), reminder?.title);
+
+  // تکرار نباید اعلان دوباره بسازد
+  await runMaintenance();
+  const reminderCount = await db.notification.count({
+    where: { userId: buyer.id, kind: "expiry_soon", serviceId: service.id },
+  });
+  check("یادآوری تکراری ارسال نشد", reminderCount === 1, reminderCount);
+
+  // --- هشدار اتمام حجم
+  await db.service.update({
+    where: { id: service.id },
+    data: { usedBytes: 9.2 * GB, totalBytes: 10 * GB, lastSyncAt: new Date() },
+  });
+  await runMaintenance();
+  const quotaNote = await db.notification.findFirst({
+    where: { userId: buyer.id, kind: "quota_low", serviceId: service.id },
+  });
+  check("هشدار اتمام حجم ساخته شد", Boolean(quotaNote), quotaNote?.title);
+
+  // --- تمدید خودکار از کیف پول
+  const before = await db.service.findUniqueOrThrow({ where: { id: service.id } });
+  const balanceBefore = (await db.user.findUniqueOrThrow({ where: { id: buyer.id } })).balance;
+  await db.service.update({
+    where: { id: service.id },
+    data: {
+      autoRenew: true,
+      expiresAt: new Date(Date.now() + 12 * 3_600_000),
+      lastSyncAt: new Date(),
+      status: "active",
+    },
+  });
+  await runMaintenance();
+
+  const renewed = await db.service.findUniqueOrThrow({ where: { id: service.id } });
+  const balanceAfter = (await db.user.findUniqueOrThrow({ where: { id: buyer.id } })).balance;
+  check(
+    "تمدید خودکار مبلغ پلن را از کیف پول کم کرد",
+    balanceBefore - balanceAfter === plan.priceToman,
+    [balanceBefore, balanceAfter],
+  );
+  check(
+    "تاریخ انقضا بعد از تمدید خودکار جلو رفت",
+    (renewed.expiresAt?.getTime() ?? 0) > (before.expiresAt?.getTime() ?? 0),
+    renewed.expiresAt,
+  );
+  const autoNote = await db.notification.findFirst({
+    where: { userId: buyer.id, kind: "auto_renew" },
+  });
+  check("اعلان تمدید خودکار ساخته شد", Boolean(autoNote));
+
+  // --- موجودی ناکافی: فقط هشدار، بدون تمدید
+  await db.user.update({ where: { id: buyer.id }, data: { balance: 0 } });
+  await db.notification.deleteMany({ where: { userId: buyer.id, kind: "expiry_soon" } });
+  await db.service.update({
+    where: { id: service.id },
+    data: { expiresAt: new Date(Date.now() + 6 * 3_600_000), lastSyncAt: new Date() },
+  });
+  await runMaintenance();
+  const lowBalanceNote = await db.notification.findFirst({
+    where: { userId: buyer.id, kind: "expiry_soon" },
+    orderBy: { createdAt: "desc" },
+  });
+  check(
+    "با موجودی ناکافی، هشدار شارژ داده شد",
+    Boolean(lowBalanceNote && lowBalanceNote.title.includes("موجودی")),
+    lowBalanceNote?.title,
+  );
+}
+
 async function main() {
   await scenario({
     label: "پنل نسخه ۲ — ورود با نام کاربری و رمز",
@@ -408,6 +562,7 @@ async function main() {
   });
 
   await planPanelScenario();
+  await walletScenario();
 
   console.log("\n══════ بررسی توکن نامعتبر ══════");
   const badToken = new XuiClient({

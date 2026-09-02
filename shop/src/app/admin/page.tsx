@@ -94,7 +94,7 @@ export default async function AdminHome() {
   const totalOrders = segments.reduce((sum, s) => sum + s.value, 0);
 
   // پرفروش‌ترین پلن‌ها
-  const planIds = topPlans.map((p) => p.planId);
+  const planIds = topPlans.map((p) => p.planId).filter((id): id is string => Boolean(id));
   const planRows = planIds.length
     ? await db.plan.findMany({ where: { id: { in: planIds } } })
     : [];
@@ -309,7 +309,7 @@ export default async function AdminHome() {
                     <tr key={order.id}>
                       <td className="mono">{order.code}</td>
                       <td className="ltr">{order.user.email}</td>
-                      <td>{order.plan.title}</td>
+                      <td>{order.plan?.title ?? "شارژ کیف پول"}</td>
                       <td className="nowrap">{toman(order.payable)}</td>
                       <td>
                         <span className={`badge ${status.badge}`}>{status.label}</span>

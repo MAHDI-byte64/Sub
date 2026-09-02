@@ -3,7 +3,9 @@ import SideNav, { type NavItem } from "@/components/SideNav";
 
 const ITEMS: NavItem[] = [
   { href: "/dashboard", label: "سرویس‌های من", icon: "🌐", exact: true },
+  { href: "/dashboard/wallet", label: "کیف پول", icon: "💰" },
   { href: "/dashboard/orders", label: "سفارش‌ها", icon: "🧾" },
+  { href: "/dashboard/notifications", label: "اعلان‌ها", icon: "🔔" },
   { href: "/dashboard/tickets", label: "تیکت‌ها", icon: "🎫" },
   { href: "/dashboard/profile", label: "پروفایل", icon: "👤" },
   { href: "/plans", label: "خرید سرویس جدید", icon: "🛒" },

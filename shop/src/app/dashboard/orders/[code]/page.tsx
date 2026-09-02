@@ -43,7 +43,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ co
   const timeline: TimelineStep[] = [
     {
       title: "ثبت سفارش",
-      hint: `${order.plan.title}${order.renewServiceId ? " (تمدید)" : ""} — ${toman(order.payable)}`,
+      hint: `${order.plan?.title ?? "شارژ کیف پول"}${order.renewServiceId ? " (تمدید)" : ""} — ${toman(order.payable)}`,
       at: order.createdAt,
       state: "done",
       icon: "🛒",
@@ -86,7 +86,10 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ co
           <h1>
             سفارش <span className="mono gold">{order.code}</span>
           </h1>
-          <p>{order.plan.title}{order.renewServiceId ? " — تمدید سرویس" : ""}</p>
+          <p>
+            {order.plan?.title ?? "شارژ کیف پول"}
+            {order.renewServiceId ? " — تمدید سرویس" : ""}
+          </p>
         </div>
         <span className={`badge ${status.badge}`}>{status.label}</span>
       </div>
@@ -190,7 +193,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ co
           <div className="svc-meta">
             <div className="meta-row">
               <span>🏷️ پلن</span>
-              <b>{order.plan.title}</b>
+              <b>{order.plan?.title ?? "شارژ کیف پول"}</b>
             </div>
             <div className="meta-row">
               <span>🌍 لوکیشن</span>

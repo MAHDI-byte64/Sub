@@ -8,7 +8,10 @@ import { getCurrentUser } from "@/lib/auth";
 import { saveReceipt } from "@/lib/uploads";
 import { notifyAdmin } from "@/lib/telegram";
 import { asBool, asNum, getSettings } from "@/lib/settings";
-import { createTrialService } from "@/lib/provision";
+import { createTrialService, fulfillOrder } from "@/lib/provision";
+import { creditWallet, debitWallet, WalletError } from "@/lib/wallet";
+import { notifyUser } from "@/lib/notify";
+import { payReferralBonus } from "@/lib/referral";
 import { toman } from "@/lib/format";
 
 export type ShopState = { error?: string; success?: string };
@@ -105,21 +108,72 @@ export async function createOrderAction(_prev: ShopState, formData: FormData): P
     }
   }
 
+  const payable = Math.max(0, plan.priceToman - discountAmount);
+  const settings = await getSettings();
+  const useWallet = String(formData.get("payMethod") || "") === "wallet";
+
   const orderCode = await newOrderCode();
-  await db.order.create({
+  const order = await db.order.create({
     data: {
       code: orderCode,
       userId: user.id,
+      kind: "plan",
+      payMethod: useWallet ? "wallet" : "card",
       planId: plan.id,
       panelId,
       renewServiceId,
       amount: plan.priceToman,
       discountId,
       discountAmount,
-      payable: Math.max(0, plan.priceToman - discountAmount),
+      payable,
       status: "awaiting_receipt",
     },
   });
+
+  // پرداخت آنی از کیف پول: بدون رسید و بدون انتظار
+  if (useWallet && asBool(settings.wallet_enabled)) {
+    const wallet = await db.user.findUniqueOrThrow({ where: { id: user.id } });
+    if (wallet.balance < payable) {
+      await db.order.update({ where: { id: order.id }, data: { status: "canceled" } });
+      return { error: "موجودی کیف پول کافی نیست. ابتدا حساب خود را شارژ کنید." };
+    }
+
+    try {
+      await debitWallet(user.id, payable, renewServiceId ? "renew" : "purchase", plan.title, order.id);
+      await db.order.update({
+        where: { id: order.id },
+        data: { status: "pending_review", paidAt: new Date() },
+      });
+      await fulfillOrder(order.id);
+      if (discountId) {
+        await db.discount.update({ where: { id: discountId }, data: { usedCount: { increment: 1 } } });
+      }
+      await payReferralBonus(user.id, payable);
+      await notifyUser({
+        userId: user.id,
+        kind: "order_approved",
+        title: "سرویس شما آماده است",
+        body: `${plan.title} با پرداخت از کیف پول فعال شد.`,
+        href: "/dashboard",
+      });
+      await notifyAdmin(
+        `💰 خرید آنی از کیف پول\nکاربر: ${user.email}\nپلن: ${plan.title}\nمبلغ: ${toman(payable)}`,
+        "order",
+      );
+    } catch (err) {
+      // در صورت خطا مبلغ برمی‌گردد تا کاربر ضرر نکند
+      await creditWallet(user.id, payable, "refund", `بازگشت وجه سفارش ${orderCode}`, order.id).catch(() => null);
+      await db.order.update({
+        where: { id: order.id },
+        data: { status: "failed", adminNote: (err as Error).message.slice(0, 300) },
+      });
+      return {
+        error: `تحویل سرویس ناموفق بود و مبلغ به کیف پول شما برگشت. لطفاً با پشتیبانی تماس بگیرید. (${(err as Error).message})`,
+      };
+    }
+
+    redirect(`/dashboard?paid=${orderCode}`);
+  }
 
   redirect(`/dashboard/orders/${orderCode}`);
 }
@@ -174,7 +228,7 @@ export async function uploadReceiptAction(_prev: ShopState, formData: FormData):
       "🧾 <b>رسید پرداخت جدید</b>",
       `کد سفارش: <code>${order.code}</code>`,
       `کاربر: ${user.email}`,
-      `پلن: ${order.plan.title}`,
+      `پلن: ${order.plan?.title ?? "شارژ کیف پول"}`,
       `مبلغ: ${toman(order.payable)}`,
       ref ? `کد پیگیری: ${ref}` : "",
     ]
@@ -220,4 +274,72 @@ export async function requestTrialAction(_prev: ShopState, formData: FormData): 
   await notifyAdmin(`🎁 اکانت تست رایگان برای ${user.email} ساخته شد.`, "system");
   revalidatePath("/dashboard");
   return { success: "اکانت تست شما ساخته شد. در بخش سرویس‌ها آن را ببینید." };
+}
+
+/* ---------------------------- کیف پول و دعوت ---------------------------- */
+
+/** ثبت سفارش شارژ کیف پول (کارت‌به‌کارت) */
+export async function createTopupAction(_prev: ShopState, formData: FormData): Promise<ShopState> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login?next=%2Fdashboard%2Fwallet");
+
+  const settings = await getSettings();
+  if (!asBool(settings.wallet_enabled)) return { error: "کیف پول در حال حاضر غیرفعال است." };
+
+  const amount = Number(formData.get("amount") || 0);
+  const min = asNum(settings.min_topup, 50_000);
+  if (!Number.isFinite(amount) || amount < min) {
+    return { error: `حداقل مبلغ شارژ ${toman(min)} است.` };
+  }
+
+  const code = await newOrderCode();
+  await db.order.create({
+    data: {
+      code,
+      userId: user.id,
+      kind: "topup",
+      payMethod: "card",
+      amount: Math.round(amount),
+      payable: Math.round(amount),
+      status: "awaiting_receipt",
+    },
+  });
+
+  redirect(`/dashboard/orders/${code}`);
+}
+
+/** روشن/خاموش کردن تمدید خودکار یک سرویس */
+export async function toggleAutoRenewAction(_prev: ShopState, formData: FormData): Promise<ShopState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "ابتدا وارد حساب خود شوید." };
+
+  const settings = await getSettings();
+  if (!asBool(settings.auto_renew_enabled)) return { error: "تمدید خودکار غیرفعال است." };
+
+  const id = String(formData.get("serviceId") || "");
+  const service = await db.service.findFirst({ where: { id, userId: user.id } });
+  if (!service) return { error: "سرویس پیدا نشد." };
+  if (!service.planId) return { error: "این سرویس پلن مشخصی ندارد و قابل تمدید خودکار نیست." };
+
+  await db.service.update({ where: { id: service.id }, data: { autoRenew: !service.autoRenew } });
+  revalidatePath("/dashboard");
+  return {
+    success: service.autoRenew
+      ? "تمدید خودکار خاموش شد."
+      : "تمدید خودکار روشن شد؛ در زمان انقضا از کیف پول تمدید می‌شود.",
+  };
+}
+
+/** خوانده‌شدن همه اعلان‌ها */
+export async function markNotificationsReadAction(): Promise<ShopState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "ابتدا وارد حساب خود شوید." };
+
+  await db.notification.updateMany({
+    where: { userId: user.id, readAt: null },
+    data: { readAt: new Date() },
+  });
+  revalidatePath("/dashboard/notifications");
+  revalidatePath("/", "layout");
+  return { success: "همه اعلان‌ها خوانده شد." };
 }

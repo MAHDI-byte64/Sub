@@ -1,5 +1,5 @@
 import { getSettings, SETTING_DEFS } from "@/lib/settings";
-import { saveSettingsAction, testTelegramAction } from "@/app/actions/admin";
+import { saveSettingsAction, setupTelegramWebhookAction, testTelegramAction } from "@/app/actions/admin";
 import ActionForm from "@/components/ActionForm";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +28,12 @@ export default async function AdminSettingsPage() {
             buttonClass="btn btn-sm"
             inline
           />
+          <ActionForm
+            action={setupTelegramWebhookAction}
+            submitLabel="🤖 فعال‌سازی پاسخ به تیکت از تلگرام"
+            buttonClass="btn btn-sm"
+            inline
+          />
           <a className="btn btn-sm" href="/api/admin/backup">
             💾 دانلود پشتیبان دیتابیس
           </a>
@@ -39,6 +45,10 @@ export default async function AdminSettingsPage() {
           </a>
         </div>
         <p className="field-hint" style={{ marginTop: 10 }}>
+          با فعال‌سازی ربات، اعلان هر تیکت در تلگرام قابل «ریپلای» می‌شود و پاسخ شما مستقیم برای مشتری
+          ثبت می‌شود (نیازمند دامنه و HTTPS). دستور <code>/stats</code> هم خلاصهٔ فروش را می‌دهد.
+        </p>
+        <p className="field-hint">
           فایل پشتیبان شامل کل دیتابیس (کاربران، سفارش‌ها، سرویس‌ها و تنظیمات) است؛ جای امنی نگه دارید.
         </p>
       </div>

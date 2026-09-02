@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { createOrderAction, type ShopState } from "@/app/actions/shop";
+import { toman } from "@/lib/format";
 import SubmitButton from "./SubmitButton";
 
 type PanelOption = { id: string; flag: string; location: string };
@@ -10,13 +11,17 @@ export default function CheckoutForm({
   plan,
   panels,
   renew,
+  wallet,
 }: {
   plan: { id: string; title: string; priceToman: number; priceLabel: string };
   panels: PanelOption[];
   renew: { id: string; remark: string } | null;
+  wallet: { enabled: boolean; balance: number };
 }) {
   const [state, formAction] = useActionState<ShopState, FormData>(createOrderAction, {});
   const [code, setCode] = useState("");
+  const canPayWallet = wallet.enabled && wallet.balance >= plan.priceToman;
+  const [payMethod, setPayMethod] = useState<"card" | "wallet">(canPayWallet ? "wallet" : "card");
   const [checking, setChecking] = useState(false);
   const [discountMsg, setDiscountMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -91,11 +96,43 @@ export default function CheckoutForm({
         ) : null}
       </div>
 
-      <SubmitButton className="btn btn-primary btn-block" pendingText="در حال ثبت سفارش…">
-        ثبت سفارش و رفتن به پرداخت
+      {wallet.enabled ? (
+        <div className="field">
+          <label>روش پرداخت</label>
+          <input type="hidden" name="payMethod" value={payMethod} />
+          <div className="pay-options">
+            <button
+              type="button"
+              className={`pay-option${payMethod === "wallet" ? " is-active" : ""}${canPayWallet ? "" : " is-disabled"}`}
+              onClick={() => canPayWallet && setPayMethod("wallet")}
+              disabled={!canPayWallet}
+            >
+              <b>💰 کیف پول</b>
+              <small>
+                موجودی: {toman(wallet.balance)}
+                {canPayWallet ? " — تحویل آنی، بدون رسید" : " — موجودی کافی نیست"}
+              </small>
+            </button>
+            <button
+              type="button"
+              className={`pay-option${payMethod === "card" ? " is-active" : ""}`}
+              onClick={() => setPayMethod("card")}
+            >
+              <b>💳 کارت‌به‌کارت</b>
+              <small>ارسال رسید و تأیید پشتیبانی</small>
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <SubmitButton className="btn btn-primary btn-block btn-lg" pendingText="در حال ثبت سفارش…">
+        {payMethod === "wallet" ? "پرداخت از کیف پول و دریافت آنی" : "ثبت سفارش و رفتن به پرداخت"}
       </SubmitButton>
       <span className="field-hint center">
-        با ثبت سفارش، قوانین سایت را می‌پذیرید. پرداخت به‌صورت کارت‌به‌کارت انجام می‌شود.
+        با ثبت سفارش، قوانین سایت را می‌پذیرید.
+        {payMethod === "wallet"
+          ? " مبلغ از کیف پول کسر و سرویس بلافاصله ساخته می‌شود."
+          : " پرداخت به‌صورت کارت‌به‌کارت انجام می‌شود."}
       </span>
     </form>
   );
