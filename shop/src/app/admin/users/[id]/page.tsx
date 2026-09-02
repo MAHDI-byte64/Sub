@@ -9,6 +9,7 @@ import {
   createServiceForUserAction,
   extendServiceAction,
   resetServiceTrafficAction,
+  rotateServiceAdminAction,
   resetTrialFlagAction,
   toggleUserBlockAction,
   toggleServiceAction,
@@ -196,6 +197,15 @@ export default async function AdminUserDetail({
                       action={toggleServiceAction}
                       submitLabel={service.status === "active" ? "غیرفعال" : "فعال"}
                       buttonClass="btn btn-sm"
+                      inline
+                    >
+                      <input type="hidden" name="id" value={service.id} />
+                    </ActionForm>
+                    <ActionForm
+                      action={rotateServiceAdminAction}
+                      submitLabel="بازتولید کانفیگ"
+                      buttonClass="btn btn-sm"
+                      confirm="کانفیگ تازه ساخته شود؟ UUID و لینک اشتراک عوض می‌شود و دستگاه‌های فعلی قطع می‌شوند."
                       inline
                     >
                       <input type="hidden" name="id" value={service.id} />

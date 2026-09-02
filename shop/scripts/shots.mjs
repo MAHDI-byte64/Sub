@@ -97,9 +97,11 @@ try {
   await user.fill("#body", "سلام، سرعت سرویس امروز کم شده. لطفاً بررسی کنید.");
   await Promise.all([user.waitForURL("**/dashboard/tickets/**"), user.click("button:has-text('ارسال تیکت')")]);
 
-  const serviceUrl = await user.evaluate(() => {
-    return null;
-  });
+  // آدرس صفحه جزئیات سرویس تحویل‌شده
+  await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
+  await user.click("a:has-text('کانفیگ و QR')");
+  await user.waitForSelector("text=کانفیگ مستقیم", { timeout: 30000 });
+  const serviceUrl = user.url();
 
   // یک سفارش پرداخت‌نشده برای نمایش کارت بانکی
   await user.goto(`${BASE}/plans`, { waitUntil: "domcontentloaded" });
@@ -124,6 +126,7 @@ try {
   ];
   const userPages = [
     ["dashboard", "/dashboard"],
+    ["service-detail", serviceUrl.replace(BASE, "")],
     ["orders", "/dashboard/orders"],
     ["order-detail", orderUrl.replace(BASE, "")],
     ["payment", payUrl.replace(BASE, "")],
@@ -216,7 +219,6 @@ try {
           : ""),
     );
   }
-  void serviceUrl;
 } catch (err) {
   console.error("خطا:", err.message);
 } finally {

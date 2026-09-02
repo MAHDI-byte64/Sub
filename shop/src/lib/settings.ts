@@ -31,6 +31,23 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "referral_percent", label: "درصد پاداش دعوت", type: "number", group: "کیف پول و دعوت", default: "10", hint: "درصدی از اولین خرید کاربر دعوت‌شده که به کیف پول دعوت‌کننده اضافه می‌شود. صفر = غیرفعال." },
   { key: "auto_renew_enabled", label: "تمدید خودکار از کیف پول", type: "bool", group: "کیف پول و دعوت", default: "1" },
 
+  {
+    key: "rotate_enabled",
+    label: "کاربر بتواند کانفیگ را بازتولید کند",
+    type: "bool",
+    group: "امنیت سرویس",
+    default: "1",
+    hint: "با بازتولید، UUID و لینک اشتراک عوض می‌شود و دستگاه‌هایی که کانفیگ قدیمی دارند قطع می‌شوند.",
+  },
+  {
+    key: "rotate_cooldown_minutes",
+    label: "فاصله مجاز بین دو بازتولید (دقیقه)",
+    type: "number",
+    group: "امنیت سرویس",
+    default: "30",
+    hint: "برای جلوگیری از فشار روی پنل. مدیر محدودیتی ندارد.",
+  },
+
   { key: "expiry_reminder_days", label: "یادآوری انقضا چند روز قبل", type: "number", group: "اطلاع‌رسانی", default: "3" },
   { key: "quota_warn_percent", label: "هشدار اتمام حجم در چند درصد", type: "number", group: "اطلاع‌رسانی", default: "85" },
 

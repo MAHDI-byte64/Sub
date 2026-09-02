@@ -12,6 +12,8 @@ import {
   fulfillOrder,
   panelClient,
   removeService,
+  rotateCooldownLeft,
+  rotateService,
   serviceLinks,
   syncService,
 } from "../src/lib/provision";
@@ -240,6 +242,93 @@ async function scenario(opts: ScenarioOptions) {
     "تنظیمات کپی‌شده بعد از تمدید حفظ شد",
     afterRenew?.comment === "vip-template" && afterRenew?.tgId === "999888777",
     [afterRenew?.comment, afterRenew?.tgId],
+  );
+
+  console.log("→ بازتولید کانفیگ (باطل‌کردن لینک قبلی)");
+  const beforeRotate = await db.service.findUniqueOrThrow({ where: { id: service.id } });
+  const oldRefs = serviceRefs(beforeRotate);
+  const oldUuids = oldRefs.map((r) => r.uuid ?? beforeRotate.uuid);
+  const oldSub = (await serviceLinks(service.id)).subscription;
+
+  const rotated = (await rotateService(service.id)).service;
+  const rotatedRefs = serviceRefs(rotated);
+
+  check("UUID سرویس عوض شد", rotated.uuid !== beforeRotate.uuid, [beforeRotate.uuid, rotated.uuid]);
+  check("subId (آدرس لینک اشتراک) عوض شد", rotated.subId !== beforeRotate.subId, [
+    beforeRotate.subId,
+    rotated.subId,
+  ]);
+  check("شمارنده بازتولید یک واحد بالا رفت", rotated.rotateCount === beforeRotate.rotateCount + 1);
+  check("زمان بازتولید ثبت شد", Boolean(rotated.rotatedAt));
+
+  const rotatedClients: (XuiRawClient | undefined)[] = [];
+  for (const ref of rotatedRefs) {
+    const clients = await panelClient(panel).listClients(ref.inboundId);
+    rotatedClients.push(clients.find((c) => c.email === ref.email));
+  }
+  check(
+    "UUID روی همهٔ اینباندهای پنل عوض شد",
+    rotatedClients.every((c, i) => c && c.id !== oldUuids[i]),
+    rotatedClients.map((c) => c?.id),
+  );
+  check(
+    "subId تازه روی همهٔ اینباندها ثبت شد",
+    rotatedClients.every((c) => c?.subId === rotated.subId),
+    rotatedClients.map((c) => c?.subId),
+  );
+  check(
+    "هیچ کلاینتی با UUID قدیمی روی پنل نماند",
+    rotatedClients.every((c) => !oldUuids.includes(String(c?.id))),
+    oldUuids,
+  );
+  check(
+    "حجم و انقضای سرویس دست‌نخورده ماند",
+    rotated.totalBytes === renewed.totalBytes &&
+      rotated.expiresAt?.getTime() === renewed.expiresAt?.getTime(),
+    [rotated.totalBytes, rotated.expiresAt],
+  );
+  check(
+    "مصرف کاربر بعد از بازتولید صفر نشد (سوءاستفاده ممکن نیست)",
+    (await syncService(service.id, true)).usedBytes === 3 * GB,
+  );
+  check(
+    "نام کلاینت روی پنل تغییر نکرد",
+    rotatedRefs.every((ref, i) => ref.email === oldRefs[i].email),
+    rotatedRefs.map((r) => r.email),
+  );
+
+  if (opts.expect === "v2") {
+    check(
+      "در نسخه ۲ هر اینباند UUID تازهٔ خودش را گرفت",
+      rotatedRefs[0].uuid !== rotatedRefs[1].uuid,
+      rotatedRefs.map((r) => r.uuid),
+    );
+  } else {
+    check(
+      "در نسخه ۳ یک UUID تازه روی هر دو اینباند نشست",
+      rotatedRefs[0].uuid === rotatedRefs[1].uuid,
+      rotatedRefs.map((r) => r.uuid),
+    );
+  }
+
+  const newLinks = await serviceLinks(service.id);
+  check("لینک اشتراک تازه با قبلی فرق دارد", newLinks.subscription !== oldSub, [
+    oldSub,
+    newLinks.subscription,
+  ]);
+  check(
+    "کانفیگ‌های تازه به UUID جدید اشاره می‌کنند",
+    newLinks.configs.length === 2 && newLinks.configs.every((c) => !oldUuids.some((u) => c.uri.includes(u))),
+    newLinks.configs.map((c) => c.uri.slice(0, 48)),
+  );
+
+  check(
+    "فاصله مجاز بین دو بازتولید رعایت می‌شود",
+    rotateCooldownLeft(rotated, 30 * 60_000) > 0 && rotateCooldownLeft(rotated, 0) === 0,
+  );
+  check(
+    "بعد از پایان فاصله مجاز، بازتولید دوباره آزاد است",
+    rotateCooldownLeft(rotated, 30 * 60_000, Date.now() + 31 * 60_000) === 0,
   );
 
   console.log("→ اکانت تست رایگان");

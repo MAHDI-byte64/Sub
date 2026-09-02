@@ -14,6 +14,7 @@ import {
   removeService,
   renewServiceOnPanel,
   resetServiceTraffic,
+  rotateService,
   setServiceEnabled,
   syncService,
 } from "@/lib/provision";
@@ -571,6 +572,39 @@ export async function resetServiceTrafficAction(_prev: AdminState, formData: For
     return { success: "مصرف سرویس صفر شد." };
   } catch (err) {
     return { error: `صفر کردن مصرف ناموفق بود: ${(err as Error).message}` };
+  }
+}
+
+/** بازتولید کانفیگ سرویس توسط مدیر (بدون محدودیت زمانی) */
+export async function rotateServiceAdminAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const id = str(formData, "id");
+  const service = await db.service.findUnique({ where: { id }, include: { user: true } });
+  if (!service) return { error: "سرویس پیدا نشد." };
+
+  try {
+    const { failed } = await rotateService(id);
+    await logAdmin("service_rotated", service.user.email, service.clientEmail);
+    await notifyUser({
+      userId: service.userId,
+      kind: "rotated",
+      title: "کانفیگ سرویس شما بازتولید شد",
+      body: "شناسه اتصال و لینک اشتراک عوض شد. لینک تازه را از پنل کاربری بردارید؛ کانفیگ قبلی دیگر کار نمی‌کند.",
+      href: `/dashboard/services/${service.id}`,
+      serviceId: service.id,
+    });
+    revalidatePath("/admin/services");
+    revalidatePath(`/admin/users/${service.userId}`);
+
+    return {
+      success: failed.length
+        ? `کانفیگ بازتولید شد، اما اینباند ${failed.map((f) => f.inboundId).join("، ")} به‌روزرسانی نشد.`
+        : "کانفیگ بازتولید شد؛ UUID و لینک اشتراک تازه است و اتصال‌های قبلی قطع شدند.",
+    };
+  } catch (err) {
+    return { error: `بازتولید کانفیگ ناموفق بود: ${(err as Error).message}` };
   }
 }
 

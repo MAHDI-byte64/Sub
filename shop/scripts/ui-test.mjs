@@ -160,6 +160,37 @@ try {
   check("کانفیگ VLESS نمایش داده شد", detail.includes("vless://"), detail.slice(0, 200));
   check("QR کد رندر شد", (await user.locator("img[alt='QR لینک اشتراک']").count()) > 0);
 
+  console.log("→ بازتولید کانفیگ از پنل کاربری");
+  const subBefore = (await user.textContent(".copy-box code")) ?? "";
+  const uuidBefore = (detail.match(/vless:\/\/([0-9a-f-]{36})/) ?? [])[1] ?? "";
+  check("بخش امنیت سرویس نمایش داده شد", await user.isVisible("text=بازتولید کانفیگ"));
+
+  await user.click("button:has-text('بازتولید کانفیگ و قطع دستگاه‌های قبلی')");
+  check("پیام هشدار قبل از بازتولید نشان داده شد", await user.isVisible("text=مطمئنید؟ بعد از این کار"));
+  await user.click("button:has-text('بله، کانفیگ تازه بساز')");
+  await user.waitForSelector(".sec-panel .alert-success, .sec-panel .alert-error", { timeout: 30000 });
+  const rotateMsg = (await user.textContent(".sec-panel .alert-success, .sec-panel .alert-error")) ?? "";
+  check("کانفیگ تازه ساخته شد", rotateMsg.includes("کانفیگ تازه"), rotateMsg);
+
+  await user.reload({ waitUntil: "domcontentloaded" });
+  const afterRotate = (await user.textContent("body")) ?? "";
+  const subAfter = (await user.textContent(".copy-box code")) ?? "";
+  check("آدرس لینک اشتراک عوض شد", subAfter !== subBefore && subAfter.includes("/sub/"), [
+    subBefore.slice(-12),
+    subAfter.slice(-12),
+  ]);
+  check("UUID قدیمی دیگر در کانفیگ‌ها نیست", Boolean(uuidBefore) && !afterRotate.includes(uuidBefore), uuidBefore);
+  check(
+    "تاریخ و تعداد بازتولید ثبت شد",
+    afterRotate.includes("آخرین بازتولید کانفیگ") && !afterRotate.includes("تا به حال انجام نشده"),
+  );
+
+  await user.click("button:has-text('بازتولید کانفیگ و قطع دستگاه‌های قبلی')");
+  await user.click("button:has-text('بله، کانفیگ تازه بساز')");
+  await user.waitForSelector(".sec-panel .alert-error", { timeout: 30000 });
+  const cooldownMsg = (await user.textContent(".sec-panel .alert-error")) ?? "";
+  check("بازتولید پیاپی با پیام فاصله مجاز رد شد", cooldownMsg.includes("دقیقه دیگر"), cooldownMsg);
+
   console.log("→ تیکت پشتیبانی");
   await user.goto(`${BASE}/dashboard/tickets`, { waitUntil: "domcontentloaded" });
   await user.fill("#subject", "تست پشتیبانی");

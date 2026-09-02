@@ -18,6 +18,7 @@ export const NOTIFICATION_ICONS: Record<string, string> = {
   order_rejected: "⚠️",
   wallet_credit: "💰",
   auto_renew: "🔄",
+  rotated: "🔐",
   referral: "🎁",
   service_created: "🌐",
   ticket_reply: "💬",

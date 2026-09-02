@@ -4,8 +4,10 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { serviceLinks, syncService } from "@/lib/provision";
 import { faDate, faNum, formatBytes, remainingDays } from "@/lib/format";
+import { asBool, asNum, getSettings } from "@/lib/settings";
 import CopyButton from "@/components/CopyButton";
 import UsageRing from "@/components/UsageRing";
+import RotateConfigButton from "@/components/RotateConfigButton";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +35,7 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
     include: { panel: true, plan: true },
   });
   const links = await serviceLinks(id);
+  const settings = await getSettings();
 
   const unlimited = service.totalBytes <= 0;
   const remaining = unlimited ? 0 : Math.max(0, service.totalBytes - service.usedBytes);
@@ -43,6 +46,9 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
     : null;
   const timeRatio = days === null ? 1 : totalDays ? Math.max(0, days) / totalDays : 0;
   const expired = service.status === "expired" || (days !== null && days <= 0);
+
+  const rotateEnabled = asBool(settings.rotate_enabled);
+  const rotateCooldown = Math.max(0, asNum(settings.rotate_cooldown_minutes, 30));
 
   return (
     <div>
@@ -166,6 +172,30 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
         </div>
       </div>
 
+      {/* امنیت سرویس */}
+      <div className="card">
+        <div className="card-title">
+          <h3>امنیت سرویس</h3>
+          <span className="badge badge-info">کانفیگ شخصی شماست</span>
+        </div>
+        <p className="field-hint" style={{ marginBottom: 14 }}>
+          کانفیگ و لینک اشتراک را با کسی به اشتراک نگذارید. اگر لینک‌تان جایی منتشر شد یا کسی بدون
+          اجازه از سرویس شما استفاده می‌کند، با یک کلیک کانفیگ تازه بسازید.
+        </p>
+        <RotateConfigButton
+          serviceId={service.id}
+          rotatedAt={service.rotatedAt ? faDate(service.rotatedAt, true) : null}
+          rotateCount={faNum(service.rotateCount)}
+          cooldownMinutes={faNum(rotateCooldown)}
+          disabled={!rotateEnabled || expired}
+          disabledReason={
+            !rotateEnabled
+              ? "بازتولید کانفیگ توسط مدیر غیرفعال شده است. برای تعویض کانفیگ تیکت بزنید."
+              : "این سرویس منقضی شده است؛ برای ساخت کانفیگ تازه ابتدا آن را تمدید کنید."
+          }
+        />
+      </div>
+
       <div className="card">
         <div className="card-title">
           <h3>مشخصات فنی</h3>
@@ -198,6 +228,14 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
               <tr>
                 <th>آخرین به‌روزرسانی مصرف</th>
                 <td>{faDate(service.lastSyncAt, true)}</td>
+              </tr>
+              <tr>
+                <th>آخرین بازتولید کانفیگ</th>
+                <td>
+                  {service.rotatedAt
+                    ? `${faDate(service.rotatedAt, true)} (${faNum(service.rotateCount)} بار)`
+                    : "انجام نشده"}
+                </td>
               </tr>
             </tbody>
           </table>

@@ -10,6 +10,7 @@ export const ACTION_LABELS: Record<string, { label: string; icon: string }> = {
   service_extended: { label: "تمدید دستی سرویس", icon: "➕" },
   service_traffic_reset: { label: "صفر کردن مصرف", icon: "🔄" },
   service_toggled: { label: "تغییر وضعیت سرویس", icon: "🔀" },
+  service_rotated: { label: "بازتولید کانفیگ", icon: "🔐" },
   service_deleted: { label: "حذف سرویس", icon: "🗑️" },
   services_synced: { label: "همگام‌سازی همه سرویس‌ها", icon: "🔃" },
   services_pruned: { label: "پاک‌سازی سرویس‌های منقضی", icon: "🧹" },

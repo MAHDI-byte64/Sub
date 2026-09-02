@@ -8,7 +8,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { saveReceipt } from "@/lib/uploads";
 import { notifyAdmin } from "@/lib/telegram";
 import { asBool, asNum, getSettings } from "@/lib/settings";
-import { createTrialService, fulfillOrder } from "@/lib/provision";
+import { createTrialService, fulfillOrder, rotateCooldownLeft, rotateService } from "@/lib/provision";
 import { creditWallet, debitWallet, WalletError } from "@/lib/wallet";
 import { notifyUser } from "@/lib/notify";
 import { payReferralBonus } from "@/lib/referral";
@@ -328,6 +328,62 @@ export async function toggleAutoRenewAction(_prev: ShopState, formData: FormData
       ? "تمدید خودکار خاموش شد."
       : "تمدید خودکار روشن شد؛ در زمان انقضا از کیف پول تمدید می‌شود.",
   };
+}
+
+/**
+ * بازتولید کانفیگ سرویس: UUID و لینک اشتراک عوض می‌شوند تا هر دستگاهی که
+ * کانفیگ قدیمی را دارد قطع شود. حجم، اعتبار و مصرف دست‌نخورده می‌مانند.
+ */
+export async function rotateServiceAction(_prev: ShopState, formData: FormData): Promise<ShopState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "ابتدا وارد حساب خود شوید." };
+
+  const settings = await getSettings();
+  if (!asBool(settings.rotate_enabled)) {
+    return { error: "بازتولید کانفیگ در حال حاضر غیرفعال است. با پشتیبانی تماس بگیرید." };
+  }
+
+  const id = String(formData.get("serviceId") || "");
+  const service = await db.service.findFirst({ where: { id, userId: user.id } });
+  if (!service) return { error: "سرویس پیدا نشد." };
+  if (service.status === "expired") {
+    return { error: "این سرویس منقضی شده است؛ ابتدا آن را تمدید کنید." };
+  }
+
+  const cooldownMs = Math.max(0, asNum(settings.rotate_cooldown_minutes, 30)) * 60_000;
+  const waitMs = rotateCooldownLeft(service, cooldownMs);
+  if (waitMs > 0) {
+    const minutes = Math.max(1, Math.ceil(waitMs / 60_000));
+    return {
+      error: `به‌تازگی کانفیگ این سرویس بازتولید شده است. ${minutes} دقیقه دیگر دوباره امتحان کنید.`,
+    };
+  }
+
+  try {
+    const { failed } = await rotateService(service.id);
+    await notifyUser({
+      userId: user.id,
+      kind: "rotated",
+      title: "کانفیگ سرویس بازتولید شد",
+      body: "لینک اشتراک و شناسه اتصال عوض شد. لینک تازه را در برنامه جایگزین کنید؛ دستگاه‌های قبلی دیگر وصل نمی‌شوند.",
+      href: `/dashboard/services/${service.id}`,
+      serviceId: service.id,
+    });
+    revalidatePath("/dashboard");
+    revalidatePath(`/dashboard/services/${service.id}`);
+
+    if (failed.length) {
+      return {
+        success:
+          "کانفیگ بازتولید شد، اما یکی از سرورها به‌روزرسانی نشد. اگر بخشی از کانفیگ‌ها کار نکرد، به پشتیبانی اطلاع دهید.",
+      };
+    }
+    return {
+      success: "کانفیگ تازه ساخته شد. لینک اشتراک جدید را در برنامه جایگزین کنید؛ لینک قبلی دیگر کار نمی‌کند.",
+    };
+  } catch (err) {
+    return { error: `بازتولید کانفیگ ناموفق بود: ${(err as Error).message}` };
+  }
 }
 
 /** خوانده‌شدن همه اعلان‌ها */

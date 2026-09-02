@@ -207,6 +207,9 @@ model Service {
   isTrial     Boolean   @default(false)
   /// تمدید خودکار از کیف پول در زمان انقضا
   autoRenew   Boolean   @default(false)
+  /// آخرین بازتولید کانفیگ (تعویض UUID و لینک اشتراک)
+  rotatedAt   DateTime?
+  rotateCount Int       @default(0)
   status      String    @default("active")
   lastSyncAt  DateTime?
   createdAt   DateTime  @default(now())

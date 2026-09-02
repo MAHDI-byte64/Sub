@@ -621,6 +621,110 @@ export async function setServiceEnabled(serviceId: string, enabled: boolean): Pr
   });
 }
 
+/* -------------------------------------------------------------------------- */
+/*                     بازتولید کانفیگ (باطل‌کردن لینک قدیمی)                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * چند میلی‌ثانیه تا مجاز شدن بازتولید بعدی باقی مانده است (صفر یعنی همین حالا مجاز است).
+ */
+export function rotateCooldownLeft(
+  service: Pick<Service, "rotatedAt">,
+  cooldownMs: number,
+  now = Date.now(),
+): number {
+  if (!service.rotatedAt || cooldownMs <= 0) return 0;
+  return Math.max(0, service.rotatedAt.getTime() + cooldownMs - now);
+}
+
+export type RotateResult = {
+  service: Service;
+  /** اینباندهایی که به‌روزرسانی آن‌ها روی پنل انجام نشد */
+  failed: { inboundId: number; message: string }[];
+};
+
+/**
+ * UUID و subId سرویس را عوض می‌کند تا هر کسی که کانفیگ یا لینک اشتراک قدیمی
+ * را دارد دیگر نتواند وصل شود.
+ *
+ * نام کلاینت (email) عمداً دست‌نخورده می‌ماند: آمار مصرف در پنل به نام کلاینت
+ * گره خورده است، پس با ثابت‌ماندن نام، حجم مصرف‌شده و سهمیه سر جای خود می‌مانند
+ * و کاربر نمی‌تواند با بازتولید پیاپی، مصرفش را صفر کند.
+ */
+export async function rotateService(serviceId: string): Promise<RotateResult> {
+  const service = await db.service.findUniqueOrThrow({
+    where: { id: serviceId },
+    include: { panel: true },
+  });
+  const client = panelClient(service.panel);
+  const refs = serviceRefs(service);
+  const isV3 = (await client.apiGeneration()) === "v3";
+
+  const newSubId = randomBytes(8).toString("hex");
+
+  // سهمیه و انقضای فعلی از پنل خوانده می‌شود تا بازتولید چیزی را جابه‌جا نکند
+  const stat = await client.getClientTraffics(refs[0].email).catch(() => null);
+  const currentTotal = stat?.total ?? service.totalBytes;
+  const currentExpiry = stat?.expiryTime ?? (service.expiresAt?.getTime() ?? 0);
+  const enable = service.status !== "disabled";
+
+  const nextRefs: ClientRef[] = [];
+  const failed: { inboundId: number; message: string }[] = [];
+
+  // نسخه ۳: یک کلاینت روی همهٔ اینباندها؛ یک UUID تازه برای همه
+  const sharedUuid = randomUUID();
+
+  for (const [index, ref] of refs.entries()) {
+    if (isV3 && index > 0) {
+      // همان کلاینت است؛ فقط رفرنس را با UUID تازه نگه می‌داریم
+      nextRefs.push({ ...ref, uuid: sharedUuid });
+      continue;
+    }
+
+    const nextUuid = isV3 ? sharedUuid : randomUUID();
+    const existing = await fetchClient(client, ref);
+    const spec = buildClientFromTemplate(existing, {
+      uuid: nextUuid,
+      email: ref.email,
+      subId: newSubId,
+      totalBytes: currentTotal,
+      expiryTime: currentExpiry,
+      deviceLimit: service.deviceLimit,
+      flow: service.panel.flow,
+      enable,
+    });
+
+    try {
+      await client.updateClient(ref.inboundId, ref.uuid ?? service.uuid, spec);
+      nextRefs.push({ ...ref, uuid: nextUuid });
+    } catch (err) {
+      failed.push({ inboundId: ref.inboundId, message: (err as Error).message });
+      nextRefs.push({ ...ref, uuid: ref.uuid ?? service.uuid });
+    }
+  }
+
+  const rotatedAny = nextRefs.some((ref, i) => ref.uuid !== (refs[i].uuid ?? service.uuid));
+  if (!rotatedAny) {
+    throw new XuiError(
+      `بازتولید کانفیگ روی پنل انجام نشد${failed[0] ? `: ${failed[0].message}` : "."}`,
+    );
+  }
+
+  const updated = await db.service.update({
+    where: { id: service.id },
+    data: {
+      uuid: nextRefs[0].uuid ?? sharedUuid,
+      subId: newSubId,
+      clientRefs: JSON.stringify(nextRefs),
+      rotatedAt: new Date(),
+      rotateCount: { increment: 1 },
+      lastSyncAt: new Date(),
+    },
+  });
+
+  return { service: updated, failed };
+}
+
 /** صفر کردن مصرف سرویس روی پنل و در دیتابیس */
 export async function resetServiceTraffic(serviceId: string): Promise<void> {
   const service = await db.service.findUniqueOrThrow({

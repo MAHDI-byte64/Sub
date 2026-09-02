@@ -4,6 +4,7 @@ import {
   deleteServiceAction,
   pruneExpiredServicesAction,
   resetServiceTrafficAction,
+  rotateServiceAdminAction,
   syncAllServicesAction,
   syncServiceAction,
   toggleServiceAction,
@@ -214,6 +215,15 @@ export default async function AdminServicesPage({
                           submitLabel="صفر"
                           buttonClass="btn btn-sm"
                           confirm="مصرف این سرویس صفر شود؟"
+                          inline
+                        >
+                          <input type="hidden" name="id" value={service.id} />
+                        </ActionForm>
+                        <ActionForm
+                          action={rotateServiceAdminAction}
+                          submitLabel="کانفیگ تازه"
+                          buttonClass="btn btn-sm"
+                          confirm="کانفیگ تازه ساخته شود؟ UUID و لینک اشتراک عوض می‌شود و دستگاه‌های فعلی قطع می‌شوند."
                           inline
                         >
                           <input type="hidden" name="id" value={service.id} />
