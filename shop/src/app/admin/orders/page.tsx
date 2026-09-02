@@ -145,8 +145,22 @@ export default async function AdminOrdersPage({
                           <td>{order.panel ? `${order.panel.flag} ${order.panel.location}` : "انتخاب خودکار"}</td>
                         </tr>
                         <tr>
+                          <th>روش پرداخت</th>
+                          <td>
+                            {order.payMethod === "online"
+                              ? `🏦 درگاه آنلاین${order.gateway ? ` (${order.gateway})` : ""}`
+                              : order.payMethod === "wallet"
+                                ? "💰 کیف پول"
+                                : "💳 کارت‌به‌کارت"}
+                          </td>
+                        </tr>
+                        <tr>
                           <th>کد پیگیری</th>
-                          <td className="mono">{order.receiptRef || "—"}</td>
+                          <td className="mono">
+                            {order.payMethod === "online"
+                              ? order.bankRef || order.gatewayRef || "—"
+                              : order.receiptRef || "—"}
+                          </td>
                         </tr>
                         <tr>
                           <th>تاریخ ثبت</th>

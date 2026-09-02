@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { asBool, asNum, getSettings } from "@/lib/settings";
 import { faDate, faNum, relativeTime, toman } from "@/lib/format";
 import { WALLET_KIND } from "@/lib/wallet";
+import { gatewayMin, gatewayReady } from "@/lib/gateway";
 import TopupForm from "@/components/TopupForm";
 import CopyButton from "@/components/CopyButton";
 
@@ -69,7 +70,10 @@ export default async function WalletPage() {
             <div className="card-title">
               <h3>➕ شارژ کیف پول</h3>
             </div>
-            <TopupForm min={asNum(settings.min_topup, 50_000)} />
+            <TopupForm
+              min={asNum(settings.min_topup, 50_000)}
+              online={{ enabled: gatewayReady(settings), min: gatewayMin(settings) }}
+            />
           </div>
         ) : null}
 

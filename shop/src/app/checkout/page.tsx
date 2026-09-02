@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { deviceLabel, planDaysLabel, planVolumeLabel, toman } from "@/lib/format";
 import { asBool, getSettings } from "@/lib/settings";
+import { gatewayMin, gatewayReady } from "@/lib/gateway";
 import CheckoutForm from "@/components/CheckoutForm";
 
 export const dynamic = "force-dynamic";
@@ -101,6 +102,7 @@ export default async function CheckoutPage({
             panels={panels.map((p) => ({ id: p.id, flag: p.flag, location: p.location }))}
             renew={renewService ? { id: renewService.id, remark: renewService.remark } : null}
             wallet={{ enabled: asBool(settings.wallet_enabled), balance: wallet.balance }}
+            online={{ enabled: gatewayReady(settings), min: gatewayMin(settings) }}
           />
         </div>
       </div>

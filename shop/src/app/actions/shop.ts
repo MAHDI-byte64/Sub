@@ -9,6 +9,7 @@ import { saveReceipt } from "@/lib/uploads";
 import { notifyAdmin } from "@/lib/telegram";
 import { asBool, asNum, getSettings } from "@/lib/settings";
 import { createTrialService, fulfillOrder, rotateCooldownLeft, rotateService } from "@/lib/provision";
+import { gatewayMin, gatewayReady } from "@/lib/gateway";
 import { creditWallet, debitWallet, WalletError } from "@/lib/wallet";
 import { notifyUser } from "@/lib/notify";
 import { payReferralBonus } from "@/lib/referral";
@@ -110,7 +111,16 @@ export async function createOrderAction(_prev: ShopState, formData: FormData): P
 
   const payable = Math.max(0, plan.priceToman - discountAmount);
   const settings = await getSettings();
-  const useWallet = String(formData.get("payMethod") || "") === "wallet";
+  const method = String(formData.get("payMethod") || "");
+  const useWallet = method === "wallet";
+  const useGateway = method === "online" && gatewayReady(settings);
+
+  if (method === "online" && !useGateway) {
+    return { error: "پرداخت آنلاین در حال حاضر فعال نیست. لطفاً روش دیگری انتخاب کنید." };
+  }
+  if (useGateway && payable < gatewayMin(settings)) {
+    return { error: `حداقل مبلغ پرداخت آنلاین ${toman(gatewayMin(settings))} است.` };
+  }
 
   const orderCode = await newOrderCode();
   const order = await db.order.create({
@@ -118,7 +128,7 @@ export async function createOrderAction(_prev: ShopState, formData: FormData): P
       code: orderCode,
       userId: user.id,
       kind: "plan",
-      payMethod: useWallet ? "wallet" : "card",
+      payMethod: useWallet ? "wallet" : useGateway ? "online" : "card",
       planId: plan.id,
       panelId,
       renewServiceId,
@@ -126,9 +136,12 @@ export async function createOrderAction(_prev: ShopState, formData: FormData): P
       discountId,
       discountAmount,
       payable,
-      status: "awaiting_receipt",
+      status: useGateway ? "awaiting_payment" : "awaiting_receipt",
     },
   });
+
+  // پرداخت با درگاه: کاربر مستقیم به صفحهٔ بانک می‌رود
+  if (useGateway) redirect(`/pay/${orderCode}`);
 
   // پرداخت آنی از کیف پول: بدون رسید و بدون انتظار
   if (useWallet && asBool(settings.wallet_enabled)) {
@@ -292,20 +305,29 @@ export async function createTopupAction(_prev: ShopState, formData: FormData): P
     return { error: `حداقل مبلغ شارژ ${toman(min)} است.` };
   }
 
+  const method = String(formData.get("payMethod") || "");
+  const useGateway = method === "online" && gatewayReady(settings);
+  if (method === "online" && !useGateway) {
+    return { error: "پرداخت آنلاین در حال حاضر فعال نیست." };
+  }
+  if (useGateway && amount < gatewayMin(settings)) {
+    return { error: `حداقل مبلغ پرداخت آنلاین ${toman(gatewayMin(settings))} است.` };
+  }
+
   const code = await newOrderCode();
   await db.order.create({
     data: {
       code,
       userId: user.id,
       kind: "topup",
-      payMethod: "card",
+      payMethod: useGateway ? "online" : "card",
       amount: Math.round(amount),
       payable: Math.round(amount),
-      status: "awaiting_receipt",
+      status: useGateway ? "awaiting_payment" : "awaiting_receipt",
     },
   });
 
-  redirect(`/dashboard/orders/${code}`);
+  redirect(useGateway ? `/pay/${code}` : `/dashboard/orders/${code}`);
 }
 
 /** روشن/خاموش کردن تمدید خودکار یک سرویس */

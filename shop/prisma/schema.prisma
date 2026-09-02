@@ -182,8 +182,14 @@ model Order {
   userId         String
   /// plan = خرید سرویس، topup = شارژ کیف پول
   kind           String    @default("plan")
-  /// card = کارت‌به‌کارت، wallet = پرداخت از کیف پول
+  /// card = کارت‌به‌کارت، wallet = پرداخت از کیف پول، online = درگاه پرداخت
   payMethod      String    @default("card")
+  /// شناسهٔ درگاهی که پرداخت با آن شروع شده (zarinpal, idpay, …)
+  gateway        String?
+  /// کد پیگیری درگاه (authority / trackId / trans_id)
+  gatewayRef     String?
+  /// شمارهٔ پیگیری بانکی بعد از تأیید
+  bankRef        String?
   planId         String?
   panelId        String?
   renewServiceId String?

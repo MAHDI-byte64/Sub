@@ -26,6 +26,59 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "payment_note", label: "توضیح صفحه پرداخت", type: "textarea", group: "پرداخت", default: "پس از واریز، تصویر رسید را در همین صفحه بارگذاری کنید. سفارش شما حداکثر تا ۳۰ دقیقه بررسی و سرویس تحویل داده می‌شود." },
   { key: "order_expire_minutes", label: "مهلت پرداخت سفارش (دقیقه)", type: "number", group: "پرداخت", default: "60" },
 
+  {
+    key: "gateway_enabled",
+    label: "پرداخت آنلاین فعال باشد",
+    type: "bool",
+    group: "درگاه پرداخت آنلاین",
+    default: "0",
+    hint: "با فعال‌شدن، مشتری می‌تواند به‌جای کارت‌به‌کارت مستقیم از درگاه پرداخت کند و سرویس در همان لحظه تحویل می‌شود.",
+  },
+  {
+    key: "gateway_driver",
+    label: "درگاه پرداخت",
+    type: "text",
+    group: "درگاه پرداخت آنلاین",
+    default: "zarinpal",
+    hint: "zarinpal | idpay | zibal | payping | nextpay | custom (درگاه دلخواه با تنظیم دستی).",
+  },
+  {
+    key: "gateway_key",
+    label: "کلید / مرچنت درگاه",
+    type: "password",
+    group: "درگاه پرداخت آنلاین",
+    default: "",
+    hint: "زرین‌پال: مرچنت کد · آی‌دی‌پی و نکست‌پی: کلید API · پی‌پینگ: توکن · زیبال: مرچنت.",
+  },
+  {
+    key: "gateway_sandbox",
+    label: "حالت آزمایشی (Sandbox)",
+    type: "bool",
+    group: "درگاه پرداخت آنلاین",
+    default: "0",
+    hint: "برای تست بدون پرداخت واقعی؛ قبل از فروش حتماً خاموشش کنید.",
+  },
+  {
+    key: "gateway_min_amount",
+    label: "حداقل مبلغ پرداخت آنلاین (تومان)",
+    type: "number",
+    group: "درگاه پرداخت آنلاین",
+    default: "10000",
+  },
+  {
+    key: "gateway_custom",
+    label: "تنظیمات درگاه دلخواه (JSON)",
+    type: "textarea",
+    group: "درگاه پرداخت آنلاین",
+    default: "",
+    hint:
+      "فقط وقتی درگاه روی custom است. نمونه: " +
+      '{"requestUrl":"https://gw.example/request","verifyUrl":"https://gw.example/verify",' +
+      '"startUrl":"https://gw.example/pay/{ref}","currency":"rial","auth":"header","authHeader":"X-API-KEY",' +
+      '"amountField":"amount","callbackField":"callback","orderField":"order_id","refPath":"data.token",' +
+      '"successPath":"status","successValue":"100","callbackRefParam":"token","verifyRefPath":"data.ref_id"}',
+  },
+
   { key: "wallet_enabled", label: "کیف پول فعال باشد", type: "bool", group: "کیف پول و دعوت", default: "1", hint: "کاربر می‌تواند حساب را شارژ کند و خرید آنی انجام دهد." },
   { key: "min_topup", label: "حداقل مبلغ شارژ (تومان)", type: "number", group: "کیف پول و دعوت", default: "50000" },
   { key: "referral_percent", label: "درصد پاداش دعوت", type: "number", group: "کیف پول و دعوت", default: "10", hint: "درصدی از اولین خرید کاربر دعوت‌شده که به کیف پول دعوت‌کننده اضافه می‌شود. صفر = غیرفعال." },

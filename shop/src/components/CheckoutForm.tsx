@@ -12,16 +12,21 @@ export default function CheckoutForm({
   panels,
   renew,
   wallet,
+  online,
 }: {
   plan: { id: string; title: string; priceToman: number; priceLabel: string };
   panels: PanelOption[];
   renew: { id: string; remark: string } | null;
   wallet: { enabled: boolean; balance: number };
+  online: { enabled: boolean; min: number };
 }) {
   const [state, formAction] = useActionState<ShopState, FormData>(createOrderAction, {});
   const [code, setCode] = useState("");
   const canPayWallet = wallet.enabled && wallet.balance >= plan.priceToman;
-  const [payMethod, setPayMethod] = useState<"card" | "wallet">(canPayWallet ? "wallet" : "card");
+  const canPayOnline = online.enabled && plan.priceToman >= online.min;
+  const [payMethod, setPayMethod] = useState<"card" | "wallet" | "online">(
+    canPayWallet ? "wallet" : canPayOnline ? "online" : "card",
+  );
   const [checking, setChecking] = useState(false);
   const [discountMsg, setDiscountMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -96,23 +101,35 @@ export default function CheckoutForm({
         ) : null}
       </div>
 
-      {wallet.enabled ? (
+      {wallet.enabled || canPayOnline ? (
         <div className="field">
           <label>روش پرداخت</label>
           <input type="hidden" name="payMethod" value={payMethod} />
           <div className="pay-options">
-            <button
-              type="button"
-              className={`pay-option${payMethod === "wallet" ? " is-active" : ""}${canPayWallet ? "" : " is-disabled"}`}
-              onClick={() => canPayWallet && setPayMethod("wallet")}
-              disabled={!canPayWallet}
-            >
-              <b>💰 کیف پول</b>
-              <small>
-                موجودی: {toman(wallet.balance)}
-                {canPayWallet ? " — تحویل آنی، بدون رسید" : " — موجودی کافی نیست"}
-              </small>
-            </button>
+            {canPayOnline ? (
+              <button
+                type="button"
+                className={`pay-option${payMethod === "online" ? " is-active" : ""}`}
+                onClick={() => setPayMethod("online")}
+              >
+                <b>🏦 پرداخت آنلاین</b>
+                <small>درگاه بانکی — تحویل آنی، بدون رسید</small>
+              </button>
+            ) : null}
+            {wallet.enabled ? (
+              <button
+                type="button"
+                className={`pay-option${payMethod === "wallet" ? " is-active" : ""}${canPayWallet ? "" : " is-disabled"}`}
+                onClick={() => canPayWallet && setPayMethod("wallet")}
+                disabled={!canPayWallet}
+              >
+                <b>💰 کیف پول</b>
+                <small>
+                  موجودی: {toman(wallet.balance)}
+                  {canPayWallet ? " — تحویل آنی، بدون رسید" : " — موجودی کافی نیست"}
+                </small>
+              </button>
+            ) : null}
             <button
               type="button"
               className={`pay-option${payMethod === "card" ? " is-active" : ""}`}
@@ -126,13 +143,19 @@ export default function CheckoutForm({
       ) : null}
 
       <SubmitButton className="btn btn-primary btn-block btn-lg" pendingText="در حال ثبت سفارش…">
-        {payMethod === "wallet" ? "پرداخت از کیف پول و دریافت آنی" : "ثبت سفارش و رفتن به پرداخت"}
+        {payMethod === "wallet"
+          ? "پرداخت از کیف پول و دریافت آنی"
+          : payMethod === "online"
+            ? "پرداخت آنلاین و دریافت آنی"
+            : "ثبت سفارش و رفتن به پرداخت"}
       </SubmitButton>
       <span className="field-hint center">
         با ثبت سفارش، قوانین سایت را می‌پذیرید.
         {payMethod === "wallet"
           ? " مبلغ از کیف پول کسر و سرویس بلافاصله ساخته می‌شود."
-          : " پرداخت به‌صورت کارت‌به‌کارت انجام می‌شود."}
+          : payMethod === "online"
+            ? " به درگاه بانکی می‌روید و بعد از پرداخت، سرویس در همان لحظه ساخته می‌شود."
+            : " پرداخت به‌صورت کارت‌به‌کارت انجام می‌شود."}
       </span>
     </form>
   );

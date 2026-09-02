@@ -18,16 +18,20 @@ import {
   serviceLinks,
   syncService,
 } from "../src/lib/provision";
-import { saveSettings } from "../src/lib/settings";
+import { getSettings, saveSettings } from "../src/lib/settings";
 import { creditWallet, debitWallet } from "../src/lib/wallet";
 import { runMaintenance } from "../src/lib/scheduler";
 import { checkPanel, probePanel, pruneChecks, uptimeStats } from "../src/lib/monitor";
+import { gatewayReady, startPayment, verifyPayment } from "../src/lib/gateway";
+import { completePaidOrder } from "../src/lib/orders";
 import { XuiClient, type XuiRawClient } from "../src/lib/xui";
 import { serviceRefs } from "../src/lib/provision";
 
 const MOCK_V2 = process.env.MOCK_PANEL_URL || "http://127.0.0.1:8899";
 const MOCK_V3 = process.env.MOCK_PANEL_V3_URL || "http://127.0.0.1:8898";
 const API_TOKEN = process.env.MOCK_API_TOKEN || "3xui-test-token";
+const MOCK_GATEWAY = process.env.MOCK_GATEWAY_URL || "http://127.0.0.1:8896";
+const GATEWAY_KEY = process.env.MOCK_GATEWAY_KEY || "gw-test-key";
 
 let passed = 0;
 let failed = 0;
@@ -706,6 +710,202 @@ async function monitorScenario() {
   check("تاریخچه قدیمی پاک شد", pruned > 0 && (await db.panelCheck.count()) === 0, pruned);
 }
 
+/** پرداخت آنلاین: شروع پرداخت، بازگشت از درگاه، تأیید و تحویل خودکار */
+async function gatewayScenario() {
+  console.log("\n══════ درگاه پرداخت آنلاین ══════");
+  await reset();
+
+  const customConfig = {
+    requestUrl: `${MOCK_GATEWAY}/request`,
+    verifyUrl: `${MOCK_GATEWAY}/verify`,
+    startUrl: `${MOCK_GATEWAY}/pay/{ref}`,
+    currency: "rial",
+    auth: "none",
+    keyField: "api_key",
+    amountField: "amount",
+    callbackField: "callback",
+    orderField: "order_id",
+    descriptionField: "description",
+    refPath: "data.token",
+    successPath: "status",
+    successValue: "100",
+    callbackRefParam: "token",
+    verifyRefPath: "data.ref_id",
+  };
+
+  await saveSettings({
+    gateway_enabled: "1",
+    gateway_driver: "custom",
+    gateway_key: GATEWAY_KEY,
+    gateway_min_amount: "10000",
+    gateway_custom: JSON.stringify(customConfig),
+    trial_enabled: "0",
+  });
+
+  const settingsNow = await getSettings();
+  check("درگاه آمادهٔ استفاده تشخیص داده شد", gatewayReady(settingsNow));
+
+  const panel = await db.panel.create({
+    data: {
+      name: "GW-PANEL",
+      location: "آلمان",
+      url: MOCK_V2,
+      username: "admin",
+      password: "admin",
+      templateEmail: "template-vip",
+      subBase: "https://sub.test.local/sub",
+      inboundId: 1,
+    },
+  });
+  const plan = await db.plan.create({
+    data: { title: "پلن درگاه", volumeGb: 10, days: 30, deviceLimit: 2, priceToman: 150_000, sortOrder: 1 },
+  });
+  const user = await db.user.create({
+    data: { email: "gateway@test.local", passwordHash: "scrypt:x:y" },
+  });
+
+  const order = await db.order.create({
+    data: {
+      code: "FD-GW01",
+      userId: user.id,
+      kind: "plan",
+      payMethod: "online",
+      planId: plan.id,
+      panelId: panel.id,
+      amount: plan.priceToman,
+      payable: plan.priceToman,
+      status: "awaiting_payment",
+    },
+  });
+
+  const started = await startPayment({
+    amount: order.payable,
+    orderCode: order.code,
+    description: "تست پرداخت",
+    callbackUrl: "http://127.0.0.1:3000/api/pay/callback/FD-GW01",
+  });
+  check("کد پیگیری از درگاه گرفته شد", Boolean(started.ref), started.ref);
+  check("آدرس پرداخت ساخته شد", started.payUrl.startsWith(`${MOCK_GATEWAY}/pay/`), started.payUrl);
+
+  await db.order.update({
+    where: { id: order.id },
+    data: { gateway: started.driver, gatewayRef: started.ref },
+  });
+
+  // قبل از پرداخت، تأیید باید رد شود
+  const early = await verifyPayment({
+    driver: "custom",
+    ref: started.ref,
+    amount: order.payable,
+    orderCode: order.code,
+    params: {},
+  });
+  check("تراکنش پرداخت‌نشده تأیید نمی‌شود", !early.ok, early.message);
+
+  // کاربر روی صفحهٔ درگاه پرداخت می‌کند
+  await fetch(started.payUrl, { redirect: "manual" });
+
+  const verified = await verifyPayment({
+    driver: "custom",
+    ref: started.ref,
+    amount: order.payable,
+    orderCode: order.code,
+    params: { token: started.ref, status: "1" },
+  });
+  check("تراکنش پرداخت‌شده تأیید شد", verified.ok, verified.message);
+  check("شماره پیگیری بانک برگشت", verified.refId === `BANK-${order.code}`, verified.refId);
+
+  const completed = await completePaidOrder(order.id, {
+    gateway: "custom",
+    ref: started.ref,
+    bankRef: verified.refId,
+  });
+  check("سفارش پرداخت‌شده تکمیل شد", completed.ok && completed.kind === "plan");
+
+  const afterOrder = await db.order.findUniqueOrThrow({ where: { id: order.id } });
+  const service = await db.service.findFirst({ where: { orderId: order.id } });
+  check("وضعیت سفارش approved شد", afterOrder.status === "approved", afterOrder.status);
+  check("زمان پرداخت ثبت شد", Boolean(afterOrder.paidAt));
+  check("شماره پیگیری بانک روی سفارش ذخیره شد", afterOrder.bankRef === verified.refId);
+  check("سرویس بعد از پرداخت آنلاین تحویل شد", Boolean(service), service?.clientEmail);
+
+  const again = await completePaidOrder(order.id);
+  check("تکمیل دوباره، سرویس تکراری نمی‌سازد", again.ok && (await db.service.count()) === 1);
+
+  // مبلغ دستکاری‌شده نباید تأیید شود
+  const tampered = await verifyPayment({
+    driver: "custom",
+    ref: started.ref,
+    amount: 1_000,
+    orderCode: order.code,
+    params: { token: started.ref },
+  });
+  check("مبلغ دستکاری‌شده رد شد", !tampered.ok, tampered.message);
+
+  // شارژ کیف پول با درگاه
+  const topup = await db.order.create({
+    data: {
+      code: "FD-GW02",
+      userId: user.id,
+      kind: "topup",
+      payMethod: "online",
+      amount: 200_000,
+      payable: 200_000,
+      status: "awaiting_payment",
+    },
+  });
+  const topupStart = await startPayment({
+    amount: topup.payable,
+    orderCode: topup.code,
+    description: "شارژ کیف پول",
+    callbackUrl: "http://127.0.0.1:3000/api/pay/callback/FD-GW02",
+  });
+  await fetch(topupStart.payUrl, { redirect: "manual" });
+  const topupVerify = await verifyPayment({
+    driver: "custom",
+    ref: topupStart.ref,
+    amount: topup.payable,
+    orderCode: topup.code,
+    params: { token: topupStart.ref },
+  });
+  await completePaidOrder(topup.id, { gateway: "custom", ref: topupStart.ref, bankRef: topupVerify.refId });
+  const walletUser = await db.user.findUniqueOrThrow({ where: { id: user.id } });
+  check("شارژ آنلاین کیف پول انجام شد", walletUser.balance === 200_000, walletUser.balance);
+
+  // پرداخت ناموفق
+  const failedOrder = await db.order.create({
+    data: {
+      code: "FD-GW03",
+      userId: user.id,
+      kind: "plan",
+      payMethod: "online",
+      planId: plan.id,
+      amount: plan.priceToman,
+      payable: plan.priceToman,
+      status: "awaiting_payment",
+    },
+  });
+  const failStart = await startPayment({
+    amount: failedOrder.payable,
+    orderCode: failedOrder.code,
+    description: "تست ناموفق",
+    callbackUrl: "http://127.0.0.1:3000/api/pay/callback/FD-GW03",
+  });
+  await fetch(`${failStart.payUrl}?fail=1`, { redirect: "manual" });
+  const failVerify = await verifyPayment({
+    driver: "custom",
+    ref: failStart.ref,
+    amount: failedOrder.payable,
+    orderCode: failedOrder.code,
+    params: { token: failStart.ref, status: "0" },
+  });
+  check("پرداخت ناموفق تأیید نمی‌شود", !failVerify.ok, failVerify.message);
+  check("سرویسی برای پرداخت ناموفق ساخته نشد", (await db.service.count()) === 1);
+
+  await saveSettings({ gateway_enabled: "0" });
+  check("با خاموش‌بودن درگاه، پرداخت آنلاین در دسترس نیست", !gatewayReady(await getSettings()));
+}
+
 async function main() {
   await scenario({
     label: "پنل نسخه ۲ — ورود با نام کاربری و رمز",
@@ -731,6 +931,7 @@ async function main() {
   await planPanelScenario();
   await walletScenario();
   await monitorScenario();
+  await gatewayScenario();
 
   console.log("\n══════ بررسی توکن نامعتبر ══════");
   const badToken = new XuiClient({

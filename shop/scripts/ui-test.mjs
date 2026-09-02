@@ -14,6 +14,8 @@ const EXECUTABLE = process.env.CHROMIUM_PATH || "/opt/pw-browsers/chromium";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@example.com";
 const API_TOKEN = process.env.MOCK_API_TOKEN || "3xui-test-token";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin12345";
+const GATEWAY = process.env.MOCK_GATEWAY_URL || "http://127.0.0.1:8896";
+const GATEWAY_KEY = process.env.MOCK_GATEWAY_KEY || "gw-test-key";
 
 let passed = 0;
 let failed = 0;
@@ -194,6 +196,53 @@ try {
   // یک بازدیدکنندهٔ بدون حساب برای صفحه وضعیت و حالت تعمیر
   const guestCtx = await browser.newContext({ locale: "fa-IR" });
   const guest = await guestCtx.newPage();
+
+  console.log("→ خرید با درگاه پرداخت آنلاین");
+  await admin.goto(`${BASE}/admin/settings`, { waitUntil: "domcontentloaded" });
+  await admin.check("#gateway_enabled");
+  await admin.fill("#gateway_driver", "custom");
+  await admin.fill("#gateway_key", GATEWAY_KEY);
+  await admin.fill(
+    "#gateway_custom",
+    JSON.stringify({
+      requestUrl: `${GATEWAY}/request`,
+      verifyUrl: `${GATEWAY}/verify`,
+      startUrl: `${GATEWAY}/pay/{ref}`,
+      currency: "rial",
+      auth: "none",
+      keyField: "api_key",
+      amountField: "amount",
+      callbackField: "callback",
+      orderField: "order_id",
+      refPath: "data.token",
+      successPath: "status",
+      successValue: "100",
+      callbackRefParam: "token",
+      verifyRefPath: "data.ref_id",
+    }),
+  );
+  await admin.click("button:has-text('ذخیره همه تنظیمات')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 20000 });
+  check("تنظیمات درگاه ذخیره شد", true);
+
+  await user.goto(`${BASE}/plans`, { waitUntil: "domcontentloaded" });
+  await Promise.all([user.waitForURL("**/checkout**"), user.click("a:has-text('خرید این پلن')")]);
+  check("گزینه پرداخت آنلاین در صفحه خرید هست", await user.isVisible("text=پرداخت آنلاین"));
+  await user.click("button:has-text('پرداخت آنلاین')");
+  await Promise.all([
+    user.waitForURL(/dashboard\/orders\/FD-/, { timeout: 40000 }),
+    user.click("button:has-text('پرداخت آنلاین و دریافت آنی')"),
+  ]);
+
+  const payUrl = user.url();
+  const payBody = (await user.textContent("body")) ?? "";
+  check("بعد از پرداخت به صفحه سفارش برگشت", payUrl.includes("paid=1"), payUrl);
+  check("سفارش پرداخت آنلاین تأیید شد", payBody.includes("تأیید شده"), payBody.slice(0, 120));
+  check("شماره پیگیری بانک نمایش داده شد", payBody.includes("BANK-"));
+
+  await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
+  const services = await user.locator(".svc").count();
+  check("سرویس دوم با پرداخت آنلاین تحویل شد", services >= 2, services);
 
   console.log("→ پایش سرورها");
   await admin.goto(`${BASE}/admin/monitor`, { waitUntil: "domcontentloaded" });

@@ -4,6 +4,11 @@ export const ORDER_STATUS: Record<string, { label: string; badge: string; hint: 
     badge: "badge-warn",
     hint: "مبلغ را کارت‌به‌کارت کنید و تصویر رسید را بارگذاری کنید.",
   },
+  awaiting_payment: {
+    label: "در انتظار پرداخت آنلاین",
+    badge: "badge-warn",
+    hint: "برای تکمیل خرید، پرداخت را از طریق درگاه انجام دهید.",
+  },
   pending_review: {
     label: "در حال بررسی",
     badge: "badge-info",
