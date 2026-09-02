@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
-import { gatewayMin, gatewayReady, startPayment } from "@/lib/gateway";
+import { activeGateways, gatewayById, startWithGateway } from "@/lib/payments";
 import { siteUrl } from "@/lib/site";
 import { toman } from "@/lib/format";
 
@@ -24,22 +24,30 @@ export default async function PayPage({ params }: { params: Promise<{ code: stri
   });
 
   const settings = await getSettings();
+
+  // درگاهی که موقع ثبت سفارش انتخاب شده؛ اگر نبود، اولین درگاه فعالِ مناسب
+  const chosen = order?.gatewayId ? await gatewayById(order.gatewayId) : null;
+  const fallback = order && !chosen ? (await activeGateways(order.payable))[0] : null;
+  const gateway = chosen ?? fallback ?? null;
+
   const problem = !order
     ? "این سفارش پیدا نشد."
     : order.status === "approved"
       ? "این سفارش قبلاً پرداخت و تکمیل شده است."
       : order.status === "canceled"
         ? "این سفارش لغو شده است."
-        : !gatewayReady(settings)
-          ? "پرداخت آنلاین در حال حاضر فعال نیست. از روش کارت‌به‌کارت استفاده کنید."
-          : order.payable < gatewayMin(settings)
-            ? `حداقل مبلغ پرداخت آنلاین ${toman(gatewayMin(settings))} است.`
-            : null;
+        : !gateway
+          ? "پرداخت آنلاین در حال حاضر فعال نیست. از روش‌های دیگر استفاده کنید."
+          : gateway.minAmount > 0 && order.payable < gateway.minAmount
+            ? `حداقل مبلغ پرداخت آنلاین ${toman(gateway.minAmount)} است.`
+            : gateway.maxAmount > 0 && order.payable > gateway.maxAmount
+              ? `حداکثر مبلغ پرداخت با این درگاه ${toman(gateway.maxAmount)} است.`
+              : null;
 
-  if (order && !problem) {
+  if (order && gateway && !problem) {
     const base = await siteUrl();
     try {
-      const started = await startPayment({
+      const started = await startWithGateway(gateway, {
         amount: order.payable,
         orderCode: order.code,
         description:
@@ -55,7 +63,8 @@ export default async function PayPage({ params }: { params: Promise<{ code: stri
         data: {
           payMethod: "online",
           status: "awaiting_payment",
-          gateway: started.driver,
+          gateway: gateway.driver,
+          gatewayId: gateway.id,
           gatewayRef: started.ref,
         },
       });

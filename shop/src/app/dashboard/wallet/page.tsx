@@ -6,7 +6,7 @@ import { fmt } from "@/lib/format";
 import { walletKind } from "@/lib/wallet";
 import { getLocale } from "@/lib/locale";
 import { translator } from "@/lib/i18n";
-import { gatewayMin, gatewayReady } from "@/lib/gateway";
+import { availableMethods } from "@/lib/payments";
 import TopupForm from "@/components/TopupForm";
 import CopyButton from "@/components/CopyButton";
 
@@ -27,6 +27,7 @@ export default async function WalletPage() {
   ]);
 
   const enabled = asBool(settings.wallet_enabled);
+  const methods = await availableMethods(asNum(settings.min_topup, 50_000));
   const percent = asNum(settings.referral_percent, 0);
   const appUrl = (process.env.APP_URL || "").replace(/\/+$/, "");
   const referralLink = row.referralCode
@@ -78,7 +79,11 @@ export default async function WalletPage() {
             <TopupForm
               locale={locale}
               min={asNum(settings.min_topup, 50_000)}
-              online={{ enabled: gatewayReady(settings), min: gatewayMin(settings) }}
+              methods={{
+                card: methods.card,
+                crypto: methods.crypto,
+                gateways: methods.gateways.map((g) => ({ id: g.id, label: g.label })),
+              }}
             />
           </div>
         ) : null}

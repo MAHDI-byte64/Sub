@@ -156,6 +156,7 @@ try {
     ["admin-plans", "/admin/plans"],
     ["admin-services", "/admin/services"],
     ["admin-monitor", "/admin/monitor"],
+    ["admin-payments", "/admin/payments"],
     ["admin-settings", "/admin/settings"],
     ["admin-tickets", "/admin/tickets"],
     ["admin-users", "/admin/users"],

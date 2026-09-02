@@ -151,9 +151,46 @@ export default async function AdminOrdersPage({
                               ? `🏦 درگاه آنلاین${order.gateway ? ` (${order.gateway})` : ""}`
                               : order.payMethod === "wallet"
                                 ? "💰 کیف پول"
-                                : "💳 کارت‌به‌کارت"}
+                                : order.payMethod === "crypto"
+                                  ? `🪙 ${order.cryptoNetwork ?? "تتر"}`
+                                  : "💳 کارت‌به‌کارت"}
                           </td>
                         </tr>
+                        {order.payMethod === "crypto" ? (
+                          <>
+                            <tr>
+                              <th>مبلغ تتری</th>
+                              <td className="mono ltr">
+                                {(order.cryptoAmount ?? 0).toFixed(2)} USDT
+                                {order.cryptoRate ? (
+                                  <span className="cell-sub">نرخ {toman(order.cryptoRate)}</span>
+                                ) : null}
+                              </td>
+                            </tr>
+                            <tr>
+                              <th>آدرس دریافت</th>
+                              <td className="mono ltr" style={{ overflowWrap: "anywhere" }}>
+                                {order.cryptoAddress ?? "—"}
+                              </td>
+                            </tr>
+                            <tr>
+                              <th>هش تراکنش</th>
+                              <td className="mono ltr" style={{ overflowWrap: "anywhere" }}>
+                                {order.cryptoTxHash ? (
+                                  <a
+                                    href={`https://tronscan.org/#/transaction/${order.cryptoTxHash}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    {order.cryptoTxHash}
+                                  </a>
+                                ) : (
+                                  "هنوز ثبت نشده"
+                                )}
+                              </td>
+                            </tr>
+                          </>
+                        ) : null}
                         <tr>
                           <th>کد پیگیری</th>
                           <td className="mono">

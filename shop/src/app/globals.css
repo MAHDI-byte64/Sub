@@ -3989,3 +3989,62 @@ html[dir="ltr"] .ltr {
 html[dir="ltr"] .footer-bottom nav {
   gap: 14px;
 }
+
+/* ---------------------------- پرداخت ارز دیجیتال ---------------------------- */
+
+.crypto-box {
+  min-width: 0;
+}
+.crypto-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.crypto-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  font-size: 21px;
+  border-radius: 14px;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  background: rgba(52, 211, 153, 0.1);
+}
+.crypto-head b {
+  display: block;
+  font-size: 14.5px;
+}
+.crypto-head small {
+  display: block;
+  font-size: 11.5px;
+  color: var(--dim);
+  direction: ltr;
+  text-align: start;
+}
+.crypto-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+.crypto-facts > span {
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-xs);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.22);
+}
+.crypto-facts small {
+  display: block;
+  font-size: 11px;
+  color: var(--dim);
+  margin-bottom: 4px;
+}
+.crypto-facts b {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}

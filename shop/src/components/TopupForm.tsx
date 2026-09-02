@@ -10,20 +10,23 @@ const PRESETS = [100_000, 200_000, 500_000, 1_000_000];
 
 export default function TopupForm({
   min,
-  online,
+  methods,
   locale = "fa",
 }: {
   min: number;
-  online: { enabled: boolean; min: number };
+  methods: { card: boolean; crypto: boolean; gateways: { id: string; label: string }[] };
   locale?: Locale;
 }) {
   const [state, formAction] = useActionState<ShopState, FormData>(createTopupAction, {});
   const [amount, setAmount] = useState(PRESETS[0]);
   const f = fmt(locale);
   const tr = (key: string, vars?: Record<string, string | number>) => t(locale, key, vars);
-  const canPayOnline = online.enabled && amount >= online.min;
-  const [payMethod, setPayMethod] = useState<"card" | "online">(online.enabled ? "online" : "card");
-  const method = canPayOnline ? payMethod : "card";
+  const firstGateway = methods.gateways[0];
+  const [payMethod, setPayMethod] = useState<string>(
+    firstGateway ? `online:${firstGateway.id}` : methods.crypto ? "crypto" : "card",
+  );
+  const method = payMethod;
+  const isOnline = method.startsWith("online:");
 
   return (
     <form action={formAction} className="form">
@@ -55,20 +58,32 @@ export default function TopupForm({
         <span className="field-hint">{f.money(min)}</span>
       </div>
 
-      {online.enabled ? (
-        <div className="field">
-          <label>{tr("checkout.payMethod")}</label>
-          <input type="hidden" name="payMethod" value={method} />
-          <div className="pay-options">
+      <div className="field">
+        <label>{tr("checkout.payMethod")}</label>
+        <input type="hidden" name="payMethod" value={method} />
+        <div className="pay-options">
+          {methods.gateways.map((gw) => (
             <button
               type="button"
-              className={`pay-option${method === "online" ? " is-active" : ""}${canPayOnline ? "" : " is-disabled"}`}
-              onClick={() => canPayOnline && setPayMethod("online")}
-              disabled={!canPayOnline}
+              key={gw.id}
+              className={`pay-option${method === `online:${gw.id}` ? " is-active" : ""}`}
+              onClick={() => setPayMethod(`online:${gw.id}`)}
             >
-              <b>{tr("checkout.online")}</b>
-              <small>{canPayOnline ? tr("checkout.onlineHint") : f.money(online.min)}</small>
+              <b>🏦 {gw.label}</b>
+              <small>{tr("checkout.onlineHint")}</small>
             </button>
+          ))}
+          {methods.crypto ? (
+            <button
+              type="button"
+              className={`pay-option${method === "crypto" ? " is-active" : ""}`}
+              onClick={() => setPayMethod("crypto")}
+            >
+              <b>{tr("checkout.crypto")}</b>
+              <small>{tr("checkout.cryptoHint")}</small>
+            </button>
+          ) : null}
+          {methods.card ? (
             <button
               type="button"
               className={`pay-option${method === "card" ? " is-active" : ""}`}
@@ -77,15 +92,23 @@ export default function TopupForm({
               <b>{tr("checkout.card")}</b>
               <small>{tr("checkout.cardHint")}</small>
             </button>
-          </div>
+          ) : null}
         </div>
-      ) : null}
+      </div>
 
       <SubmitButton className="btn btn-primary">
-        {method === "online" ? tr("checkout.submitOnline") : tr("dashPages.topup")}
+        {isOnline
+          ? tr("checkout.submitOnline")
+          : method === "crypto"
+            ? tr("checkout.submitCrypto")
+            : tr("dashPages.topup")}
       </SubmitButton>
       <span className="field-hint">
-        {method === "online" ? tr("checkout.afterOnline") : tr("checkout.afterCard")}
+        {isOnline
+          ? tr("checkout.afterOnline")
+          : method === "crypto"
+            ? tr("checkout.afterCrypto")
+            : tr("checkout.afterCard")}
       </span>
     </form>
   );

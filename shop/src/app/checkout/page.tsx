@@ -6,7 +6,7 @@ import { fmt } from "@/lib/format";
 import { getLocale } from "@/lib/locale";
 import { translator } from "@/lib/i18n";
 import { asBool, getSettings } from "@/lib/settings";
-import { gatewayMin, gatewayReady } from "@/lib/gateway";
+import { availableMethods } from "@/lib/payments";
 import CheckoutForm from "@/components/CheckoutForm";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +45,8 @@ export default async function CheckoutPage({
     getSettings(),
     db.user.findUniqueOrThrow({ where: { id: user.id }, select: { balance: true } }),
   ]);
+
+  const methods = await availableMethods(plan.priceToman);
 
   // سروری که پایش خرابش تشخیص داده به کاربر پیشنهاد نمی‌شود
   const healthyPanels = allPanels.filter((p) => !p.autoDisabled);
@@ -113,7 +115,11 @@ export default async function CheckoutPage({
             panels={panels.map((p) => ({ id: p.id, flag: p.flag, location: p.location }))}
             renew={renewService ? { id: renewService.id, remark: renewService.remark } : null}
             wallet={{ enabled: asBool(settings.wallet_enabled), balance: wallet.balance }}
-            online={{ enabled: gatewayReady(settings), min: gatewayMin(settings) }}
+            methods={{
+              card: methods.card,
+              crypto: methods.crypto,
+              gateways: methods.gateways.map((g) => ({ id: g.id, label: g.label })),
+            }}
           />
         </div>
       </div>

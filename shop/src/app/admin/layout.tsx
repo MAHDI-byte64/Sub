@@ -8,6 +8,7 @@ const ITEMS: NavItem[] = [
   { href: "/admin/panels", label: "سرورها (3x-ui)", icon: "🖥️" },
   { href: "/admin/monitor", label: "پایش سرورها", icon: "📡" },
   { href: "/admin/plans", label: "پلن‌ها", icon: "🏷️" },
+  { href: "/admin/payments", label: "روش‌های پرداخت", icon: "💳" },
   { href: "/admin/discounts", label: "کد تخفیف", icon: "🎟️" },
   { href: "/admin/users", label: "کاربران", icon: "👥" },
   { href: "/admin/tickets", label: "تیکت‌ها", icon: "🎫" },

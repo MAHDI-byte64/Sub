@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { asNum, getSettings } from "@/lib/settings";
-import { gatewayMin, gatewayReady } from "@/lib/gateway";
+import { activeGateways } from "@/lib/payments";
 import { fmt } from "@/lib/format";
 import { orderStatus } from "@/lib/status";
 import { getLocale } from "@/lib/locale";
@@ -12,6 +12,7 @@ import CopyButton from "@/components/CopyButton";
 import Countdown from "@/components/Countdown";
 import OrderTimeline, { type TimelineStep } from "@/components/OrderTimeline";
 import ReceiptForm from "@/components/ReceiptForm";
+import CryptoPayBox from "@/components/CryptoPayBox";
 import CancelOrderButton from "@/components/CancelOrderButton";
 
 export const dynamic = "force-dynamic";
@@ -40,11 +41,15 @@ export default async function OrderDetailPage({
   if (!order) notFound();
 
   const status = orderStatus(locale, order.status);
-  const onlineReady = gatewayReady(settings) && order.payable >= gatewayMin(settings);
+  const isOnline = order.payMethod === "online";
+  const isCrypto = order.payMethod === "crypto";
+  const onlineReady = (await activeGateways(order.payable)).length > 0;
   const awaitingOnline =
     order.status === "awaiting_payment" || (order.status === "failed" && order.payMethod === "online");
   const canPay =
-    !awaitingOnline && (order.status === "awaiting_receipt" || order.status === "rejected");
+    !awaitingOnline &&
+    !isCrypto &&
+    (order.status === "awaiting_receipt" || order.status === "rejected");
   const cardNumber = settings.card_number.replace(/\s|-/g, "");
   const expireMinutes = asNum(settings.order_expire_minutes, 0);
   const deadline =
@@ -52,7 +57,6 @@ export default async function OrderDetailPage({
       ? new Date(order.createdAt.getTime() + expireMinutes * 60_000)
       : null;
 
-  const isOnline = order.payMethod === "online";
   const paid = order.status === "pending_review" || order.status === "approved";
   const delivered = order.status === "approved";
   const rejected = order.status === "rejected";
@@ -68,7 +72,19 @@ export default async function OrderDetailPage({
       state: "done",
       icon: "🛒",
     },
-    isOnline
+    isCrypto
+      ? {
+          title: paid ? tr("order.cryptoPaidStep") : tr("order.cryptoTitle"),
+          hint: paid
+            ? order.cryptoTxHash
+              ? tr("order.trackRef", { ref: order.cryptoTxHash.slice(0, 18) + "…" })
+              : tr("order.receiptQueued")
+            : tr("order.cryptoPending"),
+          at: order.paidAt,
+          state: canceled ? "failed" : paid ? "done" : "active",
+          icon: "🪙",
+        }
+      : isOnline
       ? {
           title: paid ? tr("order.paidOnline") : tr("order.payOnline"),
           hint: paid
@@ -175,16 +191,29 @@ export default async function OrderDetailPage({
         <div className="card">
           <div className="card-title">
             <h3>
-              {awaitingOnline
-                ? tr("order.onlineTitle")
-                : canPay
-                  ? tr("order.cardTitle")
-                  : tr("order.receiptTitle")}
+              {isCrypto
+                ? tr("order.cryptoTitle")
+                : awaitingOnline
+                  ? tr("order.onlineTitle")
+                  : canPay
+                    ? tr("order.cardTitle")
+                    : tr("order.receiptTitle")}
             </h3>
             {deadline ? <Countdown until={deadline.toISOString()} locale={locale} /> : null}
           </div>
 
-          {awaitingOnline ? (
+          {isCrypto ? (
+            <CryptoPayBox
+              code={order.code}
+              locale={locale}
+              address={order.cryptoAddress ?? ""}
+              network={order.cryptoNetwork ?? "USDT-TRC20"}
+              amount={order.cryptoAmount ?? 0}
+              rate={order.cryptoRate ?? 0}
+              txHash={order.cryptoTxHash}
+              note={settings.crypto_note}
+            />
+          ) : awaitingOnline ? (
             <>
               <div className="amount-box">
                 <span>{tr("order.payable")}</span>

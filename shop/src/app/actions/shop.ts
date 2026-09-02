@@ -9,7 +9,7 @@ import { saveReceipt } from "@/lib/uploads";
 import { notifyAdmin } from "@/lib/telegram";
 import { asBool, asNum, getSettings } from "@/lib/settings";
 import { createTrialService, fulfillOrder, rotateCooldownLeft, rotateService } from "@/lib/provision";
-import { gatewayMin, gatewayReady } from "@/lib/gateway";
+import { availableMethods, gatewayById, pickWallet, quoteCrypto } from "@/lib/payments";
 import { creditWallet, debitWallet, WalletError } from "@/lib/wallet";
 import { notifyUser } from "@/lib/notify";
 import { payReferralBonus } from "@/lib/referral";
@@ -112,14 +112,28 @@ export async function createOrderAction(_prev: ShopState, formData: FormData): P
   const payable = Math.max(0, plan.priceToman - discountAmount);
   const settings = await getSettings();
   const method = String(formData.get("payMethod") || "");
-  const useWallet = method === "wallet";
-  const useGateway = method === "online" && gatewayReady(settings);
+  const methods = await availableMethods(payable);
 
-  if (method === "online" && !useGateway) {
-    return { error: "پرداخت آنلاین در حال حاضر فعال نیست. لطفاً روش دیگری انتخاب کنید." };
+  const useWallet = method === "wallet";
+  const useCrypto = method === "crypto";
+  const gatewayChoice = method.startsWith("online:") ? method.slice("online:".length) : null;
+
+  if (useWallet && !methods.wallet) return { error: "پرداخت از کیف پول فعال نیست." };
+  if (useCrypto && !methods.crypto) {
+    return { error: "پرداخت با ارز دیجیتال در حال حاضر فعال نیست." };
   }
-  if (useGateway && payable < gatewayMin(settings)) {
-    return { error: `حداقل مبلغ پرداخت آنلاین ${toman(gatewayMin(settings))} است.` };
+  if (gatewayChoice && !methods.gateways.some((g) => g.id === gatewayChoice)) {
+    return { error: "این درگاه پرداخت در دسترس نیست. روش دیگری انتخاب کنید." };
+  }
+  if (!useWallet && !useCrypto && !gatewayChoice && !methods.card) {
+    return { error: "پرداخت کارت‌به‌کارت فعال نیست. یکی از روش‌های دیگر را انتخاب کنید." };
+  }
+
+  // پرداخت تتری: مبلغ و نرخ همان لحظه قفل می‌شوند تا نوسان قیمت مشکلی نسازد
+  const crypto = useCrypto ? await quoteCrypto(payable) : null;
+  const wallet = useCrypto ? await pickWallet() : null;
+  if (useCrypto && (!crypto?.amount || !wallet)) {
+    return { error: "آدرس کیف پول ارز دیجیتال تنظیم نشده است. با پشتیبانی تماس بگیرید." };
   }
 
   const orderCode = await newOrderCode();
@@ -128,7 +142,8 @@ export async function createOrderAction(_prev: ShopState, formData: FormData): P
       code: orderCode,
       userId: user.id,
       kind: "plan",
-      payMethod: useWallet ? "wallet" : useGateway ? "online" : "card",
+      payMethod: useWallet ? "wallet" : gatewayChoice ? "online" : useCrypto ? "crypto" : "card",
+      gatewayId: gatewayChoice,
       planId: plan.id,
       panelId,
       renewServiceId,
@@ -136,12 +151,20 @@ export async function createOrderAction(_prev: ShopState, formData: FormData): P
       discountId,
       discountAmount,
       payable,
-      status: useGateway ? "awaiting_payment" : "awaiting_receipt",
+      status: gatewayChoice ? "awaiting_payment" : "awaiting_receipt",
+      ...(useCrypto && crypto && wallet
+        ? {
+            cryptoAmount: crypto.amount,
+            cryptoRate: crypto.rate,
+            cryptoAddress: wallet.address,
+            cryptoNetwork: `${wallet.symbol}-${wallet.network.toUpperCase()}`,
+          }
+        : {}),
     },
   });
 
   // پرداخت با درگاه: کاربر مستقیم به صفحهٔ بانک می‌رود
-  if (useGateway) redirect(`/pay/${orderCode}`);
+  if (gatewayChoice) redirect(`/pay/${orderCode}`);
 
   // پرداخت آنی از کیف پول: بدون رسید و بدون انتظار
   if (useWallet && asBool(settings.wallet_enabled)) {
@@ -306,12 +329,22 @@ export async function createTopupAction(_prev: ShopState, formData: FormData): P
   }
 
   const method = String(formData.get("payMethod") || "");
-  const useGateway = method === "online" && gatewayReady(settings);
-  if (method === "online" && !useGateway) {
-    return { error: "پرداخت آنلاین در حال حاضر فعال نیست." };
+  const methods = await availableMethods(Math.round(amount));
+  const useCrypto = method === "crypto";
+  const gatewayChoice = method.startsWith("online:") ? method.slice("online:".length) : null;
+
+  if (gatewayChoice && !methods.gateways.some((g) => g.id === gatewayChoice)) {
+    return { error: "این درگاه پرداخت در دسترس نیست." };
   }
-  if (useGateway && amount < gatewayMin(settings)) {
-    return { error: `حداقل مبلغ پرداخت آنلاین ${toman(gatewayMin(settings))} است.` };
+  if (useCrypto && !methods.crypto) return { error: "پرداخت با ارز دیجیتال فعال نیست." };
+  if (!gatewayChoice && !useCrypto && !methods.card) {
+    return { error: "برای شارژ، یکی از روش‌های پرداخت فعال را انتخاب کنید." };
+  }
+
+  const crypto = useCrypto ? await quoteCrypto(Math.round(amount)) : null;
+  const wallet = useCrypto ? await pickWallet() : null;
+  if (useCrypto && (!crypto?.amount || !wallet)) {
+    return { error: "آدرس کیف پول ارز دیجیتال تنظیم نشده است." };
   }
 
   const code = await newOrderCode();
@@ -320,14 +353,58 @@ export async function createTopupAction(_prev: ShopState, formData: FormData): P
       code,
       userId: user.id,
       kind: "topup",
-      payMethod: useGateway ? "online" : "card",
+      payMethod: gatewayChoice ? "online" : useCrypto ? "crypto" : "card",
+      gatewayId: gatewayChoice,
       amount: Math.round(amount),
       payable: Math.round(amount),
-      status: useGateway ? "awaiting_payment" : "awaiting_receipt",
+      status: gatewayChoice ? "awaiting_payment" : "awaiting_receipt",
+      ...(useCrypto && crypto && wallet
+        ? {
+            cryptoAmount: crypto.amount,
+            cryptoRate: crypto.rate,
+            cryptoAddress: wallet.address,
+            cryptoNetwork: `${wallet.symbol}-${wallet.network.toUpperCase()}`,
+          }
+        : {}),
     },
   });
 
-  redirect(useGateway ? `/pay/${code}` : `/dashboard/orders/${code}`);
+  redirect(gatewayChoice ? `/pay/${code}` : `/dashboard/orders/${code}`);
+}
+
+/** ثبت هش تراکنش ارز دیجیتال توسط مشتری */
+export async function submitTxHashAction(_prev: ShopState, formData: FormData): Promise<ShopState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "ابتدا وارد حساب خود شوید." };
+
+  const code = String(formData.get("code") || "");
+  const hash = String(formData.get("txHash") || "").trim();
+
+  const order = await db.order.findFirst({ where: { code, userId: user.id } });
+  if (!order) return { error: "سفارش پیدا نشد." };
+  if (order.payMethod !== "crypto") return { error: "این سفارش پرداخت ارز دیجیتال نیست." };
+  if (order.status === "approved") return { error: "این سفارش قبلاً تکمیل شده است." };
+  if (hash.length < 20 || /\s/.test(hash)) {
+    return { error: "هش تراکنش معتبر نیست. کد TXID را کامل و بدون فاصله وارد کنید." };
+  }
+
+  const duplicate = await db.order.findFirst({
+    where: { cryptoTxHash: hash, NOT: { id: order.id } },
+  });
+  if (duplicate) return { error: "این هش تراکنش قبلاً برای سفارش دیگری ثبت شده است." };
+
+  await db.order.update({
+    where: { id: order.id },
+    data: { cryptoTxHash: hash, status: "pending_review", paidAt: new Date() },
+  });
+
+  await notifyAdmin(
+    `🪙 پرداخت تتری در انتظار بررسی\nسفارش: ${order.code}\nکاربر: ${user.email}\n` +
+      `مبلغ: ${toman(order.payable)} (${order.cryptoAmount ?? 0} USDT)\nهش: ${hash}`,
+    "order",
+  );
+  revalidatePath(`/dashboard/orders/${code}`);
+  return { success: "هش تراکنش ثبت شد. بعد از بررسی، سرویس شما تحویل داده می‌شود." };
 }
 
 /** روشن/خاموش کردن تمدید خودکار یک سرویس */

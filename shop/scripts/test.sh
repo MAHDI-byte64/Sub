@@ -10,6 +10,7 @@ export DATABASE_URL="file:../data/e2e.db"
 export MOCK_PANEL_URL="http://127.0.0.1:${PORT}"
 export MOCK_PANEL_V3_URL="http://127.0.0.1:${PORT_V3}"
 export MOCK_GATEWAY_URL="http://127.0.0.1:${GW_PORT}"
+export HOOSHPAY_BASE="http://127.0.0.1:${GW_PORT}"
 export MOCK_GATEWAY_KEY="${MOCK_GATEWAY_KEY:-gw-test-key}"
 
 echo "→ راه‌اندازی پنل شبیه‌سازی‌شده نسخه ۲ (پورت ${PORT})، نسخه ۳ (پورت ${PORT_V3}) و درگاه پرداخت (پورت ${GW_PORT})"

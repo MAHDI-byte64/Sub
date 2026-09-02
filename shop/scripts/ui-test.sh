@@ -10,6 +10,7 @@ export DATABASE_URL="file:../data/uitest.db"
 export MOCK_PANEL_URL="http://127.0.0.1:${MOCK_PORT}"
 export MOCK_API_TOKEN="${MOCK_API_TOKEN:-3xui-test-token}"
 export MOCK_GATEWAY_URL="http://127.0.0.1:${GW_PORT}"
+export HOOSHPAY_BASE="http://127.0.0.1:${GW_PORT}"
 export MOCK_GATEWAY_KEY="${MOCK_GATEWAY_KEY:-gw-test-key}"
 export BASE_URL="http://127.0.0.1:${PORT}"
 # درگاه پرداخت باید به همین سرور تست برگردد، نه به APP_URL فایل .env

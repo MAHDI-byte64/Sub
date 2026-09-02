@@ -198,12 +198,13 @@ try {
   const guest = await guestCtx.newPage();
 
   console.log("→ خرید با درگاه پرداخت آنلاین");
-  await admin.goto(`${BASE}/admin/settings`, { waitUntil: "domcontentloaded" });
-  await admin.check("#gateway_enabled");
-  await admin.fill("#gateway_driver", "custom");
-  await admin.fill("#gateway_key", GATEWAY_KEY);
+  await admin.goto(`${BASE}/admin/payments`, { waitUntil: "domcontentloaded" });
+  await admin.selectOption("#driver", "custom");
+  await admin.fill("#label", "درگاه تست");
+  await admin.fill("#apiKey", GATEWAY_KEY);
+  await admin.fill("#minAmount", "1000");
   await admin.fill(
-    "#gateway_custom",
+    "#custom",
     JSON.stringify({
       requestUrl: `${GATEWAY}/request`,
       verifyUrl: `${GATEWAY}/verify`,
@@ -221,14 +222,15 @@ try {
       verifyRefPath: "data.ref_id",
     }),
   );
-  await admin.click("button:has-text('ذخیره همه تنظیمات')");
+  await admin.click("button:has-text('افزودن درگاه')");
   await admin.waitForSelector(".alert-success, .alert-error", { timeout: 20000 });
-  check("تنظیمات درگاه ذخیره شد", true);
+  const gwMsg = (await admin.textContent(".alert-success, .alert-error")) ?? "";
+  check("درگاه از پنل مدیریت ساخته شد", gwMsg.includes("آماده استفاده"), gwMsg);
 
   await user.goto(`${BASE}/plans`, { waitUntil: "domcontentloaded" });
   await Promise.all([user.waitForURL("**/checkout**"), user.click("a:has-text('خرید این پلن')")]);
-  check("گزینه پرداخت آنلاین در صفحه خرید هست", await user.isVisible("text=پرداخت آنلاین"));
-  await user.click("button:has-text('پرداخت آنلاین')");
+  check("نام درگاه در صفحه خرید دیده می‌شود", await user.isVisible("text=درگاه تست"));
+  await user.click("button:has-text('درگاه تست')");
   await Promise.all([
     user.waitForURL(/dashboard\/orders\/FD-/, { timeout: 40000 }),
     user.click("button:has-text('پرداخت آنلاین و دریافت آنی')"),
@@ -243,6 +245,55 @@ try {
   await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
   const services = await user.locator(".svc").count();
   check("سرویس دوم با پرداخت آنلاین تحویل شد", services >= 2, services);
+
+  console.log("→ پرداخت با تتر (TRC20)");
+  await admin.goto(`${BASE}/admin/payments`, { waitUntil: "domcontentloaded" });
+  await admin.fill("#address", "TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE");
+  await admin.fill("#wallet-label", "کیف پول تست");
+  await admin.click("button:has-text('افزودن آدرس')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 20000 });
+  check("آدرس کیف پول تتر ذخیره شد", true);
+
+  await admin.goto(`${BASE}/admin/payments`, { waitUntil: "domcontentloaded" });
+  await admin.check("#crypto_enabled");
+  await admin.uncheck("#usdt_rate_auto");
+  await admin.fill("#usdt_rate_manual", "60000");
+  await admin.click("button:has-text('ذخیره تنظیمات ارز دیجیتال')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 20000 });
+  await admin.reload({ waitUntil: "domcontentloaded" });
+  check("نرخ تتر در پنل نمایش داده شد", (await admin.textContent("body")).includes("۶۱,۲۰۰"));
+
+  await user.goto(`${BASE}/plans`, { waitUntil: "domcontentloaded" });
+  await Promise.all([user.waitForURL("**/checkout**"), user.click("a:has-text('خرید این پلن')")]);
+  check("گزینه پرداخت تتری در صفحه خرید هست", await user.isVisible("text=تتر (TRC20)"));
+  await user.click("button:has-text('تتر (TRC20)')");
+  await Promise.all([
+    user.waitForURL(/dashboard\/orders\/FD-/, { timeout: 30000 }),
+    user.click("button:has-text('ثبت سفارش و پرداخت با تتر')"),
+  ]);
+
+  const cryptoBody = (await user.textContent("body")) ?? "";
+  check("آدرس کیف پول به مشتری نشان داده شد", cryptoBody.includes("TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE"));
+  check("مبلغ تتری محاسبه و نمایش داده شد", /\d+\.\d{2} USDT/.test(cryptoBody), cryptoBody.match(/[\d.]+ USDT/)?.[0]);
+  check("هشدار شبکه TRC20 داده شد", cryptoBody.includes("فقط شبکهٔ TRC20"));
+
+  const cryptoOrderUrl = user.url();
+  await user.fill("#txHash", "e2e0000000000000000000000000000000000000000000000000000000000001");
+  await user.click("button:has-text('ثبت هش تراکنش')");
+  await user.waitForSelector(".alert-success, .alert-error", { timeout: 20000 });
+  const txMsg = (await user.textContent(".alert-success, .alert-error")) ?? "";
+  check("هش تراکنش ثبت شد", txMsg.includes("ثبت شد"), txMsg);
+
+  await admin.goto(`${BASE}/admin/orders?status=pending_review`, { waitUntil: "domcontentloaded" });
+  const adminCrypto = (await admin.textContent("body")) ?? "";
+  check("هش تراکنش برای مدیر نمایش داده شد", adminCrypto.includes("e2e00000000000000"), adminCrypto.slice(0, 80));
+  await admin.click("button:has-text('تأیید و تحویل سرویس')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 40000 });
+  const cryptoApprove = (await admin.textContent(".alert-success, .alert-error")) ?? "";
+  check("سفارش تتری توسط مدیر تأیید شد", cryptoApprove.includes("تحویل شد"), cryptoApprove);
+
+  await user.goto(cryptoOrderUrl, { waitUntil: "domcontentloaded" });
+  check("سفارش تتری تأیید شده است", (await user.textContent("body")).includes("تأیید شده"));
 
   console.log("→ پایش سرورها");
   await admin.goto(`${BASE}/admin/monitor`, { waitUntil: "domcontentloaded" });

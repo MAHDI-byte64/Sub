@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import { getSettings } from "@/lib/settings";
-import { callbackRefParam, gatewayConfig, verifyPayment } from "@/lib/gateway";
+import { callbackRefParam, DEFAULT_CUSTOM } from "@/lib/gateway";
+import { activeGateways, gatewayById, gatewayConfigOf, verifyWithGateway } from "@/lib/payments";
 import { completePaidOrder, failOrder } from "@/lib/orders";
 import { siteUrl } from "@/lib/site";
 
@@ -42,10 +42,18 @@ async function handle(req: NextRequest, code: string): Promise<NextResponse> {
     }
   }
 
-  const settings = await getSettings();
-  const cfg = gatewayConfig(settings);
-  const driverId = order.gateway || cfg.driver;
-  const refFromParams = callbackRefParam(driverId, cfg.custom)
+  const gateway =
+    (order.gatewayId ? await gatewayById(order.gatewayId) : null) ??
+    (await activeGateways()).find((row) => row.driver === order.gateway) ??
+    null;
+
+  if (!gateway) {
+    await failOrder(order.id, "درگاه این سفارش دیگر در دسترس نیست.");
+    return back("payerror=" + encodeURIComponent("درگاه این سفارش در دسترس نیست."));
+  }
+
+  const custom = gatewayConfigOf(gateway).custom ?? DEFAULT_CUSTOM;
+  const refFromParams = callbackRefParam(gateway.driver, custom)
     .map((key) => params[key])
     .find(Boolean);
   const ref = order.gatewayRef || refFromParams || "";
@@ -55,8 +63,7 @@ async function handle(req: NextRequest, code: string): Promise<NextResponse> {
     return back("payerror=" + encodeURIComponent("کد پیگیری پرداخت دریافت نشد."));
   }
 
-  const result = await verifyPayment({
-    driver: driverId,
+  const result = await verifyWithGateway(gateway, {
     ref,
     amount: order.payable,
     orderCode: order.code,
@@ -70,7 +77,7 @@ async function handle(req: NextRequest, code: string): Promise<NextResponse> {
 
   try {
     const completed = await completePaidOrder(order.id, {
-      gateway: driverId,
+      gateway: gateway.driver,
       ref,
       bankRef: result.refId,
     });
@@ -84,7 +91,7 @@ async function handle(req: NextRequest, code: string): Promise<NextResponse> {
       data: {
         status: "pending_review",
         paidAt: new Date(),
-        gateway: driverId,
+        gateway: gateway.driver,
         gatewayRef: ref,
         bankRef: result.refId,
         adminNote: `پرداخت آنلاین موفق بود ولی تحویل خطا داد: ${(err as Error).message}`.slice(0, 300),

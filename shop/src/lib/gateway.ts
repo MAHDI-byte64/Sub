@@ -42,7 +42,11 @@ export type VerifyResult = { ok: boolean; refId: string; message: string };
 export type GatewayConfig = {
   driver: string;
   key: string;
+  /** کلید محرمانه (فعلاً فقط هوش‌پی برای امضای وب‌هوک) */
+  secret: string;
   sandbox: boolean;
+  /** hooshpay: seller | buyer | split */
+  feeMode: string;
   custom: CustomConfig;
 };
 
@@ -144,6 +148,10 @@ async function postJson(
 }
 
 const rial = (toman: number) => Math.round(toman) * 10;
+
+/** آدرس پایهٔ هوش‌پی؛ فقط برای تست با سرور شبیه‌سازی‌شده قابل تغییر است */
+const hooshpayBase = () =>
+  (process.env.HOOSHPAY_BASE || "https://hooshpay.xyz").replace(/\/+$/, "");
 
 /* -------------------------------------------------------------------------- */
 /*                                 درایورها                                   */
@@ -369,6 +377,73 @@ const nextpay: Driver = {
   },
 };
 
+/**
+ * هوش‌پی — درگاه واسط کارت‌به‌کارت با تأیید آنی
+ * مستندات: https://hooshpay.xyz/developers
+ *
+ * مبلغ‌ها به تومان‌اند و «مبلغ قابل پرداخت» (payable_amount) با مبلغ فاکتور فرق
+ * دارد؛ هوش‌پی چند تومان اختلاف می‌گذارد تا تراکنش را دقیق تطبیق دهد و کارمزد
+ * هم بر اساس fee_mode جابه‌جا می‌شود. پس هرگز خودمان مبلغ را چک نمی‌کنیم و
+ * تصمیم را به متد verify خود هوش‌پی می‌سپاریم.
+ */
+const hooshpay: Driver = {
+  id: "hooshpay",
+  label: "هوش‌پی (HooshPay)",
+  keyLabel: "کلید API (hp_live_…)",
+  async start(input, cfg) {
+    const { json, raw } = await postJson(
+      `${hooshpayBase()}/api/v1/invoices`,
+      {
+        amount: Math.round(input.amount),
+        fee_mode: cfg.feeMode || "buyer",
+        order_id: input.orderCode,
+        description: input.description,
+        callback_url: input.callbackUrl.replace("/api/pay/callback/", "/api/pay/hooshpay/"),
+        return_url: input.callbackUrl,
+      },
+      { "X-API-KEY": cfg.key },
+    );
+
+    const uid = text(pick(json, "data.uid"));
+    const payUrl = text(pick(json, "data.payment_url"));
+    if (pick(json, "success") !== true || !uid || !payUrl) {
+      throw new GatewayError(
+        `هوش‌پی فاکتور را نساخت: ${text(pick(json, "message")) || text(pick(json, "error")) || raw.slice(0, 120)}`,
+      );
+    }
+    return { payUrl, ref: uid };
+  },
+  async verify(input, cfg) {
+    const { json, raw } = await postJson(
+      `${hooshpayBase()}/api/v1/invoices/${encodeURIComponent(input.ref)}/verify`,
+      {},
+      { "X-API-KEY": cfg.key },
+    );
+
+    const paid = pick(json, "paid") === true || text(pick(json, "status")) === "paid";
+    if (paid) {
+      return {
+        ok: true,
+        refId: text(pick(json, "data.tracking_code")) || input.ref,
+        message: "پرداخت تأیید شد.",
+      };
+    }
+    const status = text(pick(json, "status")) || text(pick(json, "data.status"));
+    return {
+      ok: false,
+      refId: "",
+      message:
+        status === "pending"
+          ? "پرداخت هنوز انجام نشده است."
+          : status === "expired"
+            ? "مهلت پرداخت فاکتور تمام شده است."
+            : status === "cancelled"
+              ? "فاکتور لغو شده است."
+              : `تأیید تراکنش ناموفق بود (${status || raw.slice(0, 80)}).`,
+    };
+  },
+};
+
 /** درایور دلخواه: هر درگاهی که همین سه مرحله را داشته باشد */
 const custom: Driver = {
   id: "custom",
@@ -429,7 +504,7 @@ const custom: Driver = {
   },
 };
 
-export const DRIVERS: Driver[] = [zarinpal, idpay, zibal, payping, nextpay, custom];
+export const DRIVERS: Driver[] = [hooshpay, zarinpal, idpay, zibal, payping, nextpay, custom];
 
 export function findDriver(id: string): Driver | null {
   return DRIVERS.find((d) => d.id === id) ?? null;
@@ -453,7 +528,9 @@ export function gatewayConfig(settings: Settings): GatewayConfig {
   return {
     driver: settings.gateway_driver || "zarinpal",
     key: settings.gateway_key || "",
+    secret: settings.gateway_secret || "",
     sandbox: asBool(settings.gateway_sandbox),
+    feeMode: settings.gateway_fee_mode || "buyer",
     custom: parseCustomConfig(settings.gateway_custom),
   };
 }
@@ -502,6 +579,8 @@ export async function verifyPayment(input: VerifyInput & { driver?: string }): P
 /** نام پارامتری که درگاه هنگام بازگشت، کد پیگیری را در آن می‌فرستد */
 export function callbackRefParam(driverId: string, custom: CustomConfig): string[] {
   switch (driverId) {
+    case "hooshpay":
+      return ["invoice", "uid"];
     case "zarinpal":
       return ["Authority", "authority"];
     case "idpay":

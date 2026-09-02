@@ -21,6 +21,9 @@ import {
 import { logAdmin } from "@/lib/adminlog";
 import { checkPanel, runPanelChecks } from "@/lib/monitor";
 import { broadcastPush, ensureVapidKeys, sendPushToUser } from "@/lib/push";
+import { findDriver } from "@/lib/gateway";
+import { gatewayUsable, migrateLegacyGateway } from "@/lib/payments";
+import { usdtRate } from "@/lib/rates";
 import { creditWallet, debitWallet } from "@/lib/wallet";
 import { notifyUser } from "@/lib/notify";
 import { payReferralBonus } from "@/lib/referral";
@@ -662,6 +665,168 @@ export async function broadcastPushAction(_prev: AdminState, formData: FormData)
   return sent
     ? { success: `اطلاعیه به ${faNum(sent)} دستگاه از ${faNum(users)} کاربر فرستاده شد.` }
     : { error: "هیچ کاربری اعلان پوش را روشن نکرده است." };
+}
+
+/* --------------------------- روش‌های پرداخت --------------------------- */
+
+/** افزودن یا ویرایش یک درگاه پرداخت آنلاین */
+export async function saveGatewayAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const id = str(formData, "id");
+  const driver = str(formData, "driver") || "zarinpal";
+  if (!findDriver(driver)) return { error: "این درایور پشتیبانی نمی‌شود." };
+
+  const customRaw = str(formData, "custom");
+  if (driver === "custom" && customRaw) {
+    try {
+      JSON.parse(customRaw);
+    } catch {
+      return { error: "تنظیمات JSON درگاه دلخواه معتبر نیست." };
+    }
+  }
+
+  const data = {
+    driver,
+    label: str(formData, "label") || (findDriver(driver)?.label ?? driver),
+    apiKey: str(formData, "apiKey"),
+    apiSecret: str(formData, "apiSecret"),
+    sandbox: checked(formData, "sandbox"),
+    isActive: checked(formData, "isActive"),
+    minAmount: Math.max(0, num(formData, "minAmount", 10_000)),
+    maxAmount: Math.max(0, num(formData, "maxAmount", 0)),
+    sortOrder: num(formData, "sortOrder", 0),
+    note: str(formData, "note") || null,
+    config: JSON.stringify({
+      feeMode: str(formData, "feeMode") || "buyer",
+      ...(customRaw ? { custom: JSON.parse(customRaw) as unknown } : {}),
+    }),
+  };
+
+  const row = id
+    ? await db.gateway.update({ where: { id }, data })
+    : await db.gateway.create({ data });
+
+  await logAdmin("gateway_saved", row.label, row.driver);
+  revalidatePath("/admin/payments");
+  flash(
+    "/admin/payments",
+    gatewayUsable(row)
+      ? `درگاه «${row.label}» ذخیره و آماده استفاده است.`
+      : `درگاه «${row.label}» ذخیره شد، ولی هنوز کلید یا تنظیمات لازم را ندارد.`,
+  );
+}
+
+export async function deleteGatewayAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const id = str(formData, "id");
+  const row = await db.gateway.findUnique({ where: { id } });
+  if (!row) return { error: "درگاه پیدا نشد." };
+
+  // سفارش‌های قبلی نباید بشکنند؛ فقط ارتباطشان قطع می‌شود
+  await db.order.updateMany({ where: { gatewayId: id }, data: { gatewayId: null } });
+  await db.gateway.delete({ where: { id } });
+  await logAdmin("gateway_deleted", row.label, row.driver);
+  revalidatePath("/admin/payments");
+  flash("/admin/payments", `درگاه «${row.label}» حذف شد.`);
+}
+
+export async function toggleGatewayAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const id = str(formData, "id");
+  const row = await db.gateway.findUnique({ where: { id } });
+  if (!row) return { error: "درگاه پیدا نشد." };
+
+  const updated = await db.gateway.update({
+    where: { id },
+    data: { isActive: !row.isActive },
+  });
+  await logAdmin("gateway_saved", row.label, updated.isActive ? "فعال" : "غیرفعال");
+  revalidatePath("/admin/payments");
+  flash("/admin/payments", updated.isActive ? `درگاه «${row.label}» فعال شد.` : `درگاه «${row.label}» خاموش شد.`);
+}
+
+/** افزودن یا ویرایش آدرس کیف پول ارز دیجیتال */
+export async function saveWalletAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const id = str(formData, "id");
+  const address = str(formData, "address");
+  if (address.length < 25) return { error: "آدرس کیف پول معتبر نیست." };
+
+  const network = str(formData, "network") || "trc20";
+  if (network === "trc20" && !/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address)) {
+    return { error: "آدرس TRC20 باید با T شروع شود و ۳۴ کاراکتر باشد." };
+  }
+
+  const data = {
+    network,
+    symbol: str(formData, "symbol") || "USDT",
+    address,
+    label: str(formData, "label"),
+    isActive: checked(formData, "isActive"),
+    sortOrder: num(formData, "sortOrder", 0),
+    note: str(formData, "note") || null,
+  };
+
+  const row = id
+    ? await db.cryptoWallet.update({ where: { id }, data })
+    : await db.cryptoWallet.create({ data });
+
+  await logAdmin("wallet_saved", `${row.symbol}-${row.network}`, row.address);
+  revalidatePath("/admin/payments");
+  flash("/admin/payments", "آدرس کیف پول ذخیره شد.");
+}
+
+export async function deleteWalletAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const id = str(formData, "id");
+  const row = await db.cryptoWallet.findUnique({ where: { id } });
+  if (!row) return { error: "آدرس پیدا نشد." };
+
+  await db.cryptoWallet.delete({ where: { id } });
+  await logAdmin("wallet_deleted", row.address);
+  revalidatePath("/admin/payments");
+  flash("/admin/payments", "آدرس کیف پول حذف شد.");
+}
+
+/** گرفتن نرخ تازهٔ تتر از منبع تنظیم‌شده */
+export async function refreshRateAction(_prev: AdminState, _formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const rate = await usdtRate(true);
+  revalidatePath("/admin/payments");
+  return rate.toman > 0
+    ? {
+        success:
+          `نرخ به‌روز شد: هر تتر ${toman(rate.toman)}` +
+          (rate.source === "auto" ? " (از منبع خودکار)" : " (نرخ دستی)"),
+      }
+    : { error: "نرخ تتر گرفته نشد؛ نرخ دستی را در تنظیمات وارد کنید." };
+}
+
+/** انتقال تنظیمات تک‌درگاهی قدیمی به جدول درگاه‌ها */
+export async function importLegacyGatewayAction(
+  _prev: AdminState,
+  _formData: FormData,
+): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const moved = await migrateLegacyGateway();
+  revalidatePath("/admin/payments");
+  return moved
+    ? { success: "درگاه تنظیم‌شده در تنظیمات قدیمی، به فهرست درگاه‌ها اضافه شد." }
+    : { error: "چیزی برای انتقال پیدا نشد." };
 }
 
 /* ------------------------------ پایش سرورها ------------------------------ */

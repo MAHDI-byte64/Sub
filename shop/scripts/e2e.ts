@@ -23,6 +23,18 @@ import { creditWallet, debitWallet } from "../src/lib/wallet";
 import { runMaintenance } from "../src/lib/scheduler";
 import { checkPanel, probePanel, pruneChecks, uptimeStats } from "../src/lib/monitor";
 import { gatewayReady, startPayment, verifyPayment } from "../src/lib/gateway";
+import {
+  activeGateways,
+  availableMethods,
+  gatewayUsable,
+  hooshpaySignature,
+  migrateLegacyGateway,
+  quoteCrypto,
+  startWithGateway,
+  validHooshpaySignature,
+  verifyWithGateway,
+} from "../src/lib/payments";
+import { tomanToUsdt, usdtRate } from "../src/lib/rates";
 import { completePaidOrder } from "../src/lib/orders";
 import {
   broadcastPush,
@@ -59,6 +71,8 @@ function check(label: string, condition: boolean, extra?: unknown) {
 }
 
 async function reset() {
+  await db.gateway.deleteMany();
+  await db.cryptoWallet.deleteMany();
   await db.pushSub.deleteMany();
   await db.panelCheck.deleteMany();
   await db.ticketMessage.deleteMany();
@@ -1017,6 +1031,193 @@ function i18nScenario() {
   check("تعداد دستگاه انگلیسی", enFmt.devices(1) === "1 device", enFmt.devices(1));
 }
 
+/** هوش‌پی، چند درگاهی، و پرداخت تتری */
+async function hooshpayAndCryptoScenario() {
+  console.log("\n══════ هوش‌پی و پرداخت تتری ══════");
+  await reset();
+  await saveSettings({
+    card_enabled: "1",
+    wallet_enabled: "1",
+    crypto_enabled: "1",
+    crypto_min_amount: "0",
+    usdt_rate_auto: "0",
+    usdt_rate_manual: "60000",
+    usdt_rate_margin: "2",
+    trial_enabled: "0",
+  });
+
+  const secret = "hp-secret-test";
+  const gateway = await db.gateway.create({
+    data: {
+      driver: "hooshpay",
+      label: "هوش‌پی",
+      apiKey: GATEWAY_KEY,
+      apiSecret: secret,
+      isActive: true,
+      minAmount: 10_000,
+      config: JSON.stringify({ feeMode: "buyer" }),
+    },
+  });
+  check("درگاه هوش‌پی قابل استفاده تشخیص داده شد", gatewayUsable(gateway));
+
+  const incomplete = await db.gateway.create({
+    data: { driver: "zarinpal", label: "زرین‌پال بدون کلید", apiKey: "", isActive: true },
+  });
+  check("درگاه بدون کلید در فهرست فعال‌ها نمی‌آید", !gatewayUsable(incomplete));
+  check(
+    "فقط درگاه‌های کامل به مشتری پیشنهاد می‌شوند",
+    (await activeGateways(150_000)).every((g) => g.id === gateway.id),
+  );
+
+  const panel = await db.panel.create({
+    data: {
+      name: "HP-PANEL",
+      location: "آلمان",
+      url: MOCK_V2,
+      username: "admin",
+      password: "admin",
+      templateEmail: "template-vip",
+      subBase: "https://sub.test.local/sub",
+      inboundId: 1,
+    },
+  });
+  const plan = await db.plan.create({
+    data: { title: "پلن هوش‌پی", volumeGb: 10, days: 30, deviceLimit: 2, priceToman: 250_000, sortOrder: 1 },
+  });
+  const user = await db.user.create({
+    data: { email: "hooshpay@test.local", passwordHash: "scrypt:x:y" },
+  });
+
+  const order = await db.order.create({
+    data: {
+      code: "FD-HP01",
+      userId: user.id,
+      kind: "plan",
+      payMethod: "online",
+      gatewayId: gateway.id,
+      planId: plan.id,
+      panelId: panel.id,
+      amount: plan.priceToman,
+      payable: plan.priceToman,
+      status: "awaiting_payment",
+    },
+  });
+
+  const started = await startWithGateway(gateway, {
+    amount: order.payable,
+    orderCode: order.code,
+    description: "تست هوش‌پی",
+    callbackUrl: "http://127.0.0.1:3000/api/pay/callback/FD-HP01",
+  });
+  check("فاکتور هوش‌پی ساخته شد", started.ref.startsWith("inv_"), started.ref);
+  check("آدرس پرداخت هوش‌پی برگشت", started.payUrl.includes("/pay/inv_"), started.payUrl);
+  await db.order.update({ where: { id: order.id }, data: { gatewayRef: started.ref } });
+
+  const early = await verifyWithGateway(gateway, {
+    ref: started.ref,
+    amount: order.payable,
+    orderCode: order.code,
+    params: {},
+  });
+  check("فاکتور پرداخت‌نشده تأیید نمی‌شود", !early.ok, early.message);
+
+  // مشتری روی صفحهٔ هوش‌پی پرداخت می‌کند
+  await fetch(`${MOCK_GATEWAY}/pay/${started.ref}`, { redirect: "manual" });
+  const verified = await verifyWithGateway(gateway, {
+    ref: started.ref,
+    amount: order.payable,
+    orderCode: order.code,
+    params: {},
+  });
+  check("فاکتور پرداخت‌شده تأیید شد", verified.ok, verified.message);
+  check("کد رهگیری هوش‌پی برگشت", verified.refId === `HP-${order.code}`, verified.refId);
+
+  await completePaidOrder(order.id, { gateway: "hooshpay", ref: started.ref, bankRef: verified.refId });
+  const hpService = await db.service.findFirst({ where: { orderId: order.id } });
+  check("سرویس بعد از پرداخت هوش‌پی تحویل شد", Boolean(hpService), hpService?.clientEmail);
+
+  // امضای وب‌هوک
+  const payload = { event: "payment.success", invoice: "inv_x", order_id: "FD-HP01", amount: 250000 };
+  const signature = hooshpaySignature(payload, secret);
+  check("امضای وب‌هوک ساخته شد", signature.length === 64, signature.slice(0, 12));
+  check("امضای درست پذیرفته می‌شود", validHooshpaySignature(payload, signature, secret));
+  check("امضای غلط رد می‌شود", !validHooshpaySignature(payload, signature, "wrong-secret"));
+  check(
+    "دستکاری محتوا امضا را باطل می‌کند",
+    !validHooshpaySignature({ ...payload, amount: 1 }, signature, secret),
+  );
+  check(
+    "ترتیب کلیدها روی امضا اثر ندارد",
+    hooshpaySignature({ amount: 250000, order_id: "FD-HP01", invoice: "inv_x", event: "payment.success" }, secret) ===
+      signature,
+  );
+
+  // انتقال تنظیمات تک‌درگاهی قدیمی
+  await db.gateway.deleteMany();
+  await saveSettings({
+    gateway_enabled: "1",
+    gateway_driver: "zarinpal",
+    gateway_key: "legacy-merchant",
+    gateway_min_amount: "20000",
+  });
+  const moved = await migrateLegacyGateway();
+  const migrated = await db.gateway.findFirst();
+  check("درگاه قدیمی به جدول منتقل شد", moved && migrated?.apiKey === "legacy-merchant", migrated?.driver);
+  check("انتقال دوباره تکرار نمی‌شود", !(await migrateLegacyGateway()));
+
+  /* ------------------------------ پرداخت تتری ------------------------------ */
+  const rate = await usdtRate();
+  check("نرخ دستی با حاشیه اعمال شد", rate.toman === 61_200, rate.toman);
+  check("تبدیل تومان به تتر رو به بالا است", tomanToUsdt(250_000, 61_200) === 4.09, tomanToUsdt(250_000, 61_200));
+
+  const methodsNoWallet = await availableMethods(250_000);
+  check("بدون آدرس کیف پول، پرداخت تتری پیشنهاد نمی‌شود", !methodsNoWallet.crypto);
+
+  await db.cryptoWallet.create({
+    data: { network: "trc20", symbol: "USDT", address: "TTestWalletAddressForE2E0000000000", isActive: true },
+  });
+  const methods = await availableMethods(250_000);
+  check("با آدرس فعال، پرداخت تتری در دسترس است", methods.crypto);
+  check("کارت‌به‌کارت هم فعال است", methods.card);
+
+  const quote = await quoteCrypto(250_000);
+  check("مبلغ تتری سفارش محاسبه شد", quote.amount > 0 && quote.rate === 61_200, quote);
+
+  const cryptoOrder = await db.order.create({
+    data: {
+      code: "FD-CR01",
+      userId: user.id,
+      kind: "plan",
+      payMethod: "crypto",
+      planId: plan.id,
+      panelId: panel.id,
+      amount: plan.priceToman,
+      payable: plan.priceToman,
+      status: "awaiting_receipt",
+      cryptoAmount: quote.amount,
+      cryptoRate: quote.rate,
+      cryptoAddress: "TTestWalletAddressForE2E0000000000",
+      cryptoNetwork: "USDT-TRC20",
+    },
+  });
+  check("مبلغ و نرخ روی سفارش تتری قفل شد", cryptoOrder.cryptoRate === 61_200);
+
+  await db.order.update({
+    where: { id: cryptoOrder.id },
+    data: { cryptoTxHash: "0xtesthash1234567890abcdef", status: "pending_review", paidAt: new Date() },
+  });
+  await completePaidOrder(cryptoOrder.id);
+  const cryptoService = await db.service.findFirst({ where: { orderId: cryptoOrder.id } });
+  const afterCrypto = await db.order.findUniqueOrThrow({ where: { id: cryptoOrder.id } });
+  check("بعد از تأیید مدیر، سرویس تتری تحویل شد", Boolean(cryptoService));
+  check("وضعیت سفارش تتری approved شد", afterCrypto.status === "approved", afterCrypto.status);
+
+  // خاموش‌کردن روش‌ها از پنل مدیریت
+  await saveSettings({ crypto_enabled: "0", card_enabled: "0" });
+  const off = await availableMethods(250_000);
+  check("خاموش‌کردن روش‌ها از تنظیمات اثر می‌کند", !off.crypto && !off.card);
+}
+
 async function main() {
   await scenario({
     label: "پنل نسخه ۲ — ورود با نام کاربری و رمز",
@@ -1043,6 +1244,7 @@ async function main() {
   await walletScenario();
   await monitorScenario();
   await gatewayScenario();
+  await hooshpayAndCryptoScenario();
   await pushScenario();
   i18nScenario();
 

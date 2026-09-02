@@ -142,6 +142,43 @@ model PushSub {
   @@index([userId])
 }
 
+/// درگاه پرداخت آنلاین؛ می‌توان چند درگاه هم‌زمان فعال داشت
+model Gateway {
+  id        String   @id @default(cuid())
+  /// hooshpay | zarinpal | idpay | zibal | payping | nextpay | custom
+  driver    String
+  /// نامی که به مشتری نشان داده می‌شود
+  label     String
+  apiKey    String   @default("")
+  /// کلید محرمانه برای اعتبارسنجی وب‌هوک (هوش‌پی)
+  apiSecret String   @default("")
+  sandbox   Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  minAmount Int      @default(10000)
+  maxAmount Int      @default(0)
+  sortOrder Int      @default(0)
+  /// تنظیمات اختصاصی هر درایور به‌صورت JSON (مثلاً fee_mode یا درگاه دلخواه)
+  config    String?
+  note      String?
+  createdAt DateTime @default(now())
+
+  orders Order[]
+}
+
+/// آدرس کیف پول ارز دیجیتال برای دریافت پرداخت
+model CryptoWallet {
+  id        String   @id @default(cuid())
+  /// فعلاً فقط trc20
+  network   String   @default("trc20")
+  symbol    String   @default("USDT")
+  address   String
+  label     String   @default("")
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  note      String?
+  createdAt DateTime @default(now())
+}
+
 /// تاریخچهٔ بررسی سلامت سرورها (برای درصد آپتایم و نمودار پینگ)
 model PanelCheck {
   id        String   @id @default(cuid())
@@ -206,6 +243,15 @@ model Order {
   gatewayRef     String?
   /// شمارهٔ پیگیری بانکی بعد از تأیید
   bankRef        String?
+  /// درگاهی که این سفارش با آن پرداخت شده (رکورد جدول Gateway)
+  gatewayId      String?
+  /// مبلغ معادل تتر و نرخ لحظهٔ ثبت سفارش (برای پرداخت ارز دیجیتال)
+  cryptoAmount   Float?
+  cryptoRate     Int?
+  cryptoAddress  String?
+  cryptoNetwork  String?
+  /// هش تراکنش که مشتری وارد کرده
+  cryptoTxHash   String?
   planId         String?
   panelId        String?
   renewServiceId String?
@@ -225,6 +271,7 @@ model Order {
   plan     Plan?     @relation(fields: [planId], references: [id])
   panel    Panel?    @relation(fields: [panelId], references: [id])
   discount Discount? @relation(fields: [discountId], references: [id])
+  gatewayRow Gateway? @relation(fields: [gatewayId], references: [id])
   service  Service?
 
   @@index([userId])
