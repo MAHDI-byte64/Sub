@@ -1,3 +1,5 @@
+import type { Locale } from "./i18n";
+
 const FA_DIGITS = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
 
 /** تبدیل ارقام لاتین به فارسی */
@@ -127,3 +129,107 @@ export function planDaysLabel(days: number): string {
 export function deviceLabel(limit: number): string {
   return limit > 0 ? `${faNum(limit)} کاربر همزمان` : "بدون محدودیت کاربر";
 }
+
+/* -------------------------------------------------------------------------- */
+/*                        نسخهٔ دو زبانهٔ همین قالب‌بندی‌ها                        */
+/* -------------------------------------------------------------------------- */
+
+const EN_MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+const BYTE_UNITS_EN = ["B", "KB", "MB", "GB", "TB"];
+
+/**
+ * قالب‌بندی وابسته به زبان.
+ *
+ * در فارسی همان رفتار قبلی (ارقام فارسی، تاریخ شمسی) و در انگلیسی ارقام لاتین و
+ * تاریخ میلادی. `const f = fmt(locale)` و بعد `f.money(...)`.
+ */
+export function fmt(locale: Locale) {
+  const fa = locale === "fa";
+
+  const num = (input: string | number) => (fa ? faNum(input) : String(input));
+
+  const money = (amount: number, withUnit = true) => {
+    const value = Math.round(amount).toLocaleString("en-US");
+    const text = fa ? faNum(value) : value;
+    return withUnit ? (fa ? `${text} تومان` : `${text} Toman`) : text;
+  };
+
+  const bytes = (input: number, unlimitedLabel?: string) => {
+    if (!input || input <= 0) return unlimitedLabel ?? (fa ? "نامحدود" : "Unlimited");
+    if (fa) return formatBytes(input, unlimitedLabel ?? "نامحدود");
+    let value = input;
+    let i = 0;
+    while (value >= 1024 && i < BYTE_UNITS_EN.length - 1) {
+      value /= 1024;
+      i += 1;
+    }
+    const rounded = value >= 100 ? value.toFixed(0) : value.toFixed(value >= 10 ? 1 : 2);
+    return `${rounded.replace(/\.?0+$/, "")} ${BYTE_UNITS_EN[i]}`;
+  };
+
+  const date = (input: Date | string | null | undefined, withTime = false) => {
+    if (!input) return "—";
+    const d = typeof input === "string" ? new Date(input) : input;
+    if (Number.isNaN(d.getTime())) return "—";
+    if (fa) return faDate(d, withTime);
+    const base = `${d.getDate()} ${EN_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+    if (!withTime) return base;
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${base}, ${hh}:${mm}`;
+  };
+
+  const relative = (input: Date | string | null | undefined) => {
+    if (!input) return "—";
+    const d = typeof input === "string" ? new Date(input) : input;
+    if (Number.isNaN(d.getTime())) return "—";
+    if (fa) return relativeTime(d);
+
+    const diff = Date.now() - d.getTime();
+    const abs = Math.abs(diff);
+    const suffix = diff < 0 ? "from now" : "ago";
+    if (abs < 60_000) return "just now";
+    if (abs < 3_600_000) return `${Math.round(abs / 60_000)} min ${suffix}`;
+    if (abs < 86_400_000) return `${Math.round(abs / 3_600_000)} h ${suffix}`;
+    if (abs < 7 * 86_400_000) return `${Math.round(abs / 86_400_000)} d ${suffix}`;
+    return date(d);
+  };
+
+  const volume = (volumeGb: number) =>
+    volumeGb > 0
+      ? fa
+        ? `${faNum(volumeGb)} گیگابایت`
+        : `${volumeGb} GB`
+      : fa
+        ? "حجم نامحدود"
+        : "Unlimited data";
+
+  const days = (value: number) =>
+    value > 0
+      ? fa
+        ? `${faNum(value)} روزه`
+        : `${value} days`
+      : fa
+        ? "بدون محدودیت زمانی"
+        : "No time limit";
+
+  const devices = (limit: number) =>
+    limit > 0
+      ? fa
+        ? `${faNum(limit)} کاربر همزمان`
+        : `${limit} device${limit > 1 ? "s" : ""}`
+      : fa
+        ? "بدون محدودیت کاربر"
+        : "Unlimited devices";
+
+  const daysLeft = (value: number) =>
+    fa ? `${faNum(value)} روز مانده` : `${value} days left`;
+
+  return { locale, num, money, bytes, date, relative, volume, days, devices, daysLeft };
+}
+
+export type Fmt = ReturnType<typeof fmt>;

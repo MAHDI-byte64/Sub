@@ -3,9 +3,11 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
-import { durationLabel, faDate, faNum, formatBytes, relativeTime } from "@/lib/format";
+import { durationLabel, fmt } from "@/lib/format";
+import { getLocale } from "@/lib/locale";
+import { translator } from "@/lib/i18n";
 import { averageResponseMs, awaitingReply, groupByDay } from "@/lib/tickets";
-import { TICKET_STATUS } from "@/lib/status";
+import { ticketStatus } from "@/lib/status";
 import TicketReplyForm from "@/components/TicketReplyForm";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +15,9 @@ export const dynamic = "force-dynamic";
 export default async function TicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser(`/dashboard/tickets/${id}`);
+  const locale = await getLocale();
+  const tr = translator(locale);
+  const f = fmt(locale);
 
   const [ticket, settings] = await Promise.all([
     db.ticket.findFirst({
@@ -26,7 +31,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
   ]);
   if (!ticket) notFound();
 
-  const status = TICKET_STATUS[ticket.status] ?? TICKET_STATUS.open;
+  const status = ticketStatus(locale, ticket.status);
   const initial = (user.name || user.email).trim().charAt(0).toUpperCase();
   const avg = averageResponseMs(ticket.messages);
   const waiting = awaitingReply(ticket.messages) && ticket.status !== "closed";
@@ -37,13 +42,13 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
     <div>
       <div className="page-head">
         <div>
-          <h1>گفتگوی پشتیبانی</h1>
+          <h1>{tr("ticket.threadTitle")}</h1>
           <p>{ticket.subject}</p>
         </div>
         <div className="btn-row">
           <span className={`badge ${status.badge}`}>{status.label}</span>
           <Link className="btn btn-sm" href="/dashboard/tickets">
-            ← همه گفتگوها
+            {tr("ticket.allThreads")}
           </Link>
         </div>
       </div>
@@ -52,10 +57,10 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
         <div className="sla-card">
           <span className="sla-icon">⏳</span>
           <div className="sla-main">
-            <b>پیام شما دریافت شد و در نوبت پاسخ است</b>
+            <b>{tr("ticket.queued")}</b>
             <span>
-              پشتیبانی {settings.support_hours} فعال است
-              {avg ? ` · میانگین زمان پاسخ در این گفتگو: ${durationLabel(avg)}` : ""}
+              {tr("ticket.supportActive", { hours: settings.support_hours })}
+              {avg ? tr("ticket.avgInThread", { time: durationLabel(avg) }) : ""}
             </span>
           </div>
         </div>
@@ -70,9 +75,11 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
             <div className="th-main">
               <h2>{ticket.subject}</h2>
               <div className="th-meta">
-                <span>🕒 شروع {relativeTime(ticket.createdAt)}</span>
-                <span>💬 {faNum(ticket.messages.length)} پیام</span>
-                {avg ? <span>⚡ میانگین پاسخ {durationLabel(avg)}</span> : null}
+                <span>{tr("ticket.started", { time: f.relative(ticket.createdAt) })}</span>
+                <span>
+                  💬 {f.num(ticket.messages.length)} {tr("ticket.messages")}
+                </span>
+                {avg ? <span>{tr("ticket.avgReply", { time: durationLabel(avg) })}</span> : null}
               </div>
             </div>
           </div>
@@ -80,7 +87,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
           <div className="chat">
             {groups.map((group) => (
               <div key={group.day.toISOString()}>
-                <div className="chat-day">{faDate(group.day)}</div>
+                <div className="chat-day">{f.date(group.day)}</div>
                 {group.items.map((msg) => (
                   <div className={`chat-row${msg.fromAdmin ? " is-admin" : ""}`} key={msg.id}>
                     <span className={`avatar avatar-sm${msg.fromAdmin ? "" : " avatar-muted"}`}>
@@ -88,8 +95,8 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
                     </span>
                     <div className="bubble">
                       <div className="meta">
-                        <b>{msg.fromAdmin ? "پشتیبانی" : "شما"}</b>
-                        <span>{relativeTime(msg.createdAt)}</span>
+                        <b>{msg.fromAdmin ? tr("ticket.support") : tr("ticket.you")}</b>
+                        <span>{f.relative(msg.createdAt)}</span>
                       </div>
                       <div className="body">{msg.body}</div>
                     </div>
@@ -103,24 +110,25 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
             ticketId={ticket.id}
             closed={ticket.status === "closed"}
             initial={initial}
-            hint={`پشتیبانی ${settings.support_hours} پاسخ می‌دهد.`}
+            locale={locale}
+            hint={tr("ticket.replyHint", { hours: settings.support_hours })}
           />
         </div>
 
         {service ? (
           <div className="card customer-card">
             <div className="card-title">
-              <h3>سرویس مرتبط</h3>
+              <h3>{tr("ticket.relatedService")}</h3>
             </div>
             <div className="cc-service">
               <div className="cc-service-head">
                 <b>
-                  {service.panel.flag} {service.plan?.title ?? "سرویس"}
+                  {service.panel.flag} {service.plan?.title ?? tr("ticket.service")}
                 </b>
                 <span
                   className={`badge ${service.status === "active" ? "badge-success" : "badge-warn"}`}
                 >
-                  {service.status === "active" ? "فعال" : "غیرفعال"}
+                  {service.status === "active" ? tr("common.active") : tr("common.disabled")}
                 </span>
               </div>
               {service.totalBytes > 0 ? (
@@ -133,21 +141,23 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
                     />
                   </div>
                   <small>
-                    {formatBytes(Math.max(0, service.totalBytes - service.usedBytes), "۰")} باقی‌مانده از{" "}
-                    {formatBytes(service.totalBytes)}
+                    {tr("ticket.remainingOf", {
+                      left: f.bytes(Math.max(0, service.totalBytes - service.usedBytes), f.num(0)),
+                      total: f.bytes(service.totalBytes),
+                    })}
                   </small>
                 </>
               ) : (
-                <small>حجم نامحدود</small>
+                <small>{tr("common.unlimitedVolume")}</small>
               )}
-              <small>انقضا: {faDate(service.expiresAt)}</small>
+              <small>{tr("ticket.expiry", { date: f.date(service.expiresAt) })}</small>
             </div>
             <div className="btn-row">
               <Link className="btn btn-sm btn-primary btn-block" href={`/dashboard/services/${service.id}`}>
-                مشاهده سرویس و کانفیگ
+                {tr("ticket.viewService")}
               </Link>
               <Link className="btn btn-sm btn-block" href={`/plans?renew=${service.id}`}>
-                تمدید سرویس
+                {tr("card.renewLong")}
               </Link>
             </div>
           </div>

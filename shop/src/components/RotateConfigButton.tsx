@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { rotateServiceAction, type ShopState } from "@/app/actions/shop";
+import { t, type Locale } from "@/lib/i18n";
 import SubmitButton from "./SubmitButton";
 
 /**
@@ -17,6 +18,7 @@ export default function RotateConfigButton({
   cooldownMinutes,
   disabled = false,
   disabledReason,
+  locale = "fa",
 }: {
   serviceId: string;
   rotatedAt?: string | null;
@@ -25,10 +27,12 @@ export default function RotateConfigButton({
   cooldownMinutes: string;
   disabled?: boolean;
   disabledReason?: string;
+  locale?: Locale;
 }) {
   const [state, formAction] = useActionState<ShopState, FormData>(rotateServiceAction, {});
   const [armed, setArmed] = useState(false);
   const router = useRouter();
+  const tr = (key: string, vars?: Record<string, string | number>) => t(locale, key, vars);
 
   useEffect(() => {
     if (state.success) {
@@ -44,11 +48,8 @@ export default function RotateConfigButton({
           🔐
         </span>
         <div>
-          <b>بازتولید کانفیگ</b>
-          <small>
-            شناسه اتصال (UUID) و آدرس لینک اشتراک از نو ساخته می‌شود؛ هر کسی که کانفیگ قدیمی شما را
-            دارد، بلافاصله قطع می‌شود.
-          </small>
+          <b>{tr("rotate.title")}</b>
+          <small>{tr("rotate.text")}</small>
         </div>
       </div>
 
@@ -57,40 +58,42 @@ export default function RotateConfigButton({
 
       <div className="sec-facts">
         <span>
-          <small>آخرین بازتولید</small>
-          <b>{rotatedAt || "تا به حال انجام نشده"}</b>
+          <small>{tr("rotate.lastRotate")}</small>
+          <b>{rotatedAt || tr("rotate.never")}</b>
         </span>
         <span>
-          <small>تعداد دفعات</small>
-          <b>{rotateCount} بار</b>
+          <small>{tr("rotate.count")}</small>
+          <b>
+            {rotateCount} {tr("rotate.times")}
+          </b>
         </span>
         <span>
-          <small>فاصله مجاز</small>
-          <b>هر {cooldownMinutes} دقیقه یک بار</b>
+          <small>{tr("rotate.cooldown")}</small>
+          <b>{tr("rotate.everyMinutes", { minutes: cooldownMinutes })}</b>
         </span>
       </div>
 
       {disabled ? (
-        <p className="field-hint sec-note">{disabledReason ?? "این سرویس قابل بازتولید نیست."}</p>
+        <p className="field-hint sec-note">{disabledReason ?? tr("rotate.disabledOther")}</p>
       ) : !armed ? (
         <button type="button" className="btn btn-ghost-danger" onClick={() => setArmed(true)}>
-          بازتولید کانفیگ و قطع دستگاه‌های قبلی
+          {tr("rotate.button")}
         </button>
       ) : (
         <form action={formAction} className="sec-confirm">
           <input type="hidden" name="serviceId" value={serviceId} />
-          <p className="sec-warn">مطمئنید؟ بعد از این کار:</p>
+          <p className="sec-warn">{tr("rotate.sure")}</p>
           <ul className="sec-list">
-            <li>لینک اشتراک و همه کانفیگ‌های فعلی شما باطل می‌شوند.</li>
-            <li>باید لینک تازه را در برنامه‌تان جایگزین کنید.</li>
-            <li>حجم، اعتبار و مصرف سرویس دست‌نخورده باقی می‌ماند.</li>
+            <li>{tr("rotate.c1")}</li>
+            <li>{tr("rotate.c2")}</li>
+            <li>{tr("rotate.c3")}</li>
           </ul>
           <div className="btn-row">
-            <SubmitButton className="btn btn-danger" pendingText="در حال ساخت کانفیگ تازه…">
-              بله، کانفیگ تازه بساز
+            <SubmitButton className="btn btn-danger" pendingText={tr("rotate.pending")}>
+              {tr("rotate.confirm")}
             </SubmitButton>
             <button type="button" className="btn btn-sm" onClick={() => setArmed(false)}>
-              انصراف
+              {tr("common.cancel")}
             </button>
           </div>
         </form>

@@ -3931,3 +3931,61 @@ tbody tr:hover {
     justify-content: flex-end;
   }
 }
+
+/* ------------------------------ تعویض زبان ------------------------------ */
+
+.lang-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.03);
+}
+.lang-btn {
+  min-width: 34px;
+  padding: 5px 9px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dim);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.lang-btn:hover {
+  color: var(--text);
+}
+.lang-btn.is-active {
+  background: var(--grad-soft);
+  color: var(--gold-light);
+  box-shadow: inset 0 0 0 1px rgba(244, 183, 64, 0.22);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* در حالت انگلیسی، متن‌های لاتین چپ‌چین و اعداد با فاصلهٔ درست خوانده می‌شوند */
+html[dir="ltr"] body {
+  font-family: "Segoe UI", Roboto, "Helvetica Neue", Vazirmatn, system-ui, sans-serif;
+  letter-spacing: -0.005em;
+}
+html[dir="ltr"] .mono,
+html[dir="ltr"] .ltr {
+  direction: ltr;
+  text-align: start;
+}
+html[dir="ltr"] .footer-bottom nav {
+  gap: 14px;
+}

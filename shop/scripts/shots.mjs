@@ -185,6 +185,23 @@ try {
   }
 
   // بررسی سرریز افقی در موبایل
+  // چند صفحه در حالت انگلیسی (چپ‌چین)
+  const enCtx = await browser.newContext({ locale: "en-US", viewport: DESKTOP });
+  await blockExternal(enCtx);
+  const enPage = await enCtx.newPage();
+  await enPage.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+  await enPage.click(".lang-switch button:has-text('EN')");
+  await enPage.waitForTimeout(800);
+  for (const [name, path] of [
+    ["en-home", "/"],
+    ["en-plans", "/plans"],
+    ["en-status", "/status"],
+  ]) {
+    await enPage.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded" });
+    await shoot(enPage, `d-${name}`, DESKTOP);
+    await shoot(enPage, `m-${name}`, MOBILE);
+  }
+
   console.log("\nبررسی سرریز افقی (موبایل):");
   for (const [name, url] of [...publicPages, ...userPages, ...adminPages]) {
     const page = url.startsWith("/admin")

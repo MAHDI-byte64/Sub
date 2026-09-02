@@ -1,16 +1,20 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { currentSessionId, describeDevice, requireUser } from "@/lib/auth";
-import { faDate, faNum, formatBytes } from "@/lib/format";
+import { fmt } from "@/lib/format";
+import { getLocale } from "@/lib/locale";
+import { translator } from "@/lib/i18n";
 import ChangePasswordForm from "@/components/ChangePasswordForm";
 import RevokeSessionsButton from "@/components/RevokeSessionsButton";
-import { relativeTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "پروفایل" };
 
 export default async function ProfilePage() {
   const user = await requireUser("/dashboard/profile");
+  const locale = await getLocale();
+  const tr = translator(locale);
+  const f = fmt(locale);
   const [row, orders, services, usage, tickets, sessions, sessionId] = await Promise.all([
     db.user.findUniqueOrThrow({ where: { id: user.id } }),
     db.order.count({ where: { userId: user.id, status: "approved" } }),
@@ -31,8 +35,8 @@ export default async function ProfilePage() {
     <div>
       <div className="page-head">
         <div>
-          <h1>پروفایل</h1>
-          <p>اطلاعات حساب و امنیت آن.</p>
+          <h1>{tr("profile.title")}</h1>
+          <p>{tr("profile.subtitle")}</p>
         </div>
       </div>
 
@@ -45,69 +49,77 @@ export default async function ProfilePage() {
               <small className="ltr mono">{row.email}</small>
             </div>
           </div>
-          <span className="badge badge-success">عضو از {faDate(row.createdAt)}</span>
+          <span className="badge badge-success">
+            {tr("profile.memberSince", { date: f.date(row.createdAt) })}
+          </span>
         </div>
       </div>
 
       <div className="summary-strip">
         <div className="summary-tile">
-          <span>🛒 خریدهای موفق</span>
-          <b>{faNum(orders)}</b>
+          <span>{tr("profile.purchases")}</span>
+          <b>{f.num(orders)}</b>
         </div>
         <div className="summary-tile">
-          <span>🌐 سرویس‌ها</span>
-          <b>{faNum(services)}</b>
+          <span>{tr("profile.services")}</span>
+          <b>{f.num(services)}</b>
         </div>
         <div className="summary-tile">
-          <span>📊 مجموع مصرف</span>
-          <b>{formatBytes(usage._sum.usedBytes ?? 0, "۰")}</b>
+          <span>{tr("profile.usage")}</span>
+          <b>{f.bytes(usage._sum.usedBytes ?? 0, f.num(0))}</b>
         </div>
         <div className="summary-tile">
-          <span>🎫 تیکت‌ها</span>
-          <b>{faNum(tickets)}</b>
+          <span>{tr("profile.tickets")}</span>
+          <b>{f.num(tickets)}</b>
         </div>
       </div>
 
       <div className="grid grid-2">
         <div className="card">
           <div className="card-title">
-            <h3>اطلاعات حساب</h3>
+            <h3>{tr("profile.account")}</h3>
           </div>
           <div className="svc-meta">
             <div className="meta-row">
-              <span>📧 ایمیل</span>
+              <span>{tr("profile.email")}</span>
               <b className="ltr mono">{row.email}</b>
             </div>
             <div className="meta-row">
-              <span>👤 نام</span>
+              <span>{tr("profile.name")}</span>
               <b>{row.name || "—"}</b>
             </div>
             <div className="meta-row">
-              <span>📅 تاریخ عضویت</span>
-              <b>{faDate(row.createdAt)}</b>
+              <span>{tr("profile.joined")}</span>
+              <b>{f.date(row.createdAt)}</b>
             </div>
             <div className="meta-row">
-              <span>🎁 اکانت تست</span>
-              <b>{row.trialUsedAt ? `دریافت شده در ${faDate(row.trialUsedAt)}` : "استفاده نشده"}</b>
+              <span>{tr("profile.trial")}</span>
+              <b>
+                {row.trialUsedAt
+                  ? tr("profile.trialUsed", { date: f.date(row.trialUsedAt) })
+                  : tr("profile.trialUnused")}
+              </b>
             </div>
           </div>
           <div className="btn-row" style={{ marginTop: 16 }}>
             <Link className="btn btn-sm btn-primary" href="/plans">
-              خرید سرویس جدید
+              {tr("dash.newService")}
             </Link>
             <Link className="btn btn-sm" href="/dashboard/tickets">
-              تیکت پشتیبانی
+              {tr("footer.ticket")}
             </Link>
           </div>
         </div>
 
         <div className="card">
           <div className="card-title">
-            <h3>📱 دستگاه‌های واردشده</h3>
-            <span className="badge badge-info">{faNum(sessions.length)} نشست فعال</span>
+            <h3>{tr("profile.devices")}</h3>
+            <span className="badge badge-info">
+              {tr("profile.sessions", { count: f.num(sessions.length) })}
+            </span>
           </div>
           <p className="field-hint">
-            اگر دستگاهی را نمی‌شناسید، از همه خارج شوید و رمز عبورتان را عوض کنید.
+            {tr("profile.devicesHint")}
           </p>
           <div className="svc-meta" style={{ marginBottom: 14 }}>
             {sessions.map((session) => {
@@ -120,10 +132,10 @@ export default async function ProfilePage() {
                   </span>
                   <b>
                     {isCurrent ? (
-                      <span className="badge badge-success">همین دستگاه</span>
+                      <span className="badge badge-success">{tr("profile.thisDevice")}</span>
                     ) : (
                       <span className="dim" style={{ fontWeight: 500 }}>
-                        ورود {relativeTime(session.createdAt)}
+                        {tr("profile.loggedIn", { time: f.relative(session.createdAt) })}
                       </span>
                     )}
                   </b>
@@ -131,18 +143,17 @@ export default async function ProfilePage() {
               );
             })}
           </div>
-          <RevokeSessionsButton count={Math.max(0, sessions.length - 1)} />
+          <RevokeSessionsButton locale={locale} count={Math.max(0, sessions.length - 1)} />
         </div>
 
         <div className="card">
           <div className="card-title">
-            <h3>🔒 تغییر رمز عبور</h3>
+            <h3>{tr("profile.changePassword")}</h3>
           </div>
           <p className="field-hint">
-            رمز شما با الگوریتم scrypt ذخیره می‌شود و در هیچ‌جا قابل بازیابی نیست؛ رمزی انتخاب کنید که
-            جای دیگری استفاده نکرده باشید.
+            {tr("profile.passwordHint")}
           </p>
-          <ChangePasswordForm />
+          <ChangePasswordForm locale={locale} />
         </div>
       </div>
     </div>

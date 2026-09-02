@@ -4,8 +4,10 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { asNum, getSettings } from "@/lib/settings";
 import { gatewayMin, gatewayReady } from "@/lib/gateway";
-import { faDate, toman } from "@/lib/format";
-import { ORDER_STATUS } from "@/lib/status";
+import { fmt } from "@/lib/format";
+import { orderStatus } from "@/lib/status";
+import { getLocale } from "@/lib/locale";
+import { translator } from "@/lib/i18n";
 import CopyButton from "@/components/CopyButton";
 import Countdown from "@/components/Countdown";
 import OrderTimeline, { type TimelineStep } from "@/components/OrderTimeline";
@@ -23,6 +25,9 @@ export default async function OrderDetailPage({
 }) {
   const { code } = await params;
   const { paid: paidFlag, payerror } = await searchParams;
+  const locale = await getLocale();
+  const tr = translator(locale);
+  const f = fmt(locale);
   const user = await requireUser(`/dashboard/orders/${code}`);
 
   const [order, settings] = await Promise.all([
@@ -34,7 +39,7 @@ export default async function OrderDetailPage({
   ]);
   if (!order) notFound();
 
-  const status = ORDER_STATUS[order.status] ?? ORDER_STATUS.awaiting_receipt;
+  const status = orderStatus(locale, order.status);
   const onlineReady = gatewayReady(settings) && order.payable >= gatewayMin(settings);
   const awaitingOnline =
     order.status === "awaiting_payment" || (order.status === "failed" && order.payMethod === "online");
@@ -55,61 +60,63 @@ export default async function OrderDetailPage({
 
   const timeline: TimelineStep[] = [
     {
-      title: "ثبت سفارش",
-      hint: `${order.plan?.title ?? "شارژ کیف پول"}${order.renewServiceId ? " (تمدید)" : ""} — ${toman(order.payable)}`,
+      title: tr("order.placed"),
+      hint: `${order.plan?.title ?? tr("order.topup")}${
+        order.renewServiceId ? tr("order.renewParen") : ""
+      } — ${f.money(order.payable)}`,
       at: order.createdAt,
       state: "done",
       icon: "🛒",
     },
     isOnline
       ? {
-          title: paid ? "پرداخت آنلاین انجام شد" : "پرداخت از درگاه بانکی",
+          title: paid ? tr("order.paidOnline") : tr("order.payOnline"),
           hint: paid
             ? order.bankRef
-              ? `شماره پیگیری بانک: ${order.bankRef}`
-              : "تراکنش با درگاه تأیید شد"
-            : "روی «رفتن به درگاه پرداخت» بزنید",
+              ? tr("order.bankRef", { ref: order.bankRef })
+              : tr("order.verified")
+            : tr("order.goPay"),
           at: order.paidAt,
           state: canceled || order.status === "failed" ? "failed" : paid ? "done" : "active",
           icon: "🏦",
         }
       : {
-          title: paid ? "رسید پرداخت ارسال شد" : "پرداخت و ارسال رسید",
+          title: paid ? tr("order.receiptSent") : tr("order.payAndReceipt"),
           hint: paid
             ? order.receiptRef
-              ? `کد پیگیری: ${order.receiptRef}`
-              : "رسید در انتظار بررسی است"
-            : "مبلغ را کارت‌به‌کارت کنید و تصویر رسید را بفرستید",
+              ? tr("order.trackRef", { ref: order.receiptRef })
+              : tr("order.receiptQueued")
+            : tr("order.doTransfer"),
           at: order.paidAt,
           state: canceled ? "failed" : paid ? "done" : "active",
           icon: "💳",
         },
     isOnline
       ? {
-          title: "تأیید تراکنش",
-          hint: delivered ? "تراکنش تأیید شد" : "به‌صورت خودکار و در همان لحظه انجام می‌شود",
+          title: tr("order.verifyStep"),
+          hint: delivered ? tr("order.verifiedDone") : tr("order.autoInstant"),
           at: order.reviewedAt,
           state: order.status === "failed" ? "failed" : delivered ? "done" : paid ? "active" : "pending",
           icon: "✅",
         }
       : {
-          title: rejected ? "رسید تأیید نشد" : "بررسی پشتیبانی",
+          title: rejected ? tr("order.rejectedTitle") : tr("order.reviewTitle"),
           hint: rejected
-            ? (order.adminNote ?? "می‌توانید رسید درست را دوباره بفرستید")
+            ? (order.adminNote ?? tr("order.reuploadHint"))
             : delivered
-              ? "رسید تأیید شد"
-              : "معمولاً کمتر از ۳۰ دقیقه",
+              ? tr("order.receiptOk")
+              : tr("order.under30"),
           at: order.reviewedAt,
           state: rejected ? "failed" : delivered ? "done" : paid ? "active" : "pending",
           icon: "🔍",
         },
     {
-      title: "تحویل سرویس",
+      title: tr("order.deliveryStep"),
       hint: delivered
         ? order.kind === "topup"
-          ? "موجودی کیف پول شما افزایش یافت"
-          : "کانفیگ در پنل کاربری فعال است"
-        : "بلافاصله پس از تأیید",
+          ? tr("order.walletTopped")
+          : tr("order.configReady")
+        : tr("order.afterApprove"),
       at: delivered ? order.reviewedAt : null,
       state: delivered ? "done" : "pending",
       icon: "🚀",
@@ -121,11 +128,11 @@ export default async function OrderDetailPage({
       <div className="page-head">
         <div>
           <h1>
-            سفارش <span className="mono gold">{order.code}</span>
+            {tr("order.title")} <span className="mono gold">{order.code}</span>
           </h1>
           <p>
-            {order.plan?.title ?? "شارژ کیف پول"}
-            {order.renewServiceId ? " — تمدید سرویس" : ""}
+            {order.plan?.title ?? tr("order.topup")}
+            {order.renewServiceId ? tr("order.renewSuffix") : ""}
           </p>
         </div>
         <span className={`badge ${status.badge}`}>{status.label}</span>
@@ -142,59 +149,65 @@ export default async function OrderDetailPage({
         }`}
       >
         {status.hint}
-        {order.adminNote ? <div style={{ marginTop: 6 }}>یادداشت پشتیبانی: {order.adminNote}</div> : null}
+        {order.adminNote ? (
+          <div style={{ marginTop: 6 }}>{tr("order.adminNote", { note: order.adminNote })}</div>
+        ) : null}
       </div>
 
       {payerror ? <div className="alert alert-error">{payerror}</div> : null}
       {paidFlag && order.status === "approved" ? (
-        <div className="alert alert-success">پرداخت شما با موفقیت انجام شد و سفارش تکمیل شد.</div>
+        <div className="alert alert-success">{tr("order.paidOk")}</div>
       ) : null}
 
       <div className="grid grid-2">
         {/* مسیر سفارش */}
         <div className="card" style={{ gridColumn: "1 / -1" }}>
           <div className="card-title">
-            <h3>مسیر سفارش</h3>
+            <h3>{tr("order.path")}</h3>
             {deadline && order.status === "awaiting_receipt" ? (
-              <Countdown until={deadline.toISOString()} />
+              <Countdown until={deadline.toISOString()} locale={locale} />
             ) : null}
           </div>
-          <OrderTimeline steps={timeline} />
+          <OrderTimeline steps={timeline} locale={locale} />
         </div>
 
         {/* پرداخت */}
         <div className="card">
           <div className="card-title">
             <h3>
-              {awaitingOnline ? "پرداخت آنلاین" : canPay ? "پرداخت کارت‌به‌کارت" : "رسید پرداخت"}
+              {awaitingOnline
+                ? tr("order.onlineTitle")
+                : canPay
+                  ? tr("order.cardTitle")
+                  : tr("order.receiptTitle")}
             </h3>
-            {deadline ? <Countdown until={deadline.toISOString()} /> : null}
+            {deadline ? <Countdown until={deadline.toISOString()} locale={locale} /> : null}
           </div>
 
           {awaitingOnline ? (
             <>
               <div className="amount-box">
-                <span>مبلغ قابل پرداخت</span>
+                <span>{tr("order.payable")}</span>
                 <div className="btn-row">
-                  <b>{toman(order.payable)}</b>
+                  <b>{f.money(order.payable)}</b>
                 </div>
               </div>
               {onlineReady ? (
                 <>
                   <Link className="btn btn-primary btn-block btn-lg" href={`/pay/${order.code}`}>
-                    رفتن به درگاه پرداخت
+                    {tr("order.goGateway")}
                   </Link>
                   <p className="field-hint center" style={{ marginTop: 10 }}>
-                    بعد از پرداخت موفق، سرویس یا شارژ شما در همان لحظه فعال می‌شود.
+                    {tr("order.afterGateway")}
                   </p>
                 </>
               ) : (
                 <div className="alert alert-warn">
-                  پرداخت آنلاین در دسترس نیست. برای پرداخت کارت‌به‌کارت با پشتیبانی تماس بگیرید.
+                  {tr("order.onlineOff")}
                 </div>
               )}
               {order.gatewayRef ? (
-                <p className="field-hint mono">کد پیگیری درگاه: {order.gatewayRef}</p>
+                <p className="field-hint mono">{tr("order.gatewayRef", { ref: order.gatewayRef })}</p>
               ) : null}
             </>
           ) : canPay ? (
@@ -207,48 +220,52 @@ export default async function OrderDetailPage({
                 <div className="bank-number">{settings.card_number}</div>
                 <div className="bank-meta">
                   <div>
-                    <small>به نام</small>
+                    <small>{tr("order.cardHolder")}</small>
                     <b>{settings.card_holder}</b>
                   </div>
-                  <CopyButton value={cardNumber} label="کپی شماره کارت" className="btn btn-sm" />
+                  <CopyButton locale={locale} value={cardNumber} label={tr("order.copyCard")} className="btn btn-sm" />
                 </div>
               </div>
 
               <div className="amount-box">
-                <span>مبلغ قابل پرداخت</span>
+                <span>{tr("order.payable")}</span>
                 <div className="btn-row">
-                  <b>{toman(order.payable)}</b>
-                  <CopyButton value={String(order.payable)} label="کپی مبلغ" className="btn btn-sm" />
+                  <b>{f.money(order.payable)}</b>
+                  <CopyButton
+                    value={String(order.payable)}
+                    label={tr("order.copyAmount")}
+                    className="btn btn-sm"
+                  />
                 </div>
               </div>
 
               <p className="field-hint">{settings.payment_note}</p>
               <hr />
-              <ReceiptForm code={order.code} />
+              <ReceiptForm code={order.code} locale={locale} />
             </>
           ) : (
             <>
               {order.receiptFile ? (
                 order.receiptFile.endsWith(".pdf") ? (
                   <a className="btn" href={`/api/receipt/${order.receiptFile}`} target="_blank" rel="noreferrer">
-                    مشاهده فایل رسید
+                    {tr("order.viewReceiptFile")}
                   </a>
                 ) : (
                   <a href={`/api/receipt/${order.receiptFile}`} target="_blank" rel="noreferrer">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={`/api/receipt/${order.receiptFile}`}
-                      alt="رسید پرداخت"
+                      alt={tr("order.receiptAlt")}
                       className="receipt-img"
                     />
                   </a>
                 )
               ) : (
-                <p className="dim">رسیدی ثبت نشده است.</p>
+                <p className="dim">{tr("order.noReceipt")}</p>
               )}
               {order.receiptRef ? (
                 <p className="mono" style={{ marginTop: 10 }}>
-                  کد پیگیری: {order.receiptRef}
+                  {tr("order.trackRef", { ref: order.receiptRef })}
                 </p>
               ) : null}
             </>
@@ -258,34 +275,38 @@ export default async function OrderDetailPage({
         {/* جزئیات */}
         <div className="card">
           <div className="card-title">
-            <h3>جزئیات سفارش</h3>
+            <h3>{tr("order.details")}</h3>
           </div>
           <div className="svc-meta">
             <div className="meta-row">
-              <span>🏷️ پلن</span>
-              <b>{order.plan?.title ?? "شارژ کیف پول"}</b>
+              <span>{tr("order.plan")}</span>
+              <b>{order.plan?.title ?? tr("order.topup")}</b>
             </div>
             <div className="meta-row">
-              <span>🌍 لوکیشن</span>
-              <b>{order.panel ? `${order.panel.flag} ${order.panel.location}` : "انتخاب خودکار"}</b>
+              <span>{tr("order.location")}</span>
+              <b>
+                {order.panel
+                  ? `${order.panel.flag} ${order.panel.location}`
+                  : tr("order.autoLocation")}
+              </b>
             </div>
             <div className="meta-row">
-              <span>💰 مبلغ پلن</span>
-              <b>{toman(order.amount)}</b>
+              <span>{tr("order.planPrice")}</span>
+              <b>{f.money(order.amount)}</b>
             </div>
             {order.discountAmount > 0 ? (
               <div className="meta-row">
-                <span>🎟️ تخفیف</span>
-                <b className="gold">{toman(order.discountAmount)}</b>
+                <span>{tr("order.discount")}</span>
+                <b className="gold">{f.money(order.discountAmount)}</b>
               </div>
             ) : null}
             <div className="meta-row">
-              <span>🧾 قابل پرداخت</span>
-              <b className="gold">{toman(order.payable)}</b>
+              <span>{tr("order.finalPrice")}</span>
+              <b className="gold">{f.money(order.payable)}</b>
             </div>
             <div className="meta-row">
-              <span>📅 تاریخ ثبت</span>
-              <b>{faDate(order.createdAt, true)}</b>
+              <span>{tr("order.createdAt")}</span>
+              <b>{f.date(order.createdAt, true)}</b>
             </div>
           </div>
 
@@ -295,13 +316,13 @@ export default async function OrderDetailPage({
               style={{ marginTop: 16 }}
               href={`/dashboard/services/${order.service.id}`}
             >
-              مشاهده کانفیگ سرویس
+              {tr("order.viewService")}
             </Link>
           ) : null}
 
           {order.status !== "approved" && order.status !== "canceled" ? (
             <div style={{ marginTop: 16 }}>
-              <CancelOrderButton code={order.code} />
+              <CancelOrderButton code={order.code} locale={locale} />
             </div>
           ) : null}
         </div>

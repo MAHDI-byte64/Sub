@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { removePushAction, savePushAction } from "@/app/actions/push";
+import { t, type Locale } from "@/lib/i18n";
 
 type State = "loading" | "unsupported" | "off" | "on" | "denied";
 
@@ -20,7 +21,14 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
  * روشن/خاموش کردن اعلان پوش روی همین دستگاه.
  * اگر مرورگر پشتیبانی نکند (مثلاً سافاری قدیمی) پیام راهنما نشان می‌دهد.
  */
-export default function PushToggle({ publicKey }: { publicKey: string }) {
+export default function PushToggle({
+  publicKey,
+  locale = "fa",
+}: {
+  publicKey: string;
+  locale?: Locale;
+}) {
+  const tr = (key: string) => t(locale, key);
   const [state, setState] = useState<State>("loading");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -77,9 +85,9 @@ export default function PushToggle({ publicKey }: { publicKey: string }) {
         return;
       }
       setState("on");
-      setMessage("اعلان‌ها روی این دستگاه روشن شد.");
+      setMessage(tr("push.onDone"));
     } catch (err) {
-      setMessage(`روشن‌کردن اعلان ناموفق بود: ${(err as Error).message}`);
+      setMessage(`${tr("push.turnOn")}: ${(err as Error).message}`);
     } finally {
       setBusy(false);
     }
@@ -96,9 +104,9 @@ export default function PushToggle({ publicKey }: { publicKey: string }) {
         await sub.unsubscribe();
       }
       setState("off");
-      setMessage("اعلان‌ها روی این دستگاه خاموش شد.");
+      setMessage(tr("push.offDone"));
     } catch (err) {
-      setMessage(`خاموش‌کردن اعلان ناموفق بود: ${(err as Error).message}`);
+      setMessage(`${tr("push.turnOff")}: ${(err as Error).message}`);
     } finally {
       setBusy(false);
     }
@@ -111,12 +119,8 @@ export default function PushToggle({ publicKey }: { publicKey: string }) {
           {state === "on" ? "🔔" : "🔕"}
         </span>
         <div>
-          <b>اعلان روی این دستگاه</b>
-          <small>
-            {state === "on"
-              ? "یادآوری انقضا، اتمام حجم و پاسخ پشتیبانی را حتی وقتی سایت باز نیست می‌گیرید."
-              : "با روشن‌کردن، یادآوری انقضا و پاسخ پشتیبانی مستقیم روی گوشی‌تان می‌آید."}
-          </small>
+          <b>{tr("push.title")}</b>
+          <small>{state === "on" ? tr("push.onText") : tr("push.offText")}</small>
         </div>
       </div>
 
@@ -124,24 +128,23 @@ export default function PushToggle({ publicKey }: { publicKey: string }) {
 
       {state === "loading" ? (
         <span className="dim" style={{ fontSize: 12.5 }}>
-          در حال بررسی…
+          {tr("push.checking")}
         </span>
       ) : state === "unsupported" ? (
         <span className="dim" style={{ fontSize: 12.5 }}>
-          مرورگر شما اعلان پوش را پشتیبانی نمی‌کند. روی آیفون، اول سایت را با «افزودن به صفحهٔ اصلی»
-          نصب کنید.
+          {tr("push.unsupported")}
         </span>
       ) : state === "denied" ? (
         <span className="dim" style={{ fontSize: 12.5 }}>
-          اجازهٔ نمایش اعلان در مرورگر بسته شده است؛ از تنظیمات سایت در مرورگر، اعلان‌ها را مجاز کنید.
+          {tr("push.denied")}
         </span>
       ) : state === "on" ? (
         <button type="button" className="btn btn-sm" onClick={disable} disabled={busy}>
-          {busy ? "…" : "خاموش کردن اعلان"}
+          {busy ? "…" : tr("push.turnOff")}
         </button>
       ) : (
         <button type="button" className="btn btn-sm btn-primary" onClick={enable} disabled={busy}>
-          {busy ? "…" : "روشن کردن اعلان"}
+          {busy ? "…" : tr("push.turnOn")}
         </button>
       )}
     </div>

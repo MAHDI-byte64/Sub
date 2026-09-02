@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { uptimeStats } from "@/lib/monitor";
 import { asBool, getSettings } from "@/lib/settings";
-import { faNum, relativeTime } from "@/lib/format";
+import { fmt } from "@/lib/format";
+import { getLocale } from "@/lib/locale";
+import { translator } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 export const metadata = {
@@ -21,6 +23,10 @@ function bar(uptime: number): string {
 export default async function StatusPage() {
   const settings = await getSettings();
   if (!asBool(settings.status_page_enabled)) notFound();
+
+  const locale = await getLocale();
+  const tr = translator(locale);
+  const f = fmt(locale);
 
   const [panels, day, week] = await Promise.all([
     db.panel.findMany({
@@ -40,30 +46,28 @@ export default async function StatusPage() {
       <div className="section-head">
         <span className="eyebrow">
           <span className="eyebrow-dot" />
-          به‌روزرسانی خودکار هر ۱۵ دقیقه
+          {tr("status.autoUpdate")}
         </span>
-        <h1>وضعیت سرورها</h1>
-        <p>هر سرور به‌طور خودکار بررسی می‌شود؛ نتیجهٔ همان بررسی‌ها را اینجا می‌بینید.</p>
+        <h1>{tr("status.title")}</h1>
+        <p>{tr("status.subtitle")}</p>
       </div>
 
-      <div
-        className={`card status-hero ${someDown ? "is-bad" : allGood ? "is-great" : "is-warn"}`}
-      >
+      <div className={`card status-hero ${someDown ? "is-bad" : allGood ? "is-great" : "is-warn"}`}>
         <span className="status-hero-dot" aria-hidden />
         <div>
           <b>
             {!panels.length
-              ? "هنوز سروری ثبت نشده است"
+              ? tr("status.none")
               : someDown
-                ? "اختلال گسترده"
+                ? tr("status.allDown")
                 : allGood
-                  ? "همهٔ سرورها سالم‌اند"
-                  : "اختلال روی بعضی سرورها"}
+                  ? tr("status.allGood")
+                  : tr("status.someDown")}
           </b>
           <small>
             {panels.length
-              ? `${faNum(healthy)} سرور از ${faNum(panels.length)} سرور در دسترس است.`
-              : "به‌زودی سرورها اضافه می‌شوند."}
+              ? tr("status.ofServers", { ok: f.num(healthy), total: f.num(panels.length) })
+              : ""}
           </small>
         </div>
       </div>
@@ -81,7 +85,7 @@ export default async function StatusPage() {
                   {panel.flag} {panel.location}
                 </h3>
                 <span className={`badge ${panel.healthOk ? "badge-success" : "badge-danger"}`}>
-                  {panel.healthOk ? "در دسترس" : "موقتاً خارج از دسترس"}
+                  {panel.healthOk ? tr("status.available") : tr("status.unavailable")}
                 </span>
               </div>
 
@@ -89,21 +93,21 @@ export default async function StatusPage() {
                 <div className={`status-bar ${bar(uptime)}`}>
                   <span style={{ width: `${Math.max(2, Math.min(100, uptime))}%` }} />
                 </div>
-                <b>{faNum(uptime)}٪</b>
+                <b>{f.num(uptime)}٪</b>
               </div>
 
               <div className="status-facts">
                 <span>
-                  <small>زمان پاسخ</small>
-                  <b>{panel.latencyMs ? `${faNum(panel.latencyMs)} ms` : "—"}</b>
+                  <small>{tr("status.latency")}</small>
+                  <b>{panel.latencyMs ? `${f.num(panel.latencyMs)} ms` : "—"}</b>
                 </span>
                 <span>
-                  <small>آپتایم ۷ روز</small>
-                  <b>{s7 ? `${faNum(s7.uptime)}٪` : "—"}</b>
+                  <small>{tr("status.uptime7")}</small>
+                  <b>{s7 ? `${f.num(s7.uptime)}٪` : "—"}</b>
                 </span>
                 <span>
-                  <small>آخرین بررسی</small>
-                  <b>{panel.lastCheckAt ? relativeTime(panel.lastCheckAt) : "—"}</b>
+                  <small>{tr("status.lastCheck")}</small>
+                  <b>{panel.lastCheckAt ? f.relative(panel.lastCheckAt) : "—"}</b>
                 </span>
               </div>
             </div>
@@ -113,10 +117,14 @@ export default async function StatusPage() {
 
       <div className="card" style={{ marginTop: 18 }}>
         <p className="field-hint" style={{ margin: 0 }}>
-          سرویس شما روی یکی از این سرورهاست. اگر سرور شما اختلال دارد، می‌توانید از{" "}
-          <Link href="/dashboard/tickets">بخش تیکت‌ها</Link> درخواست تعویض سرور بدهید؛ حجم و اعتبارتان
-          منتقل می‌شود.
+          {tr("status.switchHint")}
         </p>
+      </div>
+
+      <div className="center" style={{ marginTop: 16 }}>
+        <Link className="btn btn-sm" href="/dashboard/tickets">
+          {tr("footer.ticket")}
+        </Link>
       </div>
     </div>
   );

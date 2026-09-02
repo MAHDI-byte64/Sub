@@ -3,7 +3,9 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { asBool, getSettings } from "@/lib/settings";
 import { syncUserServices } from "@/lib/provision";
-import { faDate, faNum, formatBytes, remainingDays, toman } from "@/lib/format";
+import { fmt, remainingDays } from "@/lib/format";
+import { getLocale } from "@/lib/locale";
+import { translator } from "@/lib/i18n";
 import ServiceCard from "@/components/ServiceCard";
 import TrialCard from "@/components/TrialCard";
 
@@ -13,6 +15,10 @@ export const metadata = { title: "پنل کاربری" };
 export default async function DashboardPage() {
   const user = await requireUser();
   await syncUserServices(user.id);
+
+  const locale = await getLocale();
+  const tr = translator(locale);
+  const f = fmt(locale);
 
   const [services, settings, panels, pendingOrders, wallet, unread] = await Promise.all([
     db.service.findMany({
@@ -46,63 +52,70 @@ export default async function DashboardPage() {
   return (
     <div>
       <div className="card-title">
-        <h1 style={{ fontSize: "1.35rem" }}>سلام {user.name || user.email.split("@")[0]} 👋</h1>
+        <h1 style={{ fontSize: "1.35rem" }}>
+          {tr("dashPages.hello", { name: user.name || user.email.split("@")[0] })}
+        </h1>
         <Link className="btn btn-sm btn-primary" href="/plans">
-          خرید سرویس جدید
+          {tr("dash.newService")}
         </Link>
       </div>
 
       {unread > 0 ? (
         <div className="alert alert-info">
-          🔔 {faNum(unread)} اعلان خوانده‌نشده دارید.{" "}
-          <Link href="/dashboard/notifications">مشاهده اعلان‌ها</Link>
+          {tr("dashPages.unread", { count: f.num(unread) })}{" "}
+          <Link href="/dashboard/notifications">{tr("dashPages.viewNotif")}</Link>
         </div>
       ) : null}
 
       {pendingOrders > 0 ? (
         <div className="alert alert-warn">
-          شما {pendingOrders} سفارش در انتظار پرداخت یا بررسی دارید.{" "}
-          <Link href="/dashboard/orders">مشاهده سفارش‌ها</Link>
+          {tr("dashPages.pendingOrders", { count: f.num(pendingOrders) })}{" "}
+          <Link href="/dashboard/orders">{tr("dashPages.viewOrders")}</Link>
         </div>
       ) : null}
 
       {services.length ? (
         <div className="summary-strip">
           <div className="summary-tile">
-            <span>🌐 سرویس فعال</span>
-            <b>{faNum(activeServices.length)}</b>
+            <span>{tr("dashPages.activeServices")}</span>
+            <b>{f.num(activeServices.length)}</b>
           </div>
           <div className="summary-tile">
-            <span>📦 حجم باقی‌مانده</span>
-            <b>{hasUnlimited && remainingBytes === 0 ? "نامحدود" : formatBytes(remainingBytes, "۰")}</b>
+            <span>{tr("dashPages.volumeLeft")}</span>
+            <b>
+              {hasUnlimited && remainingBytes === 0
+                ? tr("common.unlimited")
+                : f.bytes(remainingBytes, f.num(0))}
+            </b>
           </div>
           <div className="summary-tile">
-            <span>📊 مجموع مصرف</span>
-            <b>{formatBytes(usedBytes, "۰")}</b>
+            <span>{tr("dashPages.totalUsed")}</span>
+            <b>{f.bytes(usedBytes, f.num(0))}</b>
           </div>
           <div className="summary-tile">
-            <span>💰 کیف پول</span>
-            <b>{toman(wallet.balance, false)}</b>
+            <span>{tr("dashPages.walletTile")}</span>
+            <b>{f.money(wallet.balance, false)}</b>
             <small className="dim">
-              <Link href="/dashboard/wallet">شارژ حساب</Link>
+              <Link href="/dashboard/wallet">{tr("dashPages.topupLink")}</Link>
             </small>
           </div>
           <div className="summary-tile">
-            <span>⏳ نزدیک‌ترین انقضا</span>
+            <span>{tr("dashPages.nextExpiry")}</span>
             <b>
               {nextExpiry
                 ? nextExpiryDays !== null && nextExpiryDays > 0
-                  ? `${faNum(nextExpiryDays)} روز`
-                  : "منقضی"
+                  ? f.daysLeft(nextExpiryDays)
+                  : tr("common.expired")
                 : "—"}
             </b>
-            {nextExpiry ? <small className="dim">{faDate(nextExpiry)}</small> : null}
+            {nextExpiry ? <small className="dim">{f.date(nextExpiry)}</small> : null}
           </div>
         </div>
       ) : null}
 
       {trialAvailable ? (
         <TrialCard
+          locale={locale}
           panels={panels.map((p) => ({ id: p.id, flag: p.flag, location: p.location }))}
           volume={settings.trial_volume_gb}
           days={settings.trial_days}
@@ -115,6 +128,7 @@ export default async function DashboardPage() {
             <ServiceCard
               key={service.id}
               service={service}
+              locale={locale}
               autoRenewEnabled={asBool(settings.auto_renew_enabled) && asBool(settings.wallet_enabled)}
             />
           ))}
@@ -122,9 +136,9 @@ export default async function DashboardPage() {
       ) : (
         <div className="card empty">
           <div className="empty-icon">🌐</div>
-          <p>هنوز سرویسی ندارید.</p>
+          <p>{tr("dashPages.empty")}</p>
           <Link className="btn btn-primary" href="/plans">
-            مشاهده تعرفه‌ها
+            {tr("dashPages.seePlans")}
           </Link>
         </div>
       )}

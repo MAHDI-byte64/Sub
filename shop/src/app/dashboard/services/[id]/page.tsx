@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { serviceLinks, syncService } from "@/lib/provision";
-import { faDate, faNum, formatBytes, remainingDays } from "@/lib/format";
+import { fmt, remainingDays } from "@/lib/format";
+import { getLocale } from "@/lib/locale";
+import { translator } from "@/lib/i18n";
 import { asBool, asNum, getSettings } from "@/lib/settings";
 import CopyButton from "@/components/CopyButton";
 import UsageRing from "@/components/UsageRing";
@@ -36,6 +38,9 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
   });
   const links = await serviceLinks(id);
   const settings = await getSettings();
+  const locale = await getLocale();
+  const tr = translator(locale);
+  const f = fmt(locale);
 
   const unlimited = service.totalBytes <= 0;
   const remaining = unlimited ? 0 : Math.max(0, service.totalBytes - service.usedBytes);
@@ -54,14 +59,15 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
     <div>
       <div className="card-title">
         <h1 style={{ fontSize: "1.35rem" }}>
-          {service.panel.flag} {service.plan?.title ?? (service.isTrial ? "اکانت تست رایگان" : service.remark)}
+          {service.panel.flag}{" "}
+          {service.plan?.title ?? (service.isTrial ? tr("service.trial") : service.remark)}
         </h1>
         <div className="btn-row">
           <span className={`badge ${expired ? "badge-danger" : "badge-success"}`}>
-            {expired ? "منقضی" : "فعال"}
+            {expired ? tr("common.expired") : tr("common.active")}
           </span>
           <Link className="btn btn-sm btn-primary" href={`/plans?renew=${service.id}`}>
-            تمدید سرویس
+            {tr("service.renew")}
           </Link>
         </div>
       </div>
@@ -70,38 +76,43 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
       <div className="card svc">
         <div className="svc-body">
           <UsageRing
+            locale={locale}
             id={service.id}
             volume={volumeRatio}
             time={timeRatio}
-            centerValue={unlimited ? "∞" : `${faNum(Math.round(volumeRatio * 100))}٪`}
-            centerLabel="باقی‌مانده"
+            centerValue={unlimited ? "∞" : `${f.num(Math.round(volumeRatio * 100))}٪`}
+            centerLabel={tr("common.remaining")}
           />
           <div className="svc-meta">
             <div className="meta-row">
-              <span>📦 حجم باقی‌مانده</span>
+              <span>{tr("card.volumeLeft")}</span>
               <b>
-                {unlimited ? "نامحدود" : formatBytes(remaining, "۰")}
+                {unlimited ? tr("common.unlimited") : f.bytes(remaining, f.num(0))}
                 {!unlimited ? (
                   <span className="dim" style={{ fontWeight: 500 }}>
                     {" "}
-                    از {formatBytes(service.totalBytes)}
+                    {tr("card.of")} {f.bytes(service.totalBytes)}
                   </span>
                 ) : null}
               </b>
             </div>
             <div className="meta-row">
-              <span>📊 مصرف‌شده</span>
-              <b>{formatBytes(service.usedBytes, "۰")}</b>
+              <span>{tr("card.used")}</span>
+              <b>{f.bytes(service.usedBytes, f.num(0))}</b>
             </div>
             <div className="meta-row">
-              <span>⏳ اعتبار</span>
+              <span>{tr("card.validity")}</span>
               <b>
-                {days === null ? "بدون انقضا" : days > 0 ? `${faNum(days)} روز مانده` : "پایان یافته"}
+                {days === null
+                  ? tr("service.noExpiry")
+                  : days > 0
+                    ? f.daysLeft(days)
+                    : tr("service.finished")}
               </b>
             </div>
             <div className="meta-row">
-              <span>📅 تاریخ انقضا</span>
-              <b>{faDate(service.expiresAt)}</b>
+              <span>📅 {tr("service.expiresAt")}</span>
+              <b>{f.date(service.expiresAt)}</b>
             </div>
           </div>
         </div>
@@ -111,24 +122,22 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
         {/* لینک اشتراک */}
         <div className="card">
           <div className="card-title">
-            <h3>لینک اشتراک</h3>
-            <span className="badge badge-info">پیشنهادی</span>
+            <h3>{tr("service.subLink")}</h3>
+            <span className="badge badge-info">{tr("contact.recommended")}</span>
           </div>
-          <p className="field-hint">
-            این لینک را در برنامه به‌عنوان Subscription اضافه کنید تا سرورها همیشه به‌روز بمانند.
-          </p>
+          <p className="field-hint">{tr("service.subHint")}</p>
           <div className="copy-box">
             <code>{links.subscription}</code>
-            <CopyButton value={links.subscription} />
+            <CopyButton value={links.subscription} locale={locale} />
           </div>
 
           <div className="qr-box" style={{ marginTop: 18 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`/api/qr?d=${encodeURIComponent(links.subscription)}`} alt="QR لینک اشتراک" />
+            <img src={`/api/qr?d=${encodeURIComponent(links.subscription)}`} alt={tr("service.subLink")} />
           </div>
 
           <label className="field-hint" style={{ display: "block", margin: "18px 0 8px" }}>
-            افزودن سریع به برنامه:
+            {tr("service.quickAdd")}
           </label>
           <div className="btn-row">
             {quickAddLinks(links.subscription).map((app) => (
@@ -142,7 +151,7 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
         {/* کانفیگ مستقیم */}
         <div className="card">
           <div className="card-title">
-            <h3>کانفیگ مستقیم</h3>
+            <h3>{tr("service.directConfig")}</h3>
           </div>
           {links.error ? (
             <div className="alert alert-warn">
@@ -155,19 +164,19 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
               <div className="config-card" key={cfg.uri}>
                 <div className="config-head">
                   <span className="badge">{cfg.label}</span>
-                  <CopyButton value={cfg.uri} label="کپی کانفیگ" />
+                  <CopyButton value={cfg.uri} locale={locale} />
                 </div>
                 <div className="copy-box">
                   <code>{cfg.uri}</code>
                 </div>
                 <div className="qr-box" style={{ marginTop: 12 }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={`/api/qr?d=${encodeURIComponent(cfg.uri)}`} alt="QR کانفیگ" />
+                  <img src={`/api/qr?d=${encodeURIComponent(cfg.uri)}`} alt={tr("service.directConfig")} />
                 </div>
               </div>
             ))
           ) : !links.error ? (
-            <p className="dim">کانفیگ مستقیمی برای این سرویس ساخته نشد.</p>
+            <p className="dim">{tr("service.noConfig")}</p>
           ) : null}
         </div>
       </div>
@@ -175,73 +184,73 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
       {/* امنیت سرویس */}
       <div className="card">
         <div className="card-title">
-          <h3>امنیت سرویس</h3>
-          <span className="badge badge-info">کانفیگ شخصی شماست</span>
+          <h3>{tr("service.security")}</h3>
+          <span className="badge badge-info">{tr("service.yourConfig")}</span>
         </div>
         <p className="field-hint" style={{ marginBottom: 14 }}>
-          کانفیگ و لینک اشتراک را با کسی به اشتراک نگذارید. اگر لینک‌تان جایی منتشر شد یا کسی بدون
-          اجازه از سرویس شما استفاده می‌کند، با یک کلیک کانفیگ تازه بسازید.
+          {tr("service.securityText")}
         </p>
         <RotateConfigButton
           serviceId={service.id}
-          rotatedAt={service.rotatedAt ? faDate(service.rotatedAt, true) : null}
-          rotateCount={faNum(service.rotateCount)}
-          cooldownMinutes={faNum(rotateCooldown)}
+          locale={locale}
+          rotatedAt={service.rotatedAt ? f.date(service.rotatedAt, true) : null}
+          rotateCount={f.num(service.rotateCount)}
+          cooldownMinutes={f.num(rotateCooldown)}
           disabled={!rotateEnabled || expired}
           disabledReason={
-            !rotateEnabled
-              ? "بازتولید کانفیگ توسط مدیر غیرفعال شده است. برای تعویض کانفیگ تیکت بزنید."
-              : "این سرویس منقضی شده است؛ برای ساخت کانفیگ تازه ابتدا آن را تمدید کنید."
+            !rotateEnabled ? tr("rotate.disabledAdmin") : tr("rotate.disabledExpired")
           }
         />
       </div>
 
       <div className="card">
         <div className="card-title">
-          <h3>مشخصات فنی</h3>
+          <h3>{tr("service.specs")}</h3>
         </div>
         <div className="table-wrap">
           <table>
             <tbody>
               <tr>
-                <th>لوکیشن</th>
+                <th>{tr("common.location")}</th>
                 <td>
                   {service.panel.flag} {service.panel.location}
                 </td>
               </tr>
               <tr>
-                <th>پلن</th>
-                <td>{service.plan?.title ?? (service.isTrial ? "اکانت تست" : "—")}</td>
+                <th>{tr("service.plan")}</th>
+                <td>{service.plan?.title ?? (service.isTrial ? tr("service.trial") : "—")}</td>
               </tr>
               <tr>
-                <th>کاربر همزمان</th>
-                <td>{service.deviceLimit > 0 ? faNum(service.deviceLimit) : "نامحدود"}</td>
+                <th>{tr("common.device")}</th>
+                <td>{service.deviceLimit > 0 ? f.num(service.deviceLimit) : tr("common.unlimited")}</td>
               </tr>
               <tr>
-                <th>شناسه کاربری در پنل</th>
+                <th>{tr("service.clientId")}</th>
                 <td className="mono">{service.clientEmail}</td>
               </tr>
               <tr>
-                <th>تاریخ خرید</th>
-                <td>{faDate(service.createdAt, true)}</td>
+                <th>{tr("service.boughtAt")}</th>
+                <td>{f.date(service.createdAt, true)}</td>
               </tr>
               <tr>
-                <th>آخرین به‌روزرسانی مصرف</th>
-                <td>{faDate(service.lastSyncAt, true)}</td>
+                <th>{tr("service.lastSync")}</th>
+                <td>{f.date(service.lastSyncAt, true)}</td>
               </tr>
               <tr>
-                <th>آخرین بازتولید کانفیگ</th>
+                <th>{tr("service.rotatedAt")}</th>
                 <td>
                   {service.rotatedAt
-                    ? `${faDate(service.rotatedAt, true)} (${faNum(service.rotateCount)} بار)`
-                    : "انجام نشده"}
+                    ? `${f.date(service.rotatedAt, true)} · ${f.num(service.rotateCount)} ${tr("service.times")}`
+                    : tr("service.notRotated")}
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
         <p className="field-hint" style={{ marginTop: 12 }}>
-          راهنمای اتصال گام‌به‌گام را در صفحه <Link href="/tutorial">آموزش اتصال</Link> ببینید.
+          {tr("service.guideHint").split("{link}")[0]}
+          <Link href="/tutorial">{tr("nav.tutorial")}</Link>
+          {tr("service.guideHint").split("{link}")[1]}
         </p>
       </div>
     </div>

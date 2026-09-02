@@ -2,8 +2,10 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { asBool, asNum, getSettings } from "@/lib/settings";
-import { faDate, faNum, relativeTime, toman } from "@/lib/format";
-import { WALLET_KIND } from "@/lib/wallet";
+import { fmt } from "@/lib/format";
+import { walletKind } from "@/lib/wallet";
+import { getLocale } from "@/lib/locale";
+import { translator } from "@/lib/i18n";
 import { gatewayMin, gatewayReady } from "@/lib/gateway";
 import TopupForm from "@/components/TopupForm";
 import CopyButton from "@/components/CopyButton";
@@ -13,6 +15,9 @@ export const metadata = { title: "کیف پول" };
 
 export default async function WalletPage() {
   const user = await requireUser("/dashboard/wallet");
+  const locale = await getLocale();
+  const tr = translator(locale);
+  const f = fmt(locale);
   const [row, txs, settings, referrals, referralEarned] = await Promise.all([
     db.user.findUniqueOrThrow({ where: { id: user.id } }),
     db.walletTx.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 30 }),
@@ -35,32 +40,32 @@ export default async function WalletPage() {
     <div>
       <div className="page-head">
         <div>
-          <h1>کیف پول</h1>
-          <p>با شارژ حساب، خریدها بدون انتظار برای تأیید رسید و در همان لحظه انجام می‌شوند.</p>
+          <h1>{tr("dashPages.walletTitle")}</h1>
+          <p>{tr("dashPages.walletSubtitle")}</p>
         </div>
-        <span className="badge badge-info">{toman(row.balance)}</span>
+        <span className="badge badge-info">{f.money(row.balance)}</span>
       </div>
 
       {!enabled ? (
-        <div className="alert alert-warn">کیف پول در حال حاضر غیرفعال است.</div>
+        <div className="alert alert-warn">{tr("dashPages.walletTitle")}</div>
       ) : null}
 
       <div className="summary-strip">
         <div className="summary-tile">
-          <span>💰 موجودی</span>
-          <b>{toman(row.balance, false)}</b>
+          <span>{tr("dashPages.walletBalanceTile")}</span>
+          <b>{f.money(row.balance, false)}</b>
         </div>
         <div className="summary-tile">
-          <span>⬆️ مجموع شارژ</span>
-          <b>{toman(charged, false)}</b>
+          <span>{tr("dashPages.totalTopup")}</span>
+          <b>{f.money(charged, false)}</b>
         </div>
         <div className="summary-tile">
-          <span>⬇️ مجموع خرید</span>
-          <b>{toman(spent, false)}</b>
+          <span>{tr("dashPages.totalSpent")}</span>
+          <b>{f.money(spent, false)}</b>
         </div>
         <div className="summary-tile">
-          <span>🎁 پاداش دعوت</span>
-          <b>{toman(referralEarned._sum.amount ?? 0, false)}</b>
+          <span>{tr("dashPages.referralBonus")}</span>
+          <b>{f.money(referralEarned._sum.amount ?? 0, false)}</b>
         </div>
       </div>
 
@@ -68,9 +73,10 @@ export default async function WalletPage() {
         {enabled ? (
           <div className="card">
             <div className="card-title">
-              <h3>➕ شارژ کیف پول</h3>
+              <h3>➕ {tr("dashPages.topup")}</h3>
             </div>
             <TopupForm
+              locale={locale}
               min={asNum(settings.min_topup, 50_000)}
               online={{ enabled: gatewayReady(settings), min: gatewayMin(settings) }}
             />
@@ -80,12 +86,13 @@ export default async function WalletPage() {
         {percent > 0 && referralLink ? (
           <div className="card">
             <div className="card-title">
-              <h3>🎁 دعوت دوستان</h3>
-              <span className="badge badge-success">{faNum(percent)}٪ پاداش</span>
+              <h3>{tr("dashPages.inviteTitle")}</h3>
+              <span className="badge badge-success">
+                {tr("dashPages.inviteReward", { percent: f.num(percent) })}
+              </span>
             </div>
             <p className="field-hint">
-              این لینک را برای دوستانتان بفرستید؛ با اولین خرید هرکدام، {faNum(percent)}٪ مبلغ خریدشان به
-              کیف پول شما اضافه می‌شود.
+              {tr("dashPages.inviteText", { percent: f.num(percent) })}
             </p>
             <div className="copy-box">
               <code>{referralLink}</code>
@@ -93,15 +100,17 @@ export default async function WalletPage() {
             </div>
             <div className="svc-meta" style={{ marginTop: 14 }}>
               <div className="meta-row">
-                <span>👥 دعوت‌شده‌ها</span>
-                <b>{faNum(referrals)} نفر</b>
+                <span>{tr("dashPages.invited")}</span>
+                <b>
+                  {f.num(referrals)} {tr("dashPages.people")}
+                </b>
               </div>
               <div className="meta-row">
-                <span>💵 مجموع پاداش</span>
-                <b className="gold">{toman(referralEarned._sum.amount ?? 0)}</b>
+                <span>{tr("dashPages.totalReward")}</span>
+                <b className="gold">{f.money(referralEarned._sum.amount ?? 0)}</b>
               </div>
               <div className="meta-row">
-                <span>🔑 کد شما</span>
+                <span>{tr("dashPages.yourCode")}</span>
                 <b className="mono">{row.referralCode}</b>
               </div>
             </div>
@@ -111,9 +120,9 @@ export default async function WalletPage() {
 
       <div className="card data-card">
         <div className="data-head">
-          <h3>تراکنش‌ها</h3>
+          <h3>{tr("dashPages.transactions")}</h3>
           <Link className="btn btn-sm" href="/dashboard/orders">
-            سفارش‌ها
+            {tr("dash.orders")}
           </Link>
         </div>
         {txs.length ? (
@@ -121,25 +130,25 @@ export default async function WalletPage() {
             <table>
               <thead>
                 <tr>
-                  <th>نوع</th>
-                  <th>مبلغ</th>
-                  <th>توضیح</th>
-                  <th>زمان</th>
+                  <th>{tr("dashPages.txType")}</th>
+                  <th>{tr("dashPages.txAmount")}</th>
+                  <th>{tr("dashPages.txNote")}</th>
+                  <th>{tr("dashPages.txDate")}</th>
                 </tr>
               </thead>
               <tbody>
                 {txs.map((tx) => (
                   <tr key={tx.id}>
-                    <td className="nowrap">{WALLET_KIND[tx.kind] ?? tx.kind}</td>
+                    <td className="nowrap">{walletKind(locale, tx.kind)}</td>
                     <td className="nowrap">
                       <b style={{ color: tx.amount > 0 ? "var(--green)" : "var(--red)" }}>
-                        {tx.amount > 0 ? "+" : "−"} {toman(Math.abs(tx.amount))}
+                        {tx.amount > 0 ? "+" : "−"} {f.money(Math.abs(tx.amount))}
                       </b>
                     </td>
                     <td className="cell-sub">{tx.note ?? "—"}</td>
                     <td className="nowrap">
-                      <span className="cell-main">{relativeTime(tx.createdAt)}</span>
-                      <span className="cell-sub">{faDate(tx.createdAt, true)}</span>
+                      <span className="cell-main">{f.relative(tx.createdAt)}</span>
+                      <span className="cell-sub">{f.date(tx.createdAt, true)}</span>
                     </td>
                   </tr>
                 ))}
@@ -149,7 +158,7 @@ export default async function WalletPage() {
         ) : (
           <div className="empty" style={{ padding: 26 }}>
             <div className="empty-icon">💰</div>
-            هنوز تراکنشی ندارید.
+            {tr("dashPages.noTx")}
           </div>
         )}
       </div>

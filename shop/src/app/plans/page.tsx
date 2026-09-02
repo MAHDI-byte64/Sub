@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { asBool, getSettings } from "@/lib/settings";
-import { faNum } from "@/lib/format";
-import { FAQ } from "@/lib/content";
+import { fmt } from "@/lib/format";
+import { getLocale } from "@/lib/locale";
+import { translator } from "@/lib/i18n";
+import { faqs } from "@/lib/content";
 import PlanCard from "@/components/PlanCard";
 import PlanEstimator from "@/components/PlanEstimator";
 
@@ -15,6 +17,10 @@ export default async function PlansPage({
   searchParams: Promise<{ renew?: string }>;
 }) {
   const { renew } = await searchParams;
+  const locale = await getLocale();
+  const tr = translator(locale);
+  const f = fmt(locale);
+
   const [plans, panels, settings] = await Promise.all([
     db.plan.findMany({
       where: { isActive: true },
@@ -32,25 +38,23 @@ export default async function PlansPage({
       <div className="section-head">
         <span className="eyebrow">
           <span className="eyebrow-dot" />
-          تحویل آنی پس از تأیید پرداخت
+          {tr("plansPage.eyebrow")}
         </span>
-        <h1>{renew ? "تمدید سرویس" : "تعرفه‌ها"}</h1>
-        <p>
-          {renew
-            ? "پلنی را که می‌خواهید به سرویس فعلی اضافه شود انتخاب کنید؛ لینک اشتراک شما تغییر نمی‌کند."
-            : "پلن مناسب خود را انتخاب کنید. همه پلن‌ها روی تمام لوکیشن‌ها فعال‌اند و محدودیت سرعت ندارند."}
-        </p>
+        <h1>{renew ? tr("plansPage.renewTitle") : tr("plans.title")}</h1>
+        <p>{renew ? tr("plansPage.renewText") : tr("plansPage.text")}</p>
       </div>
 
       {trial && !renew ? (
         <div className="cta-panel" style={{ marginBottom: 26 }}>
-          <h2 style={{ fontSize: "1.2rem" }}>🎁 هنوز مطمئن نیستید؟</h2>
+          <h2 style={{ fontSize: "1.2rem" }}>{tr("plansPage.trialTitle")}</h2>
           <p>
-            با ثبت‌نام رایگان می‌توانید یک اکانت تست {faNum(settings.trial_volume_gb)} گیگابایتی{" "}
-            {faNum(settings.trial_days)} روزه بگیرید و قبل از خرید امتحان کنید.
+            {tr("plansPage.trialText", {
+              gb: f.num(settings.trial_volume_gb),
+              days: f.num(settings.trial_days),
+            })}
           </p>
           <Link className="btn btn-primary" href="/dashboard">
-            دریافت تست رایگان
+            {tr("homeExtra.trialCta")}
           </Link>
         </div>
       ) : null}
@@ -61,6 +65,7 @@ export default async function PlansPage({
             <PlanCard
               key={plan.id}
               plan={plan}
+              locale={locale}
               href={`/checkout?plan=${plan.id}${renew ? `&renew=${renew}` : ""}`}
             />
           ))}
@@ -68,13 +73,14 @@ export default async function PlansPage({
       ) : (
         <div className="card empty">
           <div className="empty-icon">🗂️</div>
-          فعلاً پلنی برای فروش تعریف نشده است.
+          {tr("plansPage.empty")}
         </div>
       )}
 
       {plans.length ? (
         <div style={{ marginTop: 26 }}>
           <PlanEstimator
+            locale={locale}
             plans={plans.map((p) => ({
               id: p.id,
               title: p.title,
@@ -91,22 +97,22 @@ export default async function PlansPage({
         <article>
           <span className="feature-icon">🔄</span>
           <div>
-            <h3>تمدید بدون دردسر</h3>
-            <p>حجم و زمان به همان کانفیگ اضافه می‌شود؛ نیازی به تنظیم دوباره نیست.</p>
+            <h3>{tr("plansPage.fRenew")}</h3>
+            <p>{tr("plansPage.fRenewText")}</p>
           </div>
         </article>
         <article>
           <span className="feature-icon">📱</span>
           <div>
-            <h3>روی همه دستگاه‌ها</h3>
-            <p>اندروید، آی‌او‌اس، ویندوز، مک و لینوکس با یک لینک اشتراک.</p>
+            <h3>{tr("plansPage.fDevices")}</h3>
+            <p>{tr("plansPage.fDevicesText")}</p>
           </div>
         </article>
         <article>
           <span className="feature-icon">🎧</span>
           <div>
-            <h3>پشتیبانی واقعی</h3>
-            <p>تیکت داخل پنل و تلگرام، در تمام ساعات شبانه‌روز.</p>
+            <h3>{tr("plansPage.fSupport")}</h3>
+            <p>{tr("plansPage.fSupportText")}</p>
           </div>
         </article>
       </div>
@@ -114,8 +120,10 @@ export default async function PlansPage({
       {panels.length ? (
         <div className="card" style={{ marginTop: 24 }}>
           <div className="card-title">
-            <h3>لوکیشن‌های در دسترس</h3>
-            <span className="badge badge-info">{faNum(panels.length)} سرور</span>
+            <h3>{tr("plansPage.locationsTitle")}</h3>
+            <span className="badge badge-info">
+              {tr("plansPage.serversBadge", { count: f.num(panels.length) })}
+            </span>
           </div>
           <div className="btn-row">
             {panels.map((p) => (
@@ -125,22 +133,23 @@ export default async function PlansPage({
             ))}
           </div>
           <p className="field-hint" style={{ marginTop: 12 }}>
-            هنگام خرید می‌توانید لوکیشن را انتخاب کنید یا انتخاب را به سیستم بسپارید تا کم‌بارترین سرور
-            به شما داده شود.
+            {tr("plansPage.locationHint")}
           </p>
         </div>
       ) : null}
 
       <div className="section-head" style={{ marginTop: "clamp(34px, 6vw, 54px)" }}>
-        <h2>سوال‌هایی که قبل از خرید می‌پرسند</h2>
+        <h2>{tr("plansPage.faqTitle")}</h2>
       </div>
       <div className="faq-grid">
-        {FAQ.slice(0, 4).map((item) => (
-          <details className="accordion" key={item.q}>
-            <summary>{item.q}</summary>
-            <div className="acc-body">{item.a}</div>
-          </details>
-        ))}
+        {faqs(locale)
+          .slice(0, 4)
+          .map((item) => (
+            <details className="accordion" key={item.q}>
+              <summary>{item.q}</summary>
+              <div className="acc-body">{item.a}</div>
+            </details>
+          ))}
       </div>
     </div>
   );

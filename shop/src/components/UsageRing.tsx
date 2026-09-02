@@ -1,4 +1,5 @@
-import { faNum } from "@/lib/format";
+import { fmt } from "@/lib/format";
+import { t as translate, type Locale } from "@/lib/i18n";
 
 /**
  * حلقهٔ مصرف: کمان بیرونی حجم باقی‌مانده و کمان داخلی زمان باقی‌مانده را نشان می‌دهد.
@@ -10,13 +11,16 @@ export default function UsageRing({
   time,
   centerValue,
   centerLabel,
+  locale = "fa",
 }: {
   id: string;
   volume: number;
   time: number;
   centerValue: string;
   centerLabel: string;
+  locale?: Locale;
 }) {
+  const f = fmt(locale);
   const clamp = (n: number) => Math.max(0, Math.min(1, Number.isFinite(n) ? n : 0));
   const rOuter = 58;
   const rInner = 43;
@@ -78,11 +82,11 @@ export default function UsageRing({
       <div className="ring-legend">
         <span>
           <i className="lg-volume" />
-          حجم {faNum(Math.round(v * 100))}٪
+          {translate(locale, "profile.ringVolume")} {f.num(Math.round(v * 100))}٪
         </span>
         <span>
           <i className="lg-time" />
-          زمان {faNum(Math.round(t * 100))}٪
+          {translate(locale, "profile.ringTime")} {f.num(Math.round(t * 100))}٪
         </span>
       </div>
     </div>

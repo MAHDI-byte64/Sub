@@ -2,7 +2,8 @@
 
 import { useActionState, useState } from "react";
 import { createOrderAction, type ShopState } from "@/app/actions/shop";
-import { toman } from "@/lib/format";
+import { fmt } from "@/lib/format";
+import { t, type Locale } from "@/lib/i18n";
 import SubmitButton from "./SubmitButton";
 
 type PanelOption = { id: string; flag: string; location: string };
@@ -13,15 +14,19 @@ export default function CheckoutForm({
   renew,
   wallet,
   online,
+  locale = "fa",
 }: {
   plan: { id: string; title: string; priceToman: number; priceLabel: string };
   panels: PanelOption[];
   renew: { id: string; remark: string } | null;
   wallet: { enabled: boolean; balance: number };
   online: { enabled: boolean; min: number };
+  locale?: Locale;
 }) {
   const [state, formAction] = useActionState<ShopState, FormData>(createOrderAction, {});
   const [code, setCode] = useState("");
+  const f = fmt(locale);
+  const tr = (key: string, vars?: Record<string, string | number>) => t(locale, key, vars);
   const canPayWallet = wallet.enabled && wallet.balance >= plan.priceToman;
   const canPayOnline = online.enabled && plan.priceToman >= online.min;
   const [payMethod, setPayMethod] = useState<"card" | "wallet" | "online">(
@@ -43,7 +48,7 @@ export default function CheckoutForm({
       const data = (await res.json()) as { ok: boolean; message: string };
       setDiscountMsg({ ok: data.ok, text: data.message });
     } catch {
-      setDiscountMsg({ ok: false, text: "بررسی کد تخفیف ناموفق بود." });
+      setDiscountMsg({ ok: false, text: tr("checkout.check") });
     } finally {
       setChecking(false);
     }
@@ -58,28 +63,27 @@ export default function CheckoutForm({
 
       {renew ? (
         <div className="alert alert-info">
-          این سفارش برای <b>تمدید</b> سرویس «{renew.remark}» ثبت می‌شود؛ حجم و زمان به همان کانفیگ اضافه
-          می‌شود و لینک اشتراک تغییر نمی‌کند.
+          {tr("checkout.renewNote", { name: renew.remark })}
         </div>
       ) : null}
 
       {!renew ? (
         <div className="field">
-          <label htmlFor="panelId">انتخاب لوکیشن</label>
+          <label htmlFor="panelId">{tr("checkout.selectLocation")}</label>
           <select id="panelId" name="panelId" defaultValue="">
-            <option value="">انتخاب خودکار (کم‌بارترین سرور)</option>
+            <option value="">{tr("checkout.autoLocation")}</option>
             {panels.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.flag} {p.location}
               </option>
             ))}
           </select>
-          <span className="field-hint">در صورت نیاز می‌توانید بعداً از پشتیبانی درخواست تعویض سرور بدهید.</span>
+          <span className="field-hint">{tr("checkout.locationHint")}</span>
         </div>
       ) : null}
 
       <div className="field">
-        <label htmlFor="discountCode">کد تخفیف (اختیاری)</label>
+        <label htmlFor="discountCode">{tr("checkout.discount")}</label>
         <div style={{ display: "flex", gap: 8 }}>
           <input
             id="discountCode"
@@ -91,7 +95,7 @@ export default function CheckoutForm({
             autoComplete="off"
           />
           <button type="button" className="btn nowrap" onClick={checkDiscount} disabled={checking}>
-            {checking ? "..." : "بررسی"}
+            {checking ? "..." : tr("checkout.check")}
           </button>
         </div>
         {discountMsg ? (
@@ -103,7 +107,7 @@ export default function CheckoutForm({
 
       {wallet.enabled || canPayOnline ? (
         <div className="field">
-          <label>روش پرداخت</label>
+          <label>{tr("checkout.payMethod")}</label>
           <input type="hidden" name="payMethod" value={payMethod} />
           <div className="pay-options">
             {canPayOnline ? (
@@ -112,8 +116,8 @@ export default function CheckoutForm({
                 className={`pay-option${payMethod === "online" ? " is-active" : ""}`}
                 onClick={() => setPayMethod("online")}
               >
-                <b>🏦 پرداخت آنلاین</b>
-                <small>درگاه بانکی — تحویل آنی، بدون رسید</small>
+                <b>{tr("checkout.online")}</b>
+                <small>{tr("checkout.onlineHint")}</small>
               </button>
             ) : null}
             {wallet.enabled ? (
@@ -123,10 +127,10 @@ export default function CheckoutForm({
                 onClick={() => canPayWallet && setPayMethod("wallet")}
                 disabled={!canPayWallet}
               >
-                <b>💰 کیف پول</b>
+                <b>{tr("checkout.walletOption")}</b>
                 <small>
-                  موجودی: {toman(wallet.balance)}
-                  {canPayWallet ? " — تحویل آنی، بدون رسید" : " — موجودی کافی نیست"}
+                  {tr("checkout.walletBalance", { amount: f.money(wallet.balance) })}
+                  {canPayWallet ? tr("checkout.walletInstant") : tr("checkout.walletShort")}
                 </small>
               </button>
             ) : null}
@@ -135,8 +139,8 @@ export default function CheckoutForm({
               className={`pay-option${payMethod === "card" ? " is-active" : ""}`}
               onClick={() => setPayMethod("card")}
             >
-              <b>💳 کارت‌به‌کارت</b>
-              <small>ارسال رسید و تأیید پشتیبانی</small>
+              <b>{tr("checkout.card")}</b>
+              <small>{tr("checkout.cardHint")}</small>
             </button>
           </div>
         </div>
@@ -144,18 +148,18 @@ export default function CheckoutForm({
 
       <SubmitButton className="btn btn-primary btn-block btn-lg" pendingText="در حال ثبت سفارش…">
         {payMethod === "wallet"
-          ? "پرداخت از کیف پول و دریافت آنی"
+          ? tr("checkout.submitWallet")
           : payMethod === "online"
-            ? "پرداخت آنلاین و دریافت آنی"
-            : "ثبت سفارش و رفتن به پرداخت"}
+            ? tr("checkout.submitOnline")
+            : tr("checkout.submitCard")}
       </SubmitButton>
       <span className="field-hint center">
-        با ثبت سفارش، قوانین سایت را می‌پذیرید.
+        {tr("checkout.terms")}
         {payMethod === "wallet"
-          ? " مبلغ از کیف پول کسر و سرویس بلافاصله ساخته می‌شود."
+          ? tr("checkout.afterWallet")
           : payMethod === "online"
-            ? " به درگاه بانکی می‌روید و بعد از پرداخت، سرویس در همان لحظه ساخته می‌شود."
-            : " پرداخت به‌صورت کارت‌به‌کارت انجام می‌شود."}
+            ? tr("checkout.afterOnline")
+            : tr("checkout.afterCard")}
       </span>
     </form>
   );

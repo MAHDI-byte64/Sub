@@ -34,6 +34,8 @@ import {
   sendPushToUser,
 } from "../src/lib/push";
 import { notifyUser } from "../src/lib/notify";
+import { fmt } from "../src/lib/format";
+import { DICT, t, type Locale } from "../src/lib/i18n";
 import { XuiClient, type XuiRawClient } from "../src/lib/xui";
 import { serviceRefs } from "../src/lib/provision";
 
@@ -969,6 +971,52 @@ async function pushScenario() {
   check("با خاموش‌کردن، ارسال پوش انجام نمی‌شود", (await sendPushToUser(user.id, { title: "x" })) === 0);
 }
 
+/** دو زبانه بودن سایت: دیکشنری کامل و قالب‌بندی وابسته به زبان */
+function i18nScenario() {
+  console.log("\n══════ دو زبانه بودن سایت ══════");
+
+  // هر کلیدی که در فارسی هست باید در انگلیسی هم باشد
+  const flatten = (dict: Record<string, unknown>, prefix = ""): string[] =>
+    Object.entries(dict).flatMap(([key, value]) =>
+      value && typeof value === "object"
+        ? flatten(value as Record<string, unknown>, `${prefix}${key}.`)
+        : [`${prefix}${key}`],
+    );
+
+  const faKeys = flatten(DICT.fa as Record<string, unknown>);
+  const enKeys = new Set(flatten(DICT.en as Record<string, unknown>));
+  const missing = faKeys.filter((key) => !enKeys.has(key));
+  check("همهٔ کلیدهای فارسی ترجمهٔ انگلیسی دارند", missing.length === 0, missing.slice(0, 6));
+
+  check("ترجمه انگلیسی برگردانده می‌شود", t("en", "nav.plans") === "Pricing", t("en", "nav.plans"));
+  check("ترجمه فارسی برگردانده می‌شود", t("fa", "nav.plans") === "تعرفه‌ها", t("fa", "nav.plans"));
+  check(
+    "کلید ناموجود، خود کلید را برمی‌گرداند",
+    t("en", "nope.nothing.here") === "nope.nothing.here",
+  );
+  check(
+    "متغیرها در متن جایگزین می‌شوند",
+    t("en", "status.ofServers", { ok: 2, total: 3 }) === "2 of 3 servers are available.",
+    t("en", "status.ofServers", { ok: 2, total: 3 }),
+  );
+
+  const faFmt = fmt("fa" as Locale);
+  const enFmt = fmt("en" as Locale);
+  check("ارقام فارسی در حالت فارسی", faFmt.num(1250) === "۱۲۵۰", faFmt.num(1250));
+  check("ارقام لاتین در حالت انگلیسی", enFmt.num(1250) === "1250", enFmt.num(1250));
+  check("واحد پول فارسی", faFmt.money(150000).includes("تومان"), faFmt.money(150000));
+  check("واحد پول انگلیسی", enFmt.money(150000) === "150,000 Toman", enFmt.money(150000));
+  check("حجم انگلیسی با واحد لاتین", enFmt.bytes(10 * GB) === "10 GB", enFmt.bytes(10 * GB));
+  check("حجم فارسی با واحد فارسی", faFmt.bytes(10 * GB).includes("گیگابایت"), faFmt.bytes(10 * GB));
+  check("نامحدود در هر دو زبان", enFmt.bytes(0) === "Unlimited" && faFmt.bytes(0) === "نامحدود");
+
+  const sample = new Date("2026-03-21T10:30:00Z");
+  check("تاریخ میلادی در انگلیسی", /2026/.test(enFmt.date(sample)), enFmt.date(sample));
+  check("تاریخ شمسی در فارسی", /۱۴۰/.test(faFmt.date(sample)), faFmt.date(sample));
+  check("مدت انگلیسی", enFmt.days(30) === "30 days", enFmt.days(30));
+  check("تعداد دستگاه انگلیسی", enFmt.devices(1) === "1 device", enFmt.devices(1));
+}
+
 async function main() {
   await scenario({
     label: "پنل نسخه ۲ — ورود با نام کاربری و رمز",
@@ -996,6 +1044,7 @@ async function main() {
   await monitorScenario();
   await gatewayScenario();
   await pushScenario();
+  i18nScenario();
 
   console.log("\n══════ بررسی توکن نامعتبر ══════");
   const badToken = new XuiClient({

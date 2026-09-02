@@ -2,7 +2,8 @@
 
 import { useActionState, useState } from "react";
 import { createTopupAction, type ShopState } from "@/app/actions/shop";
-import { faNum, toman } from "@/lib/format";
+import { fmt } from "@/lib/format";
+import { t, type Locale } from "@/lib/i18n";
 import SubmitButton from "./SubmitButton";
 
 const PRESETS = [100_000, 200_000, 500_000, 1_000_000];
@@ -10,12 +11,16 @@ const PRESETS = [100_000, 200_000, 500_000, 1_000_000];
 export default function TopupForm({
   min,
   online,
+  locale = "fa",
 }: {
   min: number;
   online: { enabled: boolean; min: number };
+  locale?: Locale;
 }) {
   const [state, formAction] = useActionState<ShopState, FormData>(createTopupAction, {});
   const [amount, setAmount] = useState(PRESETS[0]);
+  const f = fmt(locale);
+  const tr = (key: string, vars?: Record<string, string | number>) => t(locale, key, vars);
   const canPayOnline = online.enabled && amount >= online.min;
   const [payMethod, setPayMethod] = useState<"card" | "online">(online.enabled ? "online" : "card");
   const method = canPayOnline ? payMethod : "card";
@@ -25,7 +30,7 @@ export default function TopupForm({
       {state.error ? <div className="alert alert-error">{state.error}</div> : null}
 
       <div className="field">
-        <label>مبلغ شارژ</label>
+        <label>{tr("dashPages.topupAmount")}</label>
         <div className="subject-chips">
           {PRESETS.map((value) => (
             <button
@@ -34,7 +39,7 @@ export default function TopupForm({
               className={`chip${amount === value ? " is-active" : ""}`}
               onClick={() => setAmount(value)}
             >
-              {toman(value)}
+              {f.money(value)}
             </button>
           ))}
         </div>
@@ -47,12 +52,12 @@ export default function TopupForm({
           onChange={(e) => setAmount(Number(e.target.value))}
           className="ltr"
         />
-        <span className="field-hint">حداقل مبلغ شارژ {toman(min)} است ({faNum(min)} تومان).</span>
+        <span className="field-hint">{f.money(min)}</span>
       </div>
 
       {online.enabled ? (
         <div className="field">
-          <label>روش پرداخت</label>
+          <label>{tr("checkout.payMethod")}</label>
           <input type="hidden" name="payMethod" value={method} />
           <div className="pay-options">
             <button
@@ -61,32 +66,26 @@ export default function TopupForm({
               onClick={() => canPayOnline && setPayMethod("online")}
               disabled={!canPayOnline}
             >
-              <b>🏦 پرداخت آنلاین</b>
-              <small>
-                {canPayOnline
-                  ? "درگاه بانکی — شارژ در همان لحظه"
-                  : `برای پرداخت آنلاین حداقل ${toman(online.min)} لازم است`}
-              </small>
+              <b>{tr("checkout.online")}</b>
+              <small>{canPayOnline ? tr("checkout.onlineHint") : f.money(online.min)}</small>
             </button>
             <button
               type="button"
               className={`pay-option${method === "card" ? " is-active" : ""}`}
               onClick={() => setPayMethod("card")}
             >
-              <b>💳 کارت‌به‌کارت</b>
-              <small>ارسال رسید و تأیید پشتیبانی</small>
+              <b>{tr("checkout.card")}</b>
+              <small>{tr("checkout.cardHint")}</small>
             </button>
           </div>
         </div>
       ) : null}
 
       <SubmitButton className="btn btn-primary">
-        {method === "online" ? "پرداخت آنلاین و شارژ آنی" : "ثبت درخواست شارژ"}
+        {method === "online" ? tr("checkout.submitOnline") : tr("dashPages.topup")}
       </SubmitButton>
       <span className="field-hint">
-        {method === "online"
-          ? "به درگاه بانکی می‌روید و بلافاصله بعد از پرداخت، موجودی شما اضافه می‌شود."
-          : "بعد از ثبت، شماره کارت و مبلغ نمایش داده می‌شود؛ رسید را بفرستید تا شارژ انجام شود."}
+        {method === "online" ? tr("checkout.afterOnline") : tr("checkout.afterCard")}
       </span>
     </form>
   );

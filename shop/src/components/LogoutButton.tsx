@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { logoutAction } from "@/app/actions/auth";
 
-export default function LogoutButton() {
+export default function LogoutButton({ label = "خروج" }: { label?: string }) {
   const [pending, start] = useTransition();
   return (
     <button
@@ -11,9 +11,9 @@ export default function LogoutButton() {
       className="btn btn-sm btn-ghost"
       disabled={pending}
       onClick={() => start(() => void logoutAction())}
-      title="خروج از حساب"
+      title={label}
     >
-      {pending ? "..." : "خروج"}
+      {pending ? "..." : label}
     </button>
   );
 }

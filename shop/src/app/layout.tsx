@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { getSettings } from "@/lib/settings";
+import { getLocale } from "@/lib/locale";
+import { dirOf } from "@/lib/i18n";
 import BackgroundFX from "@/components/BackgroundFX";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
@@ -30,9 +32,10 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const locale = await getLocale();
   return (
-    <html lang="fa" dir="rtl">
+    <html lang={locale} dir={dirOf(locale)}>
       <head>
         <link
           rel="preload"

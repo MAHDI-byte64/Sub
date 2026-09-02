@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { faDate, faNum, toman } from "@/lib/format";
-import { ORDER_STATUS } from "@/lib/status";
+import { fmt } from "@/lib/format";
+import { orderStatus } from "@/lib/status";
+import { getLocale } from "@/lib/locale";
+import { translator } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "سفارش‌ها" };
@@ -18,6 +20,9 @@ const STATUS_ICON: Record<string, string> = {
 
 export default async function OrdersPage() {
   const user = await requireUser("/dashboard/orders");
+  const locale = await getLocale();
+  const tr = translator(locale);
+  const f = fmt(locale);
   const orders = await db.order.findMany({
     where: { userId: user.id },
     include: { plan: true },
@@ -32,58 +37,58 @@ export default async function OrdersPage() {
     <div>
       <div className="page-head">
         <div>
-          <h1>سفارش‌های من</h1>
-          <p>وضعیت پرداخت و تحویل همهٔ سفارش‌ها اینجاست.</p>
+          <h1>{tr("dashPages.ordersTitle")}</h1>
+          <p>{tr("dashPages.ordersSubtitle")}</p>
         </div>
         <Link className="btn btn-sm btn-primary" href="/plans">
-          سفارش جدید
+          {tr("dashPages.newOrder")}
         </Link>
       </div>
 
       {orders.length ? (
         <div className="summary-strip">
           <div className="summary-tile">
-            <span>🧾 کل سفارش‌ها</span>
-            <b>{faNum(orders.length)}</b>
+            <span>{tr("dashPages.totalOrders")}</span>
+            <b>{f.num(orders.length)}</b>
           </div>
           <div className="summary-tile">
-            <span>✅ خرید موفق</span>
-            <b>{faNum(approved.length)}</b>
+            <span>{tr("dashPages.successful")}</span>
+            <b>{f.num(approved.length)}</b>
           </div>
           <div className="summary-tile">
-            <span>💰 مجموع پرداختی</span>
-            <b>{toman(spent, false)}</b>
+            <span>{tr("dashPages.totalPaid")}</span>
+            <b>{f.money(spent, false)}</b>
           </div>
           <div className="summary-tile">
-            <span>🕒 آخرین سفارش</span>
-            <b>{orders[0] ? faDate(orders[0].createdAt) : "—"}</b>
+            <span>{tr("dashPages.lastOrder")}</span>
+            <b>{orders[0] ? f.date(orders[0].createdAt) : "—"}</b>
           </div>
         </div>
       ) : null}
 
       {pending.length ? (
         <div className="alert alert-warn">
-          ⏳ {pending.length === 1 ? "یک سفارش" : `${pending.length} سفارش`} در انتظار پرداخت یا بررسی دارید.
+          {tr("dashPages.pendingAlert", { count: f.num(pending.length) })}
         </div>
       ) : null}
 
       {orders.length ? (
         <div className="grid" style={{ gap: 12 }}>
           {orders.map((order) => {
-            const status = ORDER_STATUS[order.status] ?? ORDER_STATUS.awaiting_receipt;
+            const status = orderStatus(locale, order.status);
             return (
               <Link className="order-row" key={order.id} href={`/dashboard/orders/${order.code}`}>
                 <span className="oi">{STATUS_ICON[order.status] ?? "🧾"}</span>
                 <span className="om">
                   <b>
-                    {order.plan?.title ?? "شارژ کیف پول"}
-                    {order.renewServiceId ? " — تمدید" : ""}
+                    {order.plan?.title ?? tr("dashPages.topupOrder")}
+                    {order.renewServiceId ? tr("dashPages.renewSuffix") : ""}
                   </b>
                   <small className="mono">{order.code}</small>
-                  <small> · {faDate(order.createdAt)}</small>
+                  <small> · {f.date(order.createdAt)}</small>
                 </span>
                 <span className="oa">
-                  <b>{toman(order.payable)}</b>
+                  <b>{f.money(order.payable)}</b>
                   <span className={`badge ${status.badge}`}>{status.label}</span>
                 </span>
               </Link>
@@ -93,9 +98,9 @@ export default async function OrdersPage() {
       ) : (
         <div className="card empty">
           <div className="empty-icon">🧾</div>
-          <p>هنوز سفارشی ثبت نکرده‌اید.</p>
+          <p>{tr("dashPages.noOrders")}</p>
           <Link className="btn btn-primary" href="/plans">
-            مشاهده تعرفه‌ها
+            {tr("dashPages.seePlans")}
           </Link>
         </div>
       )}

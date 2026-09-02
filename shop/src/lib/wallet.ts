@@ -46,6 +46,22 @@ export async function debitWallet(
   return updated.balance;
 }
 
+const WALLET_KIND_EN: Record<string, string> = {
+  topup: "Wallet top-up",
+  purchase: "Service purchase",
+  renew: "Service renewal",
+  auto_renew: "Automatic renewal",
+  referral: "Referral reward",
+  admin: "Adjusted by admin",
+  refund: "Refund",
+};
+
+/** برچسب نوع تراکنش به زبان جاری */
+export function walletKind(locale: "fa" | "en", kind: string): string {
+  const map = locale === "en" ? WALLET_KIND_EN : WALLET_KIND;
+  return map[kind] ?? kind;
+}
+
 export const WALLET_KIND: Record<string, string> = {
   topup: "شارژ کیف پول",
   purchase: "خرید سرویس",

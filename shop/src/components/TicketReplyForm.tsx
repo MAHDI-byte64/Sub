@@ -2,15 +2,17 @@
 
 import { useActionState, useState } from "react";
 import { closeTicketAction, replyTicketAction, type TicketState } from "@/app/actions/tickets";
+import { t, type Locale } from "@/lib/i18n";
 import SubmitButton from "./SubmitButton";
 
 export default function TicketReplyForm({
   ticketId,
   closed,
   initial = "؟",
-  placeholder = "پاسخ خود را بنویسید…",
+  placeholder,
   cannedReplies = [],
   hint,
+  locale = "fa",
 }: {
   ticketId: string;
   closed: boolean;
@@ -18,7 +20,9 @@ export default function TicketReplyForm({
   placeholder?: string;
   cannedReplies?: string[];
   hint?: string;
+  locale?: Locale;
 }) {
+  const tr = (key: string) => t(locale, key);
   const [state, formAction] = useActionState<TicketState, FormData>(replyTicketAction, {});
   const [closeState, closeAction] = useActionState<TicketState, FormData>(closeTicketAction, {});
   const [body, setBody] = useState("");
@@ -26,7 +30,7 @@ export default function TicketReplyForm({
   if (closed) {
     return (
       <div className="alert alert-info" style={{ marginTop: 16, marginBottom: 0 }}>
-        🔒 این گفتگو بسته شده است. اگر باز هم سوالی دارید، تیکت جدیدی ثبت کنید.
+        {tr("ticket.closedNote")}
       </div>
     );
   }
@@ -62,14 +66,16 @@ export default function TicketReplyForm({
             required
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            placeholder={placeholder}
-            aria-label="متن پاسخ"
+            placeholder={placeholder ?? tr("ticket.replyPlaceholder")}
+            aria-label={tr("ticket.replyLabel")}
           />
           <div className="composer-actions">
-            <span className="field-hint">{hint ?? "پاسخ شما بلافاصله برای طرف مقابل ارسال می‌شود."}</span>
+            <span className="field-hint">{hint ?? tr("ticket.reply")}</span>
             <div className="btn-row">
-              <span className="field-hint">{body.length} کاراکتر</span>
-              <SubmitButton className="btn btn-primary">ارسال پاسخ</SubmitButton>
+              <span className="field-hint">
+                {body.length} {tr("ticket.chars")}
+              </span>
+              <SubmitButton className="btn btn-primary">{tr("ticket.sendReply")}</SubmitButton>
             </div>
           </div>
         </div>
@@ -78,7 +84,7 @@ export default function TicketReplyForm({
       <form action={closeAction} style={{ marginTop: 12, textAlign: "start" }}>
         <input type="hidden" name="ticketId" value={ticketId} />
         <SubmitButton className="btn btn-sm btn-ghost" pendingText="…">
-          🔒 بستن گفتگو
+          {tr("ticket.closeThread")}
         </SubmitButton>
       </form>
     </>

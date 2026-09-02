@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { faNum, toman } from "@/lib/format";
+import { fmt } from "@/lib/format";
+import { t, type Locale } from "@/lib/i18n";
 
 type PlanOption = {
   id: string;
@@ -14,16 +15,25 @@ type PlanOption = {
 
 /** مصرف تقریبی هر فعالیت به گیگابایت در ساعت */
 const PROFILES = [
-  { key: "browse", label: "وب‌گردی و پیام‌رسان", icon: "💬", perHour: 0.15 },
-  { key: "social", label: "شبکه‌های اجتماعی", icon: "📱", perHour: 0.4 },
-  { key: "video", label: "تماشای ویدیو (HD)", icon: "🎬", perHour: 1.5 },
-  { key: "game", label: "بازی آنلاین", icon: "🎮", perHour: 0.12 },
+  { key: "browse", icon: "💬", perHour: 0.15 },
+  { key: "social", icon: "📱", perHour: 0.4 },
+  { key: "video", icon: "🎬", perHour: 1.5 },
+  { key: "game", icon: "🎮", perHour: 0.12 },
 ];
 
-export default function PlanEstimator({ plans }: { plans: PlanOption[] }) {
+export default function PlanEstimator({
+  plans,
+  locale = "fa",
+}: {
+  plans: PlanOption[];
+  locale?: Locale;
+}) {
   const [profile, setProfile] = useState(PROFILES[0].key);
   const [hours, setHours] = useState(2);
   const [devices, setDevices] = useState(1);
+
+  const f = fmt(locale);
+  const tr = (key: string, vars?: Record<string, string | number>) => t(locale, key, vars);
 
   const perHour = PROFILES.find((p) => p.key === profile)?.perHour ?? 0.15;
   const monthlyGb = useMemo(
@@ -42,12 +52,12 @@ export default function PlanEstimator({ plans }: { plans: PlanOption[] }) {
   return (
     <div className="card estimator">
       <div className="card-title">
-        <h3>🧮 چقدر حجم لازم دارید؟</h3>
-        <span className="badge badge-info">تخمین ماهانه</span>
+        <h3>🧮 {tr("estimator.title")}</h3>
+        <span className="badge badge-info">{tr("estimator.monthly")}</span>
       </div>
 
       <div className="field">
-        <label>بیشتر برای چه کاری استفاده می‌کنید؟</label>
+        <label>{tr("estimator.usage")}</label>
         <div className="subject-chips">
           {PROFILES.map((p) => (
             <button
@@ -56,7 +66,7 @@ export default function PlanEstimator({ plans }: { plans: PlanOption[] }) {
               className={`chip${profile === p.key ? " is-active" : ""}`}
               onClick={() => setProfile(p.key)}
             >
-              {p.icon} {p.label}
+              {p.icon} {tr(`estimator.${p.key}`)}
             </button>
           ))}
         </div>
@@ -65,7 +75,7 @@ export default function PlanEstimator({ plans }: { plans: PlanOption[] }) {
       <div className="grid grid-2">
         <div className="field">
           <label htmlFor="est-hours">
-            روزی چند ساعت؟ <b className="gold">{faNum(hours)} ساعت</b>
+            {tr("estimator.hours")} <b className="gold">{f.num(hours)}</b>
           </label>
           <input
             id="est-hours"
@@ -78,7 +88,7 @@ export default function PlanEstimator({ plans }: { plans: PlanOption[] }) {
         </div>
         <div className="field">
           <label htmlFor="est-devices">
-            چند دستگاه؟ <b className="gold">{faNum(devices)} دستگاه</b>
+            {tr("estimator.devices")} <b className="gold">{f.num(devices)}</b>
           </label>
           <input
             id="est-devices"
@@ -93,32 +103,28 @@ export default function PlanEstimator({ plans }: { plans: PlanOption[] }) {
 
       <div className="estimator-result">
         <div>
-          <span>مصرف تقریبی شما</span>
-          <b>{faNum(monthlyGb)} گیگابایت در ماه</b>
+          <span>{tr("estimator.monthly")}</span>
+          <b>{f.volume(monthlyGb)}</b>
         </div>
         {suggestion ? (
           <div className="estimator-plan">
-            <span>پلن پیشنهادی</span>
+            <span>{tr("estimator.suggested")}</span>
             <b>{suggestion.title}</b>
             <small>
-              {suggestion.volumeGb > 0 ? `${faNum(suggestion.volumeGb)} گیگ` : "نامحدود"} ·{" "}
-              {toman(suggestion.priceToman)}
+              {f.volume(suggestion.volumeGb)} · {f.money(suggestion.priceToman)}
             </small>
             <Link className="btn btn-sm btn-primary" href={`/checkout?plan=${suggestion.id}`}>
-              خرید همین پلن
+              {tr("estimator.seePlan")}
             </Link>
           </div>
         ) : (
           <div className="estimator-plan">
-            <span>پلن مناسبی پیدا نشد</span>
-            <small>با پشتیبانی تماس بگیرید تا پلن اختصاصی بسازیم.</small>
+            <span>{tr("estimator.none")}</span>
           </div>
         )}
       </div>
 
-      <p className="field-hint">
-        این عدد تخمینی است؛ کیفیت ویدیو و مدت استفاده می‌تواند آن را کم یا زیاد کند.
-      </p>
+      <p className="field-hint">{tr("estimator.subtitle")}</p>
     </div>
   );
 }

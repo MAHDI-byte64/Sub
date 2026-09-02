@@ -160,7 +160,7 @@ try {
   await user.waitForSelector("text=کانفیگ مستقیم", { timeout: 20000 });
   const detail = await user.textContent("body");
   check("کانفیگ VLESS نمایش داده شد", detail.includes("vless://"), detail.slice(0, 200));
-  check("QR کد رندر شد", (await user.locator("img[alt='QR لینک اشتراک']").count()) > 0);
+  check("QR کد رندر شد", (await user.locator(".qr-box img").count()) > 0);
 
   console.log("→ بازتولید کانفیگ از پنل کاربری");
   const subBefore = (await user.textContent(".copy-box code")) ?? "";
@@ -328,6 +328,49 @@ try {
     "بعد از خاموش‌کردن، سایت برای همه باز شد",
     (await guest.textContent("body")).includes("تعرفه"),
   );
+
+  console.log("→ نسخه انگلیسی سایت");
+  await guest.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+  check("سایت به‌صورت پیش‌فرض فارسی و راست‌چین است", (await guest.getAttribute("html", "dir")) === "rtl");
+
+  await guest.click(".lang-switch button:has-text('EN')");
+  await guest.waitForLoadState("domcontentloaded");
+  await guest.waitForTimeout(600);
+  check("بعد از تعویض زبان، جهت صفحه چپ‌چین شد", (await guest.getAttribute("html", "dir")) === "ltr");
+  check("زبان صفحه انگلیسی شد", (await guest.getAttribute("html", "lang")) === "en");
+
+  const homeEn = (await guest.textContent("body")) ?? "";
+  check("منوی انگلیسی نمایش داده شد", homeEn.includes("Pricing") && homeEn.includes("Setup guide"), homeEn.slice(0, 80));
+  check("متن فارسی هدر باقی نمانده", !homeEn.includes("تعرفه‌ها"));
+
+  await guest.goto(`${BASE}/plans`, { waitUntil: "domcontentloaded" });
+  const plansEn = (await guest.textContent("body")) ?? "";
+  check("صفحه تعرفه‌ها انگلیسی شد", plansEn.includes("Choose this plan") || plansEn.includes("Pricing"));
+  check("قیمت‌ها با ارقام لاتین و واحد Toman", /\d,\d{3}\s*Toman/.test(plansEn), plansEn.match(/[\d,]+ Toman/)?.[0]);
+
+  await guest.goto(`${BASE}/status`, { waitUntil: "domcontentloaded" });
+  check("صفحه وضعیت انگلیسی شد", (await guest.textContent("body")).includes("Server status"));
+
+  await guest.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
+  check("صفحه ورود انگلیسی شد", (await guest.textContent("body")).includes("Sign in"));
+
+  // کاربر واردشده هم باید پنل انگلیسی ببیند
+  await user.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+  await user.click(".lang-switch button:has-text('EN')");
+  await user.waitForTimeout(600);
+  await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
+  const dashEn = (await user.textContent("body")) ?? "";
+  check("پنل کاربری انگلیسی شد", dashEn.includes("My services") && dashEn.includes("Wallet"), dashEn.slice(0, 80));
+  check("تاریخ‌ها میلادی شدند", !/۱۴۰\d/.test(dashEn));
+
+  await user.goto(`${BASE}/dashboard/tickets`, { waitUntil: "domcontentloaded" });
+  check("بخش تیکت‌ها انگلیسی شد", (await user.textContent("body")).includes("Support"));
+
+  // برگشت به فارسی برای بقیه تست‌ها
+  await user.click(".lang-switch button:has-text('فا')");
+  await user.waitForTimeout(600);
+  await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
+  check("بازگشت به فارسی کار می‌کند", (await user.textContent("body")).includes("سرویس‌های من"));
 
   console.log("→ تیکت پشتیبانی");
   await user.goto(`${BASE}/dashboard/tickets`, { waitUntil: "domcontentloaded" });

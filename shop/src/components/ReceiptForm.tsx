@@ -2,9 +2,11 @@
 
 import { useActionState } from "react";
 import { uploadReceiptAction, type ShopState } from "@/app/actions/shop";
+import { t, type Locale } from "@/lib/i18n";
 import SubmitButton from "./SubmitButton";
 
-export default function ReceiptForm({ code }: { code: string }) {
+export default function ReceiptForm({ code, locale = "fa" }: { code: string; locale?: Locale }) {
+  const tr = (key: string) => t(locale, key);
   const [state, formAction] = useActionState<ShopState, FormData>(uploadReceiptAction, {});
 
   return (
@@ -14,16 +16,16 @@ export default function ReceiptForm({ code }: { code: string }) {
       {state.success ? <div className="alert alert-success">{state.success}</div> : null}
 
       <div className="field">
-        <label htmlFor="receipt">تصویر رسید پرداخت</label>
+        <label htmlFor="receipt">{tr("order.receiptLabel")}</label>
         <input id="receipt" name="receipt" type="file" accept="image/*,application/pdf" required />
-        <span className="field-hint">فرمت‌های مجاز: JPG، PNG، WEBP یا PDF — حداکثر ۶ مگابایت.</span>
+        <span className="field-hint">{tr("order.receiptHint")}</span>
       </div>
       <div className="field">
-        <label htmlFor="ref">کد پیگیری / ۴ رقم آخر کارت (اختیاری)</label>
-        <input id="ref" name="ref" type="text" className="ltr" placeholder="مثلاً 123456" />
+        <label htmlFor="ref">{tr("order.receiptRefLabel")}</label>
+        <input id="ref" name="ref" type="text" className="ltr" placeholder="123456" />
       </div>
-      <SubmitButton className="btn btn-primary btn-block" pendingText="در حال ارسال…">
-        ارسال رسید
+      <SubmitButton className="btn btn-primary btn-block" pendingText={tr("order.sending")}>
+        {tr("order.sendReceipt")}
       </SubmitButton>
     </form>
   );

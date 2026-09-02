@@ -2,7 +2,9 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { NOTIFICATION_ICONS } from "@/lib/notify";
-import { faDate, faNum, relativeTime } from "@/lib/format";
+import { fmt } from "@/lib/format";
+import { getLocale } from "@/lib/locale";
+import { translator } from "@/lib/i18n";
 import ActionForm from "@/components/ActionForm";
 import { markNotificationsReadAction } from "@/app/actions/shop";
 import { pushPublicKey } from "@/lib/push";
@@ -13,6 +15,9 @@ export const metadata = { title: "اعلان‌ها" };
 
 export default async function NotificationsPage() {
   const user = await requireUser("/dashboard/notifications");
+  const locale = await getLocale();
+  const tr = translator(locale);
+  const f = fmt(locale);
   const [items, unread, vapidKey] = await Promise.all([
     db.notification.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 60 }),
     db.notification.count({ where: { userId: user.id, readAt: null } }),
@@ -23,24 +28,24 @@ export default async function NotificationsPage() {
     <div>
       <div className="page-head">
         <div>
-          <h1>اعلان‌ها</h1>
-          <p>یادآوری انقضا، هشدار حجم، تأیید سفارش و پاسخ پشتیبانی اینجا جمع می‌شوند.</p>
+          <h1>{tr("dashPages.notifTitle")}</h1>
+          <p>{tr("dashPages.notifSubtitle")}</p>
         </div>
         {unread ? (
           <ActionForm
             action={markNotificationsReadAction}
-            submitLabel={`خوانده شد (${faNum(unread)})`}
+            submitLabel={tr("dashPages.markRead", { count: f.num(unread) })}
             buttonClass="btn btn-sm"
             inline
           />
         ) : (
-          <span className="badge badge-success">همه خوانده شده</span>
+          <span className="badge badge-success">{tr("dashPages.allRead")}</span>
         )}
       </div>
 
       {vapidKey ? (
         <div className="card">
-          <PushToggle publicKey={vapidKey} />
+          <PushToggle publicKey={vapidKey} locale={locale} />
         </div>
       ) : null}
 
@@ -56,11 +61,11 @@ export default async function NotificationsPage() {
                     <b>{item.title}</b>
                     {item.body ? <span className="tc-preview">{item.body}</span> : null}
                     <span className="tc-meta">
-                      <span>🕒 {relativeTime(item.createdAt)}</span>
-                      <span>{faDate(item.createdAt, true)}</span>
+                      <span>🕒 {f.relative(item.createdAt)}</span>
+                      <span>{f.date(item.createdAt, true)}</span>
                     </span>
                   </span>
-                  {!item.readAt ? <span className="badge badge-warn">جدید</span> : null}
+                  {!item.readAt ? <span className="badge badge-warn">{tr("common.new")}</span> : null}
                 </>
               );
               return item.href ? (
@@ -78,7 +83,7 @@ export default async function NotificationsPage() {
       ) : (
         <div className="card empty">
           <div className="empty-icon">🔔</div>
-          هنوز اعلانی ندارید.
+          {tr("dashPages.noNotif")}
         </div>
       )}
     </div>
