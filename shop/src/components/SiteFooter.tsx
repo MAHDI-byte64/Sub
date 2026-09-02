@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getSettings } from "@/lib/settings";
+import { asBool, getSettings } from "@/lib/settings";
 import { faNum } from "@/lib/format";
 
 const QUICK_LINKS = [
@@ -12,6 +12,19 @@ const QUICK_LINKS = [
 
 export default async function SiteFooter() {
   const s = await getSettings();
+
+  // در حالت تعمیر فقط یک فوتر ساده نمایش داده می‌شود
+  if (asBool(s.maintenance_mode)) {
+    return (
+      <footer className="footer">
+        <div className="container footer-bottom" style={{ borderTop: "none" }}>
+          <span>
+            © {faNum(new Date().getFullYear())} {s.site_name} — به‌زودی برمی‌گردیم.
+          </span>
+        </div>
+      </footer>
+    );
+  }
   const year = faNum(new Date().getFullYear());
   const telegram = s.support_telegram.replace("@", "");
 
@@ -80,6 +93,7 @@ export default async function SiteFooter() {
             <Link href="/terms">قوانین</Link>
             <Link href="/contact">تماس با ما</Link>
             <Link href="/faq">سوالات متداول</Link>
+            <Link href="/status">وضعیت سرورها</Link>
           </nav>
         </div>
       </div>

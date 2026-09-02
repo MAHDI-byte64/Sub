@@ -30,7 +30,7 @@ export default async function CheckoutPage({
   if (!plan) notFound();
 
   const allowedIds = plan.panels.map((p) => p.id);
-  const [panels, renewService, settings, wallet] = await Promise.all([
+  const [allPanels, renewService, settings, wallet] = await Promise.all([
     db.panel.findMany({
       where: { isActive: true, ...(allowedIds.length ? { id: { in: allowedIds } } : {}) },
       orderBy: { sortOrder: "asc" },
@@ -39,6 +39,10 @@ export default async function CheckoutPage({
     getSettings(),
     db.user.findUniqueOrThrow({ where: { id: user.id }, select: { balance: true } }),
   ]);
+
+  // سروری که پایش خرابش تشخیص داده به کاربر پیشنهاد نمی‌شود
+  const healthyPanels = allPanels.filter((p) => !p.autoDisabled);
+  const panels = healthyPanels.length ? healthyPanels : allPanels;
 
   return (
     <div className="container section" style={{ maxWidth: 900 }}>

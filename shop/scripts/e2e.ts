@@ -7,6 +7,7 @@
  */
 import { db } from "../src/lib/db";
 import { GB } from "../src/lib/format";
+import { pickPanel } from "../src/lib/provision";
 import {
   createTrialService,
   fulfillOrder,
@@ -20,6 +21,7 @@ import {
 import { saveSettings } from "../src/lib/settings";
 import { creditWallet, debitWallet } from "../src/lib/wallet";
 import { runMaintenance } from "../src/lib/scheduler";
+import { checkPanel, probePanel, pruneChecks, uptimeStats } from "../src/lib/monitor";
 import { XuiClient, type XuiRawClient } from "../src/lib/xui";
 import { serviceRefs } from "../src/lib/provision";
 
@@ -41,6 +43,7 @@ function check(label: string, condition: boolean, extra?: unknown) {
 }
 
 async function reset() {
+  await db.panelCheck.deleteMany();
   await db.ticketMessage.deleteMany();
   await db.ticket.deleteMany();
   await db.service.deleteMany();
@@ -628,6 +631,81 @@ async function walletScenario() {
   );
 }
 
+/** پایش سرورها: تشخیص خرابی، توقف خودکار فروش و بازگشت */
+async function monitorScenario() {
+  console.log("\n══════ پایش سرورها ══════");
+  await reset();
+  await saveSettings({ monitor_enabled: "1", monitor_fail_threshold: "3", trial_enabled: "0" });
+
+  const up = await db.panel.create({
+    data: {
+      name: "سرور سالم",
+      location: "آلمان",
+      url: MOCK_V2,
+      username: "admin",
+      password: "admin",
+      templateEmail: "template-vip",
+      subBase: "https://sub.test.local/sub",
+      sortOrder: 1,
+    },
+  });
+  // پورتی که هیچ سرویسی روی آن نیست ⇒ اتصال رد می‌شود
+  const down = await db.panel.create({
+    data: {
+      name: "سرور خراب",
+      location: "هلند",
+      url: "http://127.0.0.1:9",
+      username: "admin",
+      password: "admin",
+      templateEmail: "template-vip",
+      subBase: "https://sub.test.local/sub",
+      sortOrder: 2,
+    },
+  });
+
+  const healthy = await probePanel(up);
+  check("سرور سالم پاسخ داد", healthy.ok, healthy.message);
+  check("زمان پاسخ اندازه‌گیری شد", healthy.latencyMs >= 0 && healthy.latencyMs < 20_000, healthy.latencyMs);
+
+  const broken = await probePanel(down);
+  check("سرور خراب تشخیص داده شد", !broken.ok, broken.message);
+
+  let downPanel = down;
+  for (let i = 0; i < 2; i += 1) {
+    await checkPanel(downPanel);
+    downPanel = await db.panel.findUniqueOrThrow({ where: { id: down.id } });
+  }
+  check("قبل از رسیدن به حد مجاز، فروش متوقف نشد", !downPanel.autoDisabled, downPanel.failCount);
+
+  await checkPanel(downPanel);
+  downPanel = await db.panel.findUniqueOrThrow({ where: { id: down.id } });
+  check("بعد از ۳ خرابی پیاپی، فروش روی سرور خراب متوقف شد", downPanel.autoDisabled, downPanel.failCount);
+  check("خطای آخرین بررسی ذخیره شد", Boolean(downPanel.lastError), downPanel.lastError?.slice(0, 40));
+
+  await checkPanel(up);
+  const chosen = await pickPanel(down.id);
+  check("سرور خراب حتی وقتی مستقیم انتخاب شده باشد کنار گذاشته می‌شود", chosen.id === up.id, chosen.name);
+
+  const stats = await uptimeStats(24);
+  check("آپتایم سرور سالم ۱۰۰٪ است", stats.get(up.id)?.uptime === 100, stats.get(up.id));
+  check("آپتایم سرور خراب صفر است", stats.get(down.id)?.uptime === 0, stats.get(down.id));
+  check("تاریخچه بررسی‌ها ثبت شد", (await db.panelCheck.count()) >= 4);
+
+  // سرور برمی‌گردد
+  await db.panel.update({ where: { id: down.id }, data: { url: MOCK_V2 } });
+  const recovered = await checkPanel(await db.panel.findUniqueOrThrow({ where: { id: down.id } }));
+  const afterRecover = await db.panel.findUniqueOrThrow({ where: { id: down.id } });
+  check("سرور بعد از بازگشت دوباره سالم شد", recovered.ok && !afterRecover.autoDisabled);
+  check("شمارنده خرابی صفر شد", afterRecover.failCount === 0, afterRecover.failCount);
+
+  const maintenance = await runMaintenance();
+  check("کارهای پس‌زمینه هر دو سرور را بررسی کرد", maintenance.panelsChecked === 2, maintenance.panelsChecked);
+
+  await db.panelCheck.updateMany({ data: { createdAt: new Date(Date.now() - 10 * 86_400_000) } });
+  const pruned = await pruneChecks(7);
+  check("تاریخچه قدیمی پاک شد", pruned > 0 && (await db.panelCheck.count()) === 0, pruned);
+}
+
 async function main() {
   await scenario({
     label: "پنل نسخه ۲ — ورود با نام کاربری و رمز",
@@ -652,6 +730,7 @@ async function main() {
 
   await planPanelScenario();
   await walletScenario();
+  await monitorScenario();
 
   console.log("\n══════ بررسی توکن نامعتبر ══════");
   const badToken = new XuiClient({

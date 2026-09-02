@@ -191,6 +191,60 @@ try {
   const cooldownMsg = (await user.textContent(".sec-panel .alert-error")) ?? "";
   check("بازتولید پیاپی با پیام فاصله مجاز رد شد", cooldownMsg.includes("دقیقه دیگر"), cooldownMsg);
 
+  // یک بازدیدکنندهٔ بدون حساب برای صفحه وضعیت و حالت تعمیر
+  const guestCtx = await browser.newContext({ locale: "fa-IR" });
+  const guest = await guestCtx.newPage();
+
+  console.log("→ پایش سرورها");
+  await admin.goto(`${BASE}/admin/monitor`, { waitUntil: "domcontentloaded" });
+  check("صفحه پایش باز شد", await admin.isVisible("text=پایش سرورها"));
+  await admin.click("button:has-text('بررسی همه همین حالا')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 40000 });
+  const monMsg = (await admin.textContent(".alert-success, .alert-error")) ?? "";
+  check("بررسی سلامت سرور انجام شد", monMsg.includes("بررسی شد"), monMsg);
+  await admin.reload({ waitUntil: "domcontentloaded" });
+  const monBody = (await admin.textContent("body")) ?? "";
+  check("وضعیت «در دسترس» برای سرور تست ثبت شد", monBody.includes("در دسترس"), monMsg);
+  check("آپتایم محاسبه شد", /آپتایم ۲۴ ساعت/.test(monBody));
+
+  await guest.goto(`${BASE}/status`, { waitUntil: "domcontentloaded" });
+  const statusBody = (await guest.textContent("body")) ?? "";
+  check("صفحه وضعیت عمومی کار می‌کند", statusBody.includes("وضعیت سرورها") && statusBody.includes("آلمان - تست UI"));
+
+  console.log("→ حالت تعمیر و نگهداری");
+  await admin.goto(`${BASE}/admin/settings`, { waitUntil: "domcontentloaded" });
+  await admin.check("#maintenance_mode");
+  await admin.click("button:has-text('ذخیره همه تنظیمات')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 20000 });
+
+  await guest.waitForTimeout(3000); // کش کوتاه وضعیت در میان‌افزار
+  await guest.goto(`${BASE}/plans`, { waitUntil: "domcontentloaded" });
+  check(
+    "بازدیدکننده در حالت تعمیر صفحه به‌روزرسانی را می‌بیند",
+    (await guest.textContent("body")).includes("در حال به‌روزرسانی"),
+  );
+  await guest.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
+  check(
+    "صفحه ورود در حالت تعمیر باز می‌ماند",
+    (await guest.locator("#email").count()) > 0 && (await guest.locator("#password").count()) > 0,
+  );
+  await admin.goto(`${BASE}/admin`, { waitUntil: "domcontentloaded" });
+  check(
+    "مدیر در حالت تعمیر به پنل دسترسی دارد",
+    (await admin.textContent("body")).includes("داشبورد مدیریت"),
+  );
+
+  await admin.goto(`${BASE}/admin/settings`, { waitUntil: "domcontentloaded" });
+  await admin.uncheck("#maintenance_mode");
+  await admin.click("button:has-text('ذخیره همه تنظیمات')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 20000 });
+  await guest.waitForTimeout(3000);
+  await guest.goto(`${BASE}/plans`, { waitUntil: "domcontentloaded" });
+  check(
+    "بعد از خاموش‌کردن، سایت برای همه باز شد",
+    (await guest.textContent("body")).includes("تعرفه"),
+  );
+
   console.log("→ تیکت پشتیبانی");
   await user.goto(`${BASE}/dashboard/tickets`, { waitUntil: "domcontentloaded" });
   await user.fill("#subject", "تست پشتیبانی");

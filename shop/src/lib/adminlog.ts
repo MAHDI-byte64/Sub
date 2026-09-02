@@ -17,6 +17,8 @@ export const ACTION_LABELS: Record<string, { label: string; icon: string }> = {
   panel_saved: { label: "ذخیره سرور", icon: "🖥️" },
   panel_deleted: { label: "حذف سرور", icon: "🗑️" },
   panel_tested: { label: "تست اتصال سرور", icon: "🔌" },
+  panels_checked: { label: "بررسی سلامت سرورها", icon: "📡" },
+  panel_resumed: { label: "بازگرداندن سرور به فروش", icon: "🟢" },
   plan_saved: { label: "ذخیره پلن", icon: "🏷️" },
   plan_deleted: { label: "حذف پلن", icon: "🗑️" },
   discount_saved: { label: "ذخیره کد تخفیف", icon: "🎟️" },

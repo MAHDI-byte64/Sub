@@ -19,6 +19,7 @@ import {
   syncService,
 } from "@/lib/provision";
 import { logAdmin } from "@/lib/adminlog";
+import { checkPanel, runPanelChecks } from "@/lib/monitor";
 import { creditWallet, debitWallet } from "@/lib/wallet";
 import { notifyUser } from "@/lib/notify";
 import { payReferralBonus } from "@/lib/referral";
@@ -606,6 +607,57 @@ export async function rotateServiceAdminAction(_prev: AdminState, formData: Form
   } catch (err) {
     return { error: `بازتولید کانفیگ ناموفق بود: ${(err as Error).message}` };
   }
+}
+
+/* ------------------------------ پایش سرورها ------------------------------ */
+
+/** بررسی سلامت همهٔ سرورها همین حالا */
+export async function checkAllPanelsAction(_prev: AdminState, _formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const { checked, down } = await runPanelChecks();
+  await logAdmin("panels_checked", `${checked} سرور`, down ? `${down} خراب` : "همه سالم");
+  revalidatePath("/admin/monitor");
+  revalidatePath("/admin/panels");
+  return {
+    success: down
+      ? `${faNum(checked)} سرور بررسی شد؛ ${faNum(down)} سرور پاسخ نداد.`
+      : `${faNum(checked)} سرور بررسی شد و همه سالم بودند.`,
+  };
+}
+
+/** بررسی سلامت یک سرور */
+export async function checkPanelAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const panel = await db.panel.findUnique({ where: { id: str(formData, "id") } });
+  if (!panel) return { error: "سرور پیدا نشد." };
+
+  const health = await checkPanel(panel);
+  revalidatePath("/admin/monitor");
+  return health.ok
+    ? { success: `${panel.name}: سالم است (${faNum(health.latencyMs)} میلی‌ثانیه، ${health.message}).` }
+    : { error: `${panel.name}: پاسخ نداد — ${health.message}` };
+}
+
+/** بازگرداندن دستی سرور به چرخهٔ فروش (بدون انتظار برای بررسی بعدی) */
+export async function resumePanelSalesAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const panel = await db.panel.findUnique({ where: { id: str(formData, "id") } });
+  if (!panel) return { error: "سرور پیدا نشد." };
+
+  await db.panel.update({
+    where: { id: panel.id },
+    data: { autoDisabled: false, failCount: 0 },
+  });
+  await logAdmin("panel_resumed", panel.name);
+  revalidatePath("/admin/monitor");
+  revalidatePath("/admin/panels");
+  return { success: `فروش روی «${panel.name}» دوباره فعال شد.` };
 }
 
 /* ----------------------------- اقدام‌های گروهی ----------------------------- */

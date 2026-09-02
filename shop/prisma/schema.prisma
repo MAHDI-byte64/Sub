@@ -109,12 +109,35 @@ model Panel {
   note          String?
   lastError     String?
   lastCheckAt   DateTime?
+  /// وضعیت آخرین بررسی سلامت
+  healthOk      Boolean   @default(true)
+  /// زمان پاسخ آخرین بررسی (میلی‌ثانیه)
+  latencyMs     Int       @default(0)
+  /// چند بررسی پیاپی ناموفق بوده است
+  failCount     Int       @default(0)
+  /// بعد از خرابی پیاپی، فروش روی این سرور خودکار متوقف می‌شود
+  autoDisabled  Boolean   @default(false)
   createdAt     DateTime  @default(now())
 
   services Service[]
   orders   Order[]
+  checks   PanelCheck[]
   /// پلن‌هایی که فقط روی این سرور فروخته می‌شوند (خالی = همه پلن‌ها)
   plans    Plan[]    @relation("PlanPanels")
+}
+
+/// تاریخچهٔ بررسی سلامت سرورها (برای درصد آپتایم و نمودار پینگ)
+model PanelCheck {
+  id        String   @id @default(cuid())
+  panelId   String
+  ok        Boolean
+  latencyMs Int      @default(0)
+  message   String?
+  createdAt DateTime @default(now())
+
+  panel Panel @relation(fields: [panelId], references: [id], onDelete: Cascade)
+
+  @@index([panelId, createdAt])
 }
 
 /// پلن‌های فروش

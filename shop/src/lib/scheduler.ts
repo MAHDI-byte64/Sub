@@ -5,6 +5,7 @@ import { renewServiceOnPanel, syncService } from "./provision";
 import { alreadyNotified, notifyUser } from "./notify";
 import { debitWallet } from "./wallet";
 import { notifyAdmin } from "./telegram";
+import { pruneChecks, runPanelChecks } from "./monitor";
 import { toman, faNum } from "./format";
 
 const TICK_MS = 15 * 60_000;
@@ -20,13 +21,35 @@ export async function runMaintenance(): Promise<{
   quotaWarned: number;
   renewed: number;
   expired: number;
+  panelsChecked: number;
+  panelsDown: number;
 }> {
   const settings = await getSettings();
   const reminderDays = Math.max(0, asNum(settings.expiry_reminder_days, 3));
   const quotaPercent = Math.min(99, Math.max(50, asNum(settings.quota_warn_percent, 85)));
   const autoRenewOn = asBool(settings.auto_renew_enabled);
 
-  const result = { synced: 0, reminded: 0, quotaWarned: 0, renewed: 0, expired: 0 };
+  const result = {
+    synced: 0,
+    reminded: 0,
+    quotaWarned: 0,
+    renewed: 0,
+    expired: 0,
+    panelsChecked: 0,
+    panelsDown: 0,
+  };
+
+  // ۰) بررسی سلامت سرورها (قبل از بقیه؛ سرور خراب از چرخهٔ فروش کنار می‌رود)
+  if (asBool(settings.monitor_enabled)) {
+    try {
+      const health = await runPanelChecks();
+      result.panelsChecked = health.checked;
+      result.panelsDown = health.down;
+      await pruneChecks(Math.max(1, asNum(settings.monitor_keep_days, 7)));
+    } catch {
+      /* بررسی سلامت نباید بقیهٔ کارها را متوقف کند */
+    }
+  }
 
   // ۱) همگام‌سازی سرویس‌هایی که مدتی به‌روز نشده‌اند
   const stale = await db.service.findMany({

@@ -28,13 +28,19 @@ export async function pickPanel(
   const allowed = allowedPanelIds?.length ? allowedPanelIds : null;
 
   if (preferredPanelId && (!allowed || allowed.includes(preferredPanelId))) {
-    const panel = await db.panel.findFirst({ where: { id: preferredPanelId, isActive: true } });
+    const panel = await db.panel.findFirst({
+      where: { id: preferredPanelId, isActive: true, autoDisabled: false },
+    });
     if (panel) return panel;
   }
-  const panels = await db.panel.findMany({
+  const all = await db.panel.findMany({
     where: { isActive: true, ...(allowed ? { id: { in: allowed } } : {}) },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
+  // سرورهایی که پایش، خرابشان تشخیص داده کنار گذاشته می‌شوند؛
+  // مگر اینکه هیچ سرور سالمی نمانده باشد (آن وقت شانس را امتحان می‌کنیم).
+  const healthy = all.filter((p) => !p.autoDisabled);
+  const panels = healthy.length ? healthy : all;
   if (!panels.length) {
     throw new XuiError(
       allowed

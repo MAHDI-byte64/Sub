@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
-import { getSettings } from "@/lib/settings";
+import { asBool, getSettings } from "@/lib/settings";
 import { unreadCount } from "@/lib/notify";
 import LogoutButton from "./LogoutButton";
 import { faNum } from "@/lib/format";
@@ -8,6 +8,22 @@ import { faNum } from "@/lib/format";
 export default async function SiteHeader() {
   const [user, settings] = await Promise.all([getCurrentUser(), getSettings()]);
   const unread = user ? await unreadCount(user.id) : 0;
+
+  // در حالت تعمیر، بازدیدکننده فقط لوگو را می‌بیند؛ لینک‌ها به جایی نمی‌رسند
+  if (asBool(settings.maintenance_mode) && user?.role !== "admin") {
+    return (
+      <header className="nav">
+        <div className="container nav-inner">
+          <Link href="/" className="brand">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/fandogh.svg" alt="" className="brand-logo" width={40} height={40} />
+            <span>{settings.site_name}</span>
+          </Link>
+          <span className="badge badge-warn">در حال به‌روزرسانی</span>
+        </div>
+      </header>
+    );
+  }
 
   return (
     <>

@@ -192,14 +192,14 @@ export default async function AdminHome() {
       <div className="card">
         <div className="card-title">
           <h3>🖥️ سلامت سرورها</h3>
-          <Link className="btn btn-sm" href="/admin/panels">
-            مدیریت سرورها
+          <Link className="btn btn-sm" href="/admin/monitor">
+            پایش زنده
           </Link>
         </div>
         {panels.length ? (
           <div className="health-grid">
             {panels.map((panel) => {
-              const state = !panel.lastCheckAt ? "is-unknown" : panel.lastError ? "is-down" : "";
+              const state = !panel.lastCheckAt ? "is-unknown" : panel.healthOk ? "" : "is-down";
               return (
                 <div className={`health-tile ${state}`} key={panel.id}>
                   <span className="health-dot" />
@@ -210,11 +210,12 @@ export default async function AdminHome() {
                     <small>
                       {!panel.lastCheckAt
                         ? "هنوز تست نشده"
-                        : panel.lastError
-                          ? panel.lastError.slice(0, 60)
-                          : `سالم · آخرین بررسی ${relativeTime(panel.lastCheckAt)}`}
+                        : !panel.healthOk
+                          ? (panel.lastError ?? "پاسخ نداد").slice(0, 60)
+                          : `${faNum(panel.latencyMs)} ms · آخرین بررسی ${relativeTime(panel.lastCheckAt)}`}
                     </small>
                   </span>
+                  {panel.autoDisabled ? <span className="badge badge-warn">فروش متوقف</span> : null}
                   {!panel.isActive ? <span className="badge badge-warn">غیرفعال</span> : null}
                 </div>
               );

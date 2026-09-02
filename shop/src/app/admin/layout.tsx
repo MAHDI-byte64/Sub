@@ -6,6 +6,7 @@ const ITEMS: NavItem[] = [
   { href: "/admin/orders", label: "سفارش‌ها", icon: "🧾" },
   { href: "/admin/services", label: "سرویس‌ها", icon: "🌐" },
   { href: "/admin/panels", label: "سرورها (3x-ui)", icon: "🖥️" },
+  { href: "/admin/monitor", label: "پایش سرورها", icon: "📡" },
   { href: "/admin/plans", label: "پلن‌ها", icon: "🏷️" },
   { href: "/admin/discounts", label: "کد تخفیف", icon: "🎟️" },
   { href: "/admin/users", label: "کاربران", icon: "👥" },

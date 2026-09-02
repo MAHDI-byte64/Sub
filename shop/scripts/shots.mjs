@@ -114,6 +114,13 @@ try {
   await blockExternal(guestCtx);
   const guest = await guestCtx.newPage();
 
+  // چند بررسی سلامت تا صفحه پایش داده داشته باشد
+  for (let i = 0; i < 3; i += 1) {
+    await admin.goto(`${BASE}/admin/monitor`, { waitUntil: "domcontentloaded" });
+    await admin.click("button:has-text('بررسی همه همین حالا')");
+    await admin.waitForSelector(".alert-success, .alert-error", { timeout: 40000 });
+  }
+
   const publicPages = [
     ["home", "/"],
     ["plans", "/plans"],
@@ -121,6 +128,8 @@ try {
     ["faq", "/faq"],
     ["terms", "/terms"],
     ["contact", "/contact"],
+    ["status", "/status"],
+    ["maintenance", "/maintenance"],
     ["login", "/login"],
     ["register", "/register"],
   ];
@@ -141,6 +150,7 @@ try {
     ["admin-panels", "/admin/panels"],
     ["admin-plans", "/admin/plans"],
     ["admin-services", "/admin/services"],
+    ["admin-monitor", "/admin/monitor"],
     ["admin-settings", "/admin/settings"],
     ["admin-tickets", "/admin/tickets"],
     ["admin-users", "/admin/users"],
