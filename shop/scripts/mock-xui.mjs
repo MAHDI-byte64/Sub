@@ -44,9 +44,11 @@ const wsStream = {
 /** id → { meta, stream, clients: Map<email, {spec, up, down}> } */
 const inbounds = new Map();
 
-function addInbound(id, meta, stream, templateSpec) {
+function addInbound(id, meta, stream, ...templateSpecs) {
   const clients = new Map();
-  if (templateSpec) clients.set(templateSpec.email, { spec: templateSpec, up: 0, down: 0 });
+  for (const spec of templateSpecs.filter(Boolean)) {
+    clients.set(spec.email, { spec, up: 0, down: 0 });
+  }
   inbounds.set(id, { meta: { id, ...meta }, stream, clients });
 }
 
@@ -87,6 +89,22 @@ addInbound(
     subId: "alttemplatesub",
     reset: 0,
     comment: "alt-template",
+  },
+  // کلاینت الگو روی اینباند دوم هم حضور دارد (همان subId) تا حالت چند-اینباندی تست شود.
+  // در نسخه ۳ همان کلاینت به اینباند دوم وصل است؛ در نسخه ۲ چون نام باید یکتا باشد،
+  // مدیر معمولاً کلاینت دومی با نام متفاوت و همان subId می‌سازد.
+  {
+    id: "11111111-2222-3333-4444-555555555555",
+    email: GEN === "v3" ? TEMPLATE_EMAIL : `${TEMPLATE_EMAIL}-2`,
+    flow: "",
+    limitIp: 3,
+    totalGB: 0,
+    expiryTime: 0,
+    enable: true,
+    tgId: "999888777",
+    subId: "templatesub",
+    reset: 0,
+    comment: "vip-template",
   },
 );
 
@@ -136,10 +154,15 @@ function findClientById(clientId) {
 
 /** لینک اتصالی که خود پنل تولید می‌کند (نسخه ۳) */
 function clientLinks(email) {
-  const hit = findClient(email);
-  if (!hit) return [];
-  const port = hit.entry.meta.port;
-  return [`vless://${hit.found.spec.id}@panel.example.com:${port}?type=tcp&security=reality#${email}`];
+  const links = [];
+  for (const [, entry] of inbounds) {
+    const found = entry.clients.get(email);
+    if (!found) continue;
+    links.push(
+      `vless://${found.spec.id}@panel.example.com:${entry.meta.port}?type=tcp&security=reality#${email}`,
+    );
+  }
+  return links;
 }
 
 function json(res, payload, status = 200, headers = {}) {
@@ -252,10 +275,12 @@ const server = http.createServer(async (req, res) => {
       if (!client || !Array.isArray(inboundIds) || !inboundIds.length) {
         return json(res, { success: false, msg: "client and inboundIds are required" });
       }
-      if (findClient(client.email)) return json(res, { success: false, msg: "Duplicate email" });
       for (const id of inboundIds) {
         const entry = inbounds.get(Number(id));
         if (!entry) return json(res, { success: false, msg: `Inbound ${id} not found` });
+        if (entry.clients.has(client.email)) {
+          return json(res, { success: false, msg: "Duplicate email" });
+        }
         entry.clients.set(client.email, { spec: client, up: 0, down: 0 });
       }
       return json(res, { success: true, msg: "Client added" });
@@ -264,17 +289,21 @@ const server = http.createServer(async (req, res) => {
     const v3update = path.match(/^\/panel\/api\/clients\/update\/(.+)$/);
     if (v3update && req.method === "POST") {
       const email = decodeURIComponent(v3update[1]);
-      const hit = findClient(email);
-      if (!hit) return json(res, { success: false, msg: "Client not found" });
-      hit.entry.clients.set(email, { spec: payload, up: hit.found.up, down: hit.found.down });
+      let touched = false;
+      for (const [, entry] of inbounds) {
+        const found = entry.clients.get(email);
+        if (!found) continue;
+        entry.clients.set(email, { spec: payload, up: found.up, down: found.down });
+        touched = true;
+      }
+      if (!touched) return json(res, { success: false, msg: "Client not found" });
       return json(res, { success: true, msg: "Client updated" });
     }
 
     const v3del = path.match(/^\/panel\/api\/clients\/del\/(.+)$/);
     if (v3del && req.method === "POST") {
       const email = decodeURIComponent(v3del[1]);
-      const hit = findClient(email);
-      if (hit) hit.entry.clients.delete(email);
+      for (const [, entry] of inbounds) entry.clients.delete(email);
       return json(res, { success: true, msg: "Client deleted" });
     }
 
@@ -340,7 +369,18 @@ const server = http.createServer(async (req, res) => {
       const settings = JSON.parse(payload.settings || "{}");
       const spec = (settings.clients || [])[0];
       if (!spec) return json(res, { success: false, msg: "No client" });
-      let existing = findClientById(update[1]);
+      // پنل واقعی کلاینت را داخل همان اینباندی که در بدنه آمده پیدا می‌کند
+      const scoped = inbounds.get(Number(payload.id));
+      let existing = null;
+      if (scoped) {
+        for (const [email, record] of scoped.clients) {
+          if (record.spec.id === update[1] || email === spec.email) {
+            existing = { inboundId: Number(payload.id), entry: scoped, email, record };
+            break;
+          }
+        }
+      }
+      if (!existing) existing = findClientById(update[1]);
       if (!existing) {
         const hit = findClient(spec.email);
         if (hit) existing = { inboundId: hit.inboundId, entry: hit.entry, email: spec.email, record: hit.found };

@@ -31,6 +31,8 @@ model User {
 model Session {
   id        String   @id
   userId    String
+  /// مرورگر/دستگاهی که با آن وارد شده (برای فهرست دستگاه‌های فعال)
+  userAgent String?
   expiresAt DateTime
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -54,6 +56,8 @@ model Panel {
   templateEmail String?
   /// الگوی نام‌گذاری کلاینت‌های جدید: {template} {code} {user} {rand}
   namePattern   String    @default("{template}-{code}")
+  /// سرویس روی همهٔ اینباندهایی ساخته شود که کلاینت الگو در آن‌هاست
+  multiInbound  Boolean   @default(true)
   subBase       String?
   flow          String    @default("")
   hostOverride  String?
@@ -144,6 +148,8 @@ model Service {
   uuid        String
   subId       String
   inboundId   Int
+  /// همهٔ کلاینت‌های این سرویس روی پنل: [{"inboundId":1,"email":"..."}]
+  clientRefs  String?
   totalBytes  Float     @default(0)
   usedBytes   Float     @default(0)
   deviceLimit Int       @default(0)
@@ -153,10 +159,11 @@ model Service {
   lastSyncAt  DateTime?
   createdAt   DateTime  @default(now())
 
-  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan  Plan?  @relation(fields: [planId], references: [id])
-  panel Panel  @relation(fields: [panelId], references: [id])
-  order Order? @relation(fields: [orderId], references: [id])
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan    Plan?    @relation(fields: [planId], references: [id])
+  panel   Panel    @relation(fields: [panelId], references: [id])
+  order   Order?   @relation(fields: [orderId], references: [id])
+  tickets Ticket[]
 
   @@index([userId])
 }
@@ -165,12 +172,15 @@ model Service {
 model Ticket {
   id        String   @id @default(cuid())
   userId    String
+  /// سرویسی که تیکت درباره آن است (اختیاری)
+  serviceId String?
   subject   String
   status    String   @default("open")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service  Service?        @relation(fields: [serviceId], references: [id], onDelete: SetNull)
   messages TicketMessage[]
 
   @@index([userId])

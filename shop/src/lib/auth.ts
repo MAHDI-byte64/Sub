@@ -57,7 +57,13 @@ async function isSecureRequest(): Promise<boolean> {
 export async function createSession(userId: string): Promise<void> {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
-  await db.session.create({ data: { id: token, userId, expiresAt } });
+  let userAgent: string | null = null;
+  try {
+    userAgent = (await headers()).get("user-agent")?.slice(0, 300) ?? null;
+  } catch {
+    /* خارج از چرخه درخواست */
+  }
+  await db.session.create({ data: { id: token, userId, userAgent, expiresAt } });
   const jar = await cookies();
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,
@@ -73,6 +79,45 @@ export async function destroySession(): Promise<void> {
   const token = jar.get(SESSION_COOKIE)?.value;
   if (token) await db.session.deleteMany({ where: { id: token } });
   jar.delete(SESSION_COOKIE);
+}
+
+/** شناسهٔ نشست فعلی (برای علامت‌زدن دستگاه جاری) */
+export async function currentSessionId(): Promise<string | null> {
+  const jar = await cookies();
+  return jar.get(SESSION_COOKIE)?.value ?? null;
+}
+
+/** نام خواندنی دستگاه از روی User-Agent */
+export function describeDevice(userAgent: string | null | undefined): { name: string; icon: string } {
+  const ua = (userAgent || "").toLowerCase();
+  if (!ua) return { name: "دستگاه ناشناس", icon: "❓" };
+
+  const os = ua.includes("android")
+    ? "اندروید"
+    : /iphone|ipad|ipod/.test(ua)
+      ? "آی‌او‌اس"
+      : ua.includes("windows")
+        ? "ویندوز"
+        : ua.includes("mac os")
+          ? "مک"
+          : ua.includes("linux")
+            ? "لینوکس"
+            : "سیستم نامشخص";
+
+  const browser = ua.includes("edg/")
+    ? "Edge"
+    : ua.includes("samsungbrowser")
+      ? "Samsung Internet"
+      : ua.includes("firefox")
+        ? "Firefox"
+        : ua.includes("chrome")
+          ? "Chrome"
+          : ua.includes("safari")
+            ? "Safari"
+            : "مرورگر نامشخص";
+
+  const icon = /android|iphone|ipad|mobile/.test(ua) ? "📱" : "💻";
+  return { name: `${browser} روی ${os}`, icon };
 }
 
 export type SessionUser = {

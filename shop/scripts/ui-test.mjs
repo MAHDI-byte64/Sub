@@ -91,9 +91,10 @@ try {
   check("تست اتصال به پنل موفق بود", testMsg.includes("اتصال موفق بود"), testMsg);
   check("اتصال از طریق توکن API انجام شد", testMsg.includes("با توکن API"), testMsg);
   check("پنل نسخه ۳ تشخیص داده شد", testMsg.includes("API نسخه ۳"), testMsg);
+  check("کلاینت الگو روی پنل پیدا شد", testMsg.includes("کلاینت الگو «template-vip» پیدا شد"), testMsg);
   check(
-    "کلاینت الگو روی پنل پیدا شد",
-    testMsg.includes("کلاینت الگو «template-vip» در اینباند #1 پیدا شد"),
+    "سرویس روی هر دو اینباند کلاینت الگو ساخته می‌شود",
+    testMsg.includes("روی ۲ اینباند"),
     testMsg,
   );
 
@@ -149,7 +150,7 @@ try {
   check("سرویس در پنل کاربری نمایش داده شد", await user.isVisible("text=لینک اشتراک"));
   check("لینک اشتراک ساخته شد", (await user.textContent("body")).includes("https://sub.test.local/sub/"));
 
-  await user.click("a:has-text('مشاهده کانفیگ و QR')");
+  await user.click("a:has-text('کانفیگ و QR')");
   await user.waitForSelector("text=کانفیگ مستقیم", { timeout: 20000 });
   const detail = await user.textContent("body");
   check("کانفیگ VLESS نمایش داده شد", detail.includes("vless://"), detail.slice(0, 200));

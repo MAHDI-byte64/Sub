@@ -7,7 +7,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { saveSettings } from "@/lib/settings";
 import { notifyAdmin } from "@/lib/telegram";
 import { fulfillOrder, panelClient, removeService, setServiceEnabled, syncService } from "@/lib/provision";
-import { toman } from "@/lib/format";
+import { faNum, toman } from "@/lib/format";
 
 export type AdminState = { error?: string; success?: string };
 
@@ -159,6 +159,7 @@ export async function savePanelAction(_prev: AdminState, formData: FormData): Pr
     inboundId: num(formData, "inboundId", 1),
     templateEmail: str(formData, "templateEmail") || null,
     namePattern: str(formData, "namePattern") || "{template}-{code}",
+    multiInbound: checked(formData, "multiInbound"),
     subBase: str(formData, "subBase") || null,
     flow: str(formData, "flow"),
     hostOverride: str(formData, "hostOverride") || null,
@@ -224,44 +225,41 @@ export async function testPanelAction(_prev: AdminState, formData: FormData): Pr
     .join(" — ");
 
   const template = panel.templateEmail?.trim();
-  let inboundId = panel.inboundId;
-  let moved = false;
+  let templateNote = "کلاینت الگو تعیین نشده است؛ کانفیگ‌ها با تنظیمات پیش‌فرض ساخته می‌شوند.";
 
   if (template) {
-    const holder = result.inbounds.find((i) =>
-      parseInboundClients(i).some((c) => String(c.email ?? "").toLowerCase() === template.toLowerCase()),
-    );
-    if (!holder) {
+    const { loadTemplate, panelClient: makeClient } = await import("@/lib/provision");
+    try {
+      const found = await loadTemplate(makeClient(panel), panel);
+      const ids = found.inboundIds;
+      const labels = ids
+        .map((id) => {
+          const inbound = result.inbounds.find((i) => i.id === id);
+          return `#${id}${inbound?.remark ? ` ${inbound.remark}` : ""}`;
+        })
+        .join("، ");
+
+      if (!ids.includes(panel.inboundId)) {
+        await db.panel.update({ where: { id: panel.id }, data: { inboundId: ids[0] } });
+        revalidatePath("/admin/panels");
+      }
+
+      templateNote =
+        `کلاینت الگو «${template}» پیدا شد ✅ | ` +
+        (panel.multiInbound
+          ? `سرویس‌های جدید روی ${faNum(ids.length)} اینباند ساخته می‌شوند: ${labels}`
+          : `فقط روی اینباند ${labels} ساخته می‌شوند (حالت چند-اینباندی خاموش است)`);
+    } catch (err) {
       const all = result.inbounds
         .flatMap((i) => parseInboundClients(i).map((c) => String(c.email ?? "")))
         .filter(Boolean);
       return {
-        error:
-          `اتصال برقرار شد اما کلاینت الگو با نام «${template}» در هیچ اینباندی پیدا نشد. ` +
-          `کلاینت‌های موجود: ${all.join("، ") || "—"}`,
+        error: `${(err as Error).message} کلاینت‌های موجود: ${all.join("، ") || "—"}`,
       };
-    }
-    if (holder.id !== panel.inboundId) {
-      inboundId = holder.id;
-      moved = true;
-      await db.panel.update({ where: { id: panel.id }, data: { inboundId } });
-      revalidatePath("/admin/panels");
     }
   } else if (!result.inbounds.some((i) => i.id === panel.inboundId)) {
     return { error: `اتصال برقرار شد اما اینباند #${panel.inboundId} در این پنل نیست. اینباندها: ${list}` };
   }
-
-  const selected = result.inbounds.find((i) => i.id === inboundId);
-  const names = selected
-    ? parseInboundClients(selected)
-        .map((c) => String(c.email ?? ""))
-        .filter(Boolean)
-    : [];
-
-  const templateNote = template
-    ? `کلاینت الگو «${template}» در اینباند #${inboundId} پیدا شد ✅` +
-      (moved ? " (شناسه اینباند خودکار اصلاح شد)" : "")
-    : "کلاینت الگو تعیین نشده است؛ کانفیگ‌ها با تنظیمات پیش‌فرض ساخته می‌شوند.";
 
   const tokenNote =
     result.generation === "v3" && result.authMode !== "token"
@@ -269,10 +267,7 @@ export async function testPanelAction(_prev: AdminState, formData: FormData): Pr
       : "";
 
   return {
-    success:
-      `${result.message} | اینباندها: ${list} | ${templateNote}` +
-      (names.length ? ` | کلاینت‌های اینباند: ${names.join("، ")}` : "") +
-      tokenNote,
+    success: `${result.message} | اینباندها: ${list} | ${templateNote}${tokenNote}`,
   };
 }
 

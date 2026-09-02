@@ -4,6 +4,7 @@ import { asBool, getSettings } from "@/lib/settings";
 import { faNum } from "@/lib/format";
 import { FAQ } from "@/lib/content";
 import PlanCard from "@/components/PlanCard";
+import PlanEstimator from "@/components/PlanEstimator";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "تعرفه‌ها" };
@@ -66,6 +67,20 @@ export default async function PlansPage({
           فعلاً پلنی برای فروش تعریف نشده است.
         </div>
       )}
+
+      {plans.length ? (
+        <div style={{ marginTop: 26 }}>
+          <PlanEstimator
+            plans={plans.map((p) => ({
+              id: p.id,
+              title: p.title,
+              volumeGb: p.volumeGb,
+              days: p.days,
+              priceToman: p.priceToman,
+            }))}
+          />
+        </div>
+      ) : null}
 
       {/* ویژگی‌های مشترک همه پلن‌ها */}
       <div className="feature-strip" style={{ marginTop: 28 }}>

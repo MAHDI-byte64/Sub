@@ -6,6 +6,8 @@ import { asNum, getSettings } from "@/lib/settings";
 import { faDate, toman } from "@/lib/format";
 import { ORDER_STATUS } from "@/lib/status";
 import CopyButton from "@/components/CopyButton";
+import Countdown from "@/components/Countdown";
+import OrderTimeline, { type TimelineStep } from "@/components/OrderTimeline";
 import ReceiptForm from "@/components/ReceiptForm";
 import CancelOrderButton from "@/components/CancelOrderButton";
 
@@ -35,6 +37,47 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ co
 
   const paid = order.status === "pending_review" || order.status === "approved";
   const delivered = order.status === "approved";
+  const rejected = order.status === "rejected";
+  const canceled = order.status === "canceled";
+
+  const timeline: TimelineStep[] = [
+    {
+      title: "ثبت سفارش",
+      hint: `${order.plan.title}${order.renewServiceId ? " (تمدید)" : ""} — ${toman(order.payable)}`,
+      at: order.createdAt,
+      state: "done",
+      icon: "🛒",
+    },
+    {
+      title: paid ? "رسید پرداخت ارسال شد" : "پرداخت و ارسال رسید",
+      hint: paid
+        ? order.receiptRef
+          ? `کد پیگیری: ${order.receiptRef}`
+          : "رسید در انتظار بررسی است"
+        : "مبلغ را کارت‌به‌کارت کنید و تصویر رسید را بفرستید",
+      at: order.paidAt,
+      state: canceled ? "failed" : paid ? "done" : "active",
+      icon: "💳",
+    },
+    {
+      title: rejected ? "رسید تأیید نشد" : "بررسی پشتیبانی",
+      hint: rejected
+        ? (order.adminNote ?? "می‌توانید رسید درست را دوباره بفرستید")
+        : delivered
+          ? "رسید تأیید شد"
+          : "معمولاً کمتر از ۳۰ دقیقه",
+      at: order.reviewedAt,
+      state: rejected ? "failed" : delivered ? "done" : paid ? "active" : "pending",
+      icon: "🔍",
+    },
+    {
+      title: "تحویل سرویس",
+      hint: delivered ? "کانفیگ در پنل کاربری فعال است" : "بلافاصله پس از تأیید",
+      at: delivered ? order.reviewedAt : null,
+      state: delivered ? "done" : "pending",
+      icon: "🚀",
+    },
+  ];
 
   return (
     <div>
@@ -48,31 +91,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ co
         <span className={`badge ${status.badge}`}>{status.label}</span>
       </div>
 
-      {/* مراحل */}
-      <div className="steps-bar">
-        <div className="step-item is-done">
-          <i>✓</i>
-          <div>
-            <b>انتخاب پلن</b>
-            <small>{order.plan.title}</small>
-          </div>
-        </div>
-        <div className={`step-item ${paid ? "is-done" : "is-active"}`}>
-          <i>{paid ? "✓" : "۲"}</i>
-          <div>
-            <b>پرداخت و ارسال رسید</b>
-            <small>{paid ? "رسید ثبت شد" : "کارت‌به‌کارت"}</small>
-          </div>
-        </div>
-        <div className={`step-item ${delivered ? "is-done" : ""}`}>
-          <i>{delivered ? "✓" : "۳"}</i>
-          <div>
-            <b>تحویل سرویس</b>
-            <small>{delivered ? "تحویل شد" : "پس از تأیید پشتیبانی"}</small>
-          </div>
-        </div>
-      </div>
-
+      {/* تایم‌لاین سفارش */}
       <div
         className={`alert ${
           order.status === "approved"
@@ -87,11 +106,22 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ co
       </div>
 
       <div className="grid grid-2">
+        {/* مسیر سفارش */}
+        <div className="card" style={{ gridColumn: "1 / -1" }}>
+          <div className="card-title">
+            <h3>مسیر سفارش</h3>
+            {deadline && order.status === "awaiting_receipt" ? (
+              <Countdown until={deadline.toISOString()} />
+            ) : null}
+          </div>
+          <OrderTimeline steps={timeline} />
+        </div>
+
         {/* پرداخت */}
         <div className="card">
           <div className="card-title">
             <h3>{canPay ? "پرداخت کارت‌به‌کارت" : "رسید پرداخت"}</h3>
-            {deadline ? <span className="badge badge-warn">مهلت تا {faDate(deadline, true)}</span> : null}
+            {deadline ? <Countdown until={deadline.toISOString()} /> : null}
           </div>
 
           {canPay ? (

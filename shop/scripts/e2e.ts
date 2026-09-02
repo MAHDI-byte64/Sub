@@ -17,6 +17,7 @@ import {
 } from "../src/lib/provision";
 import { saveSettings } from "../src/lib/settings";
 import { XuiClient, type XuiRawClient } from "../src/lib/xui";
+import { serviceRefs } from "../src/lib/provision";
 
 const MOCK_V2 = process.env.MOCK_PANEL_URL || "http://127.0.0.1:8899";
 const MOCK_V3 = process.env.MOCK_PANEL_V3_URL || "http://127.0.0.1:8898";
@@ -149,6 +150,33 @@ async function scenario(opts: ScenarioOptions) {
     [created?.totalGB, created?.expiryTime],
   );
 
+  console.log("→ ساخت روی همهٔ اینباندهای کلاینت الگو");
+  const refs = serviceRefs(service);
+  check("سرویس روی هر دو اینباند ساخته شد", refs.length === 2, refs);
+  check(
+    "اینباندهای ۱ و ۲ پوشش داده شدند",
+    refs.map((r) => r.inboundId).sort().join(",") === "1,2",
+    refs.map((r) => r.inboundId),
+  );
+  const secondInbound = await panelClient(panel).listClients(2);
+  const secondClient = secondInbound.find((c) => c.email === refs[1]?.email);
+  check("کلاینت روی اینباند دوم هم وجود دارد", Boolean(secondClient), refs[1]?.email);
+  check("هر دو کلاینت یک subId دارند (یک لینک اشتراک)", secondClient?.subId === service.subId, [
+    secondClient?.subId,
+    service.subId,
+  ]);
+  if (opts.expect === "v2") {
+    check("در نسخه ۲ نام کلاینت دوم یکتاست", refs[1]?.email === `${refs[0].email}-2`, refs[1]?.email);
+    check(
+      "در نسخه ۲ هر اینباند UUID جدا دارد (به‌روزرسانی مبهم نشود)",
+      Boolean(refs[1]?.uuid) && refs[1]?.uuid !== refs[0].uuid && secondClient?.id === refs[1]?.uuid,
+      [refs[0].uuid, refs[1]?.uuid, secondClient?.id],
+    );
+  } else {
+    check("در نسخه ۳ یک کلاینت به هر دو اینباند وصل است", refs[1]?.email === refs[0].email);
+    check("در نسخه ۳ UUID روی هر دو اینباند یکی است", secondClient?.id === service.uuid);
+  }
+
   console.log("→ همگام‌سازی مصرف");
   await fetch(`${opts.url}/_mock/usage?email=${encodeURIComponent(service.clientEmail)}&up=${GB}&down=${2 * GB}`);
   const synced = await syncService(service.id, true);
@@ -164,6 +192,11 @@ async function scenario(opts: ScenarioOptions) {
   );
   const uri = links.configs[0]?.uri ?? "";
   check("کانفیگ ساخته شد", uri.startsWith("vless://"), uri);
+  check(
+    "برای هر اینباند یک کانفیگ آمد",
+    links.configs.length === 2,
+    links.configs.map((c) => c.uri.slice(0, 40)),
+  );
   if (opts.expect === "v3") {
     check("لینک از خود پنل گرفته شد (API نسخه ۳)", uri.includes("panel.example.com"), uri);
     check("لینک به کلاینت همین سرویس اشاره می‌کند", uri.includes(service.uuid), uri);
@@ -195,6 +228,11 @@ async function scenario(opts: ScenarioOptions) {
     renewed.expiresAt,
   );
   check("لینک اشتراک بعد از تمدید تغییر نکرد", renewed.subId === service.subId);
+  const renewRefs = serviceRefs(renewed);
+  const afterSecond = (await panelClient(panel).listClients(2)).find(
+    (c) => c.email === renewRefs[1]?.email,
+  );
+  check("کلاینت اینباند دوم هم تمدید شد", afterSecond?.totalGB === 20 * GB, afterSecond?.totalGB);
   const afterRenew = (await panelClient(panel).listClients(1)).find((c) => c.email === service.clientEmail);
   check(
     "تنظیمات کپی‌شده بعد از تمدید حفظ شد",
@@ -260,7 +298,14 @@ async function scenario(opts: ScenarioOptions) {
   await db.panel.update({ where: { id: panel.id }, data: { templateEmail: "template-vip" } });
 
   console.log("→ حذف سرویس");
+  const trialRefs = serviceRefs(trial);
   await removeService(trial.id);
+  const leftovers: string[] = [];
+  for (const ref of trialRefs) {
+    const clients = await panelClient(panel).listClients(ref.inboundId);
+    if (clients.some((c) => c.email === ref.email)) leftovers.push(`${ref.inboundId}:${ref.email}`);
+  }
+  check("کلاینت از همهٔ اینباندها حذف شد", leftovers.length === 0, leftovers);
   const gone = await panelClient(panel).getClientTraffics(trial.clientEmail);
   check("کلاینت از پنل حذف شد", gone === null, gone);
   check("سرویس از دیتابیس حذف شد", (await db.service.findUnique({ where: { id: trial.id } })) === null);

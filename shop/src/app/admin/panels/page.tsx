@@ -144,6 +144,23 @@ export default async function AdminPanelsPage({
               </span>
             </div>
           </div>
+
+          <div className="checkbox" style={{ marginTop: 14 }}>
+            <input
+              id="multiInbound"
+              name="multiInbound"
+              type="checkbox"
+              defaultChecked={editing ? editing.multiInbound : true}
+            />
+            <label htmlFor="multiInbound">
+              سرویس روی <b>همهٔ اینباندهایی</b> ساخته شود که کلاینت الگو در آن‌هاست (پیشنهادی)
+            </label>
+          </div>
+          <span className="field-hint">
+            پنل کاربران را با subId گروه می‌کند؛ اگر کلاینت الگو را روی چند اینباند داشته باشید،
+            مشتری هم روی همان اینباندها ساخته می‌شود و همهٔ کانفیگ‌ها در یک لینک اشتراک می‌آیند.
+            اگر خاموش باشد، فقط روی اینباند کلاینت الگو ساخته می‌شود.
+          </span>
           </div>
 
           <div className="form-section">
@@ -231,6 +248,16 @@ export default async function AdminPanelsPage({
                     <tr>
                       <th>الگوی نام‌گذاری</th>
                       <td className="ltr mono">{panel.namePattern}</td>
+                    </tr>
+                    <tr>
+                      <th>ساخت روی چند اینباند</th>
+                      <td>
+                        {panel.multiInbound ? (
+                          <span className="badge badge-success">فعال</span>
+                        ) : (
+                          <span className="badge">خاموش</span>
+                        )}
+                      </td>
                     </tr>
                     <tr>
                       <th>سرویس‌های ساخته‌شده</th>

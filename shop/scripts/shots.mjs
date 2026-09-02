@@ -168,8 +168,45 @@ try {
         : user;
     await page.setViewportSize(MOBILE);
     await page.goto(`${BASE}${url}`, { waitUntil: "domcontentloaded" });
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-    console.log(`  ${overflow > 2 ? "✗" : "✓"} ${name}${overflow > 2 ? ` سرریز ${overflow}px` : ""}`);
+    // مهلت تثبیت چیدمان تا اندازه‌گیری نوسان نکند
+    await page.waitForTimeout(400);
+    const result = await page.evaluate(() => {
+      const vw = document.documentElement.clientWidth;
+      const overflow = document.documentElement.scrollWidth - window.innerWidth;
+
+      // عنصری که واقعاً باعث سرریز صفحه است (نه چیزی که داخل اسکرولر افقی کلیپ شده)
+      const clipped = (el) => {
+        let p = el.parentElement;
+        while (p && p !== document.documentElement) {
+          const st = getComputedStyle(p);
+          if (["auto", "scroll", "hidden"].includes(st.overflowX)) return true;
+          p = p.parentElement;
+        }
+        return false;
+      };
+
+      const offenders = [];
+      if (overflow > 2) {
+        for (const el of document.querySelectorAll("body *")) {
+          const rect = el.getBoundingClientRect();
+          if (rect.width === 0) continue;
+          if (Math.round(rect.right) <= vw + 1 && Math.round(rect.left) >= -1) continue;
+          if (clipped(el)) continue;
+          offenders.push(
+            `${el.tagName.toLowerCase()}.${(el.className || "").toString().split(" ")[0]}` +
+              ` (w=${Math.round(rect.width)}, left=${Math.round(rect.left)})`,
+          );
+          if (offenders.length >= 3) break;
+        }
+      }
+      return { overflow, offenders };
+    });
+    console.log(
+      `  ${result.overflow > 2 ? "✗" : "✓"} ${name}` +
+        (result.overflow > 2
+          ? ` سرریز ${result.overflow}px → ${result.offenders.join(" | ") || "نامشخص"}`
+          : ""),
+    );
   }
   void serviceUrl;
 } catch (err) {
