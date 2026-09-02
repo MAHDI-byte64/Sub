@@ -140,7 +140,13 @@ try {
     ["admin-tickets", "/admin/tickets"],
     ["admin-users", "/admin/users"],
     ["admin-discounts", "/admin/discounts"],
+    ["admin-logs", "/admin/logs"],
   ];
+
+  // پروندهٔ یک کاربر واقعی
+  await admin.goto(`${BASE}/admin/users`, { waitUntil: "domcontentloaded" });
+  const userHref = await admin.getAttribute("a.cell-main", "href").catch(() => null);
+  if (userHref) adminPages.push(["admin-user", userHref]);
 
   for (const [size, viewport] of [["m", MOBILE], ["d", DESKTOP]]) {
     console.log(`\n${size === "m" ? "موبایل" : "دسکتاپ"}:`);

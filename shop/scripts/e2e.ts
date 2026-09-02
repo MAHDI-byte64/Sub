@@ -311,6 +311,80 @@ async function scenario(opts: ScenarioOptions) {
   check("سرویس از دیتابیس حذف شد", (await db.service.findUnique({ where: { id: trial.id } })) === null);
 }
 
+/** پلن محدود به یک سرور مشخص باید فقط روی همان سرور تحویل شود */
+async function planPanelScenario() {
+  console.log("\n══════ تخصیص پلن به سرور ══════");
+  await reset();
+  await saveSettings({ trial_enabled: "0" });
+
+  const panelA = await db.panel.create({
+    data: {
+      name: "A", location: "آلمان", flag: "🇩🇪", url: MOCK_V2,
+      username: "admin", password: "admin", inboundId: 1,
+      templateEmail: "template-vip", multiInbound: false, sortOrder: 1, isActive: true,
+    },
+  });
+  const panelB = await db.panel.create({
+    data: {
+      name: "B", location: "هلند", flag: "🇳🇱", url: MOCK_V2,
+      username: "admin", password: "admin", inboundId: 2,
+      templateEmail: "template-alt", multiInbound: false, sortOrder: 2, isActive: true,
+    },
+  });
+
+  const openPlan = await db.plan.create({
+    data: { title: "آزاد", volumeGb: 5, days: 30, deviceLimit: 1, priceToman: 50_000 },
+  });
+  const boundPlan = await db.plan.create({
+    data: {
+      title: "فقط هلند",
+      volumeGb: 5,
+      days: 30,
+      deviceLimit: 1,
+      priceToman: 60_000,
+      panels: { connect: [{ id: panelB.id }] },
+    },
+  });
+
+  const user = await db.user.create({
+    data: { email: "planpanel@test.local", passwordHash: "scrypt:x:y" },
+  });
+
+  // پلن محدود، بدون انتخاب سرور → باید روی سرور B ساخته شود
+  const boundOrder = await db.order.create({
+    data: {
+      code: "FD-PP-01", userId: user.id, planId: boundPlan.id,
+      amount: boundPlan.priceToman, payable: boundPlan.priceToman, status: "pending_review",
+    },
+  });
+  const boundService = await fulfillOrder(boundOrder.id);
+  check("پلن محدود روی سرور تعیین‌شده ساخته شد", boundService.panelId === panelB.id, boundService.panelId);
+
+  // پلن آزاد → کم‌بارترین سرور (اینجا A چون B یک سرویس دارد)
+  const openOrder = await db.order.create({
+    data: {
+      code: "FD-PP-02", userId: user.id, planId: openPlan.id,
+      amount: openPlan.priceToman, payable: openPlan.priceToman, status: "pending_review",
+    },
+  });
+  const openService = await fulfillOrder(openOrder.id);
+  check("پلن آزاد روی کم‌بارترین سرور ساخته شد", openService.panelId === panelA.id, openService.panelId);
+
+  // انتخاب سرور غیرمجاز باید نادیده گرفته شود و به سرور مجاز برگردد
+  const wrongOrder = await db.order.create({
+    data: {
+      code: "FD-PP-03", userId: user.id, planId: boundPlan.id, panelId: panelA.id,
+      amount: boundPlan.priceToman, payable: boundPlan.priceToman, status: "pending_review",
+    },
+  });
+  const wrongService = await fulfillOrder(wrongOrder.id);
+  check(
+    "سرور غیرمجاز برای پلن نادیده گرفته شد",
+    wrongService.panelId === panelB.id,
+    wrongService.panelId,
+  );
+}
+
 async function main() {
   await scenario({
     label: "پنل نسخه ۲ — ورود با نام کاربری و رمز",
@@ -332,6 +406,8 @@ async function main() {
     prefix: "FD-V3",
     expect: "v3",
   });
+
+  await planPanelScenario();
 
   console.log("\n══════ بررسی توکن نامعتبر ══════");
   const badToken = new XuiClient({

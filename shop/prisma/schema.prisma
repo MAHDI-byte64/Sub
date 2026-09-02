@@ -71,6 +71,8 @@ model Panel {
 
   services Service[]
   orders   Order[]
+  /// پلن‌هایی که فقط روی این سرور فروخته می‌شوند (خالی = همه پلن‌ها)
+  plans    Plan[]    @relation("PlanPanels")
 }
 
 /// پلن‌های فروش
@@ -88,6 +90,8 @@ model Plan {
 
   orders   Order[]
   services Service[]
+  /// سرورهایی که این پلن روی آن‌ها فروخته می‌شود (خالی = همه سرورهای فعال)
+  panels   Panel[]   @relation("PlanPanels")
 }
 
 /// کدهای تخفیف
@@ -196,6 +200,18 @@ model TicketMessage {
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@index([ticketId])
+}
+
+/// گزارش کارهای مدیر (چه کسی، چه کاری، روی چه چیزی)
+model AdminLog {
+  id         String   @id @default(cuid())
+  adminEmail String
+  action     String
+  target     String?
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 /// تنظیمات قابل ویرایش در پنل ادمین (شماره کارت، تلگرام، تست رایگان و ...)

@@ -13,10 +13,12 @@ export default async function AdminPlansPage({
   searchParams: Promise<{ edit?: string; msg?: string; type?: string }>;
 }) {
   const { edit, msg, type } = await searchParams;
-  const [plans, editing] = await Promise.all([
-    db.plan.findMany({ orderBy: { sortOrder: "asc" } }),
-    edit ? db.plan.findUnique({ where: { id: edit } }) : Promise.resolve(null),
+  const [plans, editing, panels] = await Promise.all([
+    db.plan.findMany({ orderBy: { sortOrder: "asc" }, include: { panels: true } }),
+    edit ? db.plan.findUnique({ where: { id: edit }, include: { panels: true } }) : Promise.resolve(null),
+    db.panel.findMany({ orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
   ]);
+  const editingPanelIds = new Set((editing?.panels ?? []).map((p) => p.id));
 
   return (
     <div>
@@ -68,6 +70,33 @@ export default async function AdminPlansPage({
               <input id="priceToman" name="priceToman" type="number" min={0} step={1000} defaultValue={editing?.priceToman ?? 0} required />
             </div>
           </div>
+          {panels.length ? (
+            <div className="form-section">
+              <h4>این پلن روی کدام سرورها فروخته شود؟</h4>
+              <div className="grid grid-2">
+                {panels.map((panel) => (
+                  <div className="checkbox" key={panel.id}>
+                    <input
+                      id={`panel-${panel.id}`}
+                      name="panelIds"
+                      type="checkbox"
+                      value={panel.id}
+                      defaultChecked={editingPanelIds.has(panel.id)}
+                    />
+                    <label htmlFor={`panel-${panel.id}`}>
+                      {panel.flag} {panel.location}
+                      {!panel.isActive ? <span className="badge badge-warn">غیرفعال</span> : null}
+                    </label>
+                  </div>
+                ))}
+              </div>
+              <span className="field-hint">
+                اگر هیچ‌کدام را انتخاب نکنید، این پلن روی <b>همهٔ سرورهای فعال</b> ارائه می‌شود و کاربر
+                هنگام خرید لوکیشن را انتخاب می‌کند.
+              </span>
+            </div>
+          ) : null}
+
           <div className="grid grid-3">
             <div className="field">
               <label htmlFor="sortOrder">ترتیب نمایش</label>
@@ -99,6 +128,7 @@ export default async function AdminPlansPage({
                 <th>مدت</th>
                 <th>کاربر</th>
                 <th>قیمت</th>
+                <th>سرورها</th>
                 <th>وضعیت</th>
                 <th></th>
               </tr>
@@ -114,6 +144,15 @@ export default async function AdminPlansPage({
                   <td className="nowrap">{planDaysLabel(plan.days)}</td>
                   <td className="nowrap">{deviceLabel(plan.deviceLimit)}</td>
                   <td className="nowrap">{toman(plan.priceToman)}</td>
+                  <td>
+                    {plan.panels.length ? (
+                      <span className="cell-sub">
+                        {plan.panels.map((p) => `${p.flag} ${p.location}`).join("، ")}
+                      </span>
+                    ) : (
+                      <span className="badge">همه سرورها</span>
+                    )}
+                  </td>
                   <td>
                     <span className={`badge ${plan.isActive ? "badge-success" : "badge-warn"}`}>
                       {plan.isActive ? "فعال" : "غیرفعال"}
@@ -139,7 +178,7 @@ export default async function AdminPlansPage({
               ))}
               {!plans.length ? (
                 <tr>
-                  <td colSpan={7} className="center dim">
+                  <td colSpan={8} className="center dim">
                     هنوز پلنی ساخته نشده است.
                   </td>
                 </tr>

@@ -6,7 +6,19 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { saveSettings } from "@/lib/settings";
 import { notifyAdmin } from "@/lib/telegram";
-import { fulfillOrder, panelClient, removeService, setServiceEnabled, syncService } from "@/lib/provision";
+import {
+  createServiceOnPanel,
+  fulfillOrder,
+  panelClient,
+  pickPanel,
+  removeService,
+  renewServiceOnPanel,
+  resetServiceTraffic,
+  setServiceEnabled,
+  syncService,
+} from "@/lib/provision";
+import { logAdmin } from "@/lib/adminlog";
+import { notifyAdmin as notifyTelegram } from "@/lib/telegram";
 import { faNum, toman } from "@/lib/format";
 
 export type AdminState = { error?: string; success?: string };
@@ -71,6 +83,7 @@ export async function approveOrderAction(_prev: AdminState, formData: FormData):
     `✅ سفارش ${order.code} تأیید و سرویس «${order.plan.title}» برای ${order.user.email} ساخته شد.`,
     "system",
   );
+  await logAdmin("order_approved", order.code, `${order.plan.title} — ${order.user.email}`);
 
   revalidatePath("/admin/orders");
   revalidatePath("/dashboard");
@@ -90,6 +103,7 @@ export async function rejectOrderAction(_prev: AdminState, formData: FormData): 
     where: { id: order.id },
     data: { status: "rejected", adminNote: note, reviewedAt: new Date() },
   });
+  await logAdmin("order_rejected", order.code, note);
   revalidatePath("/admin/orders");
   flash("/admin/orders?status=pending_review", `سفارش ${order.code} رد شد.`);
 }
@@ -101,6 +115,7 @@ export async function savePlanAction(_prev: AdminState, formData: FormData): Pro
   if (denied) return denied;
 
   const id = str(formData, "id");
+  const panelIds = formData.getAll("panelIds").map(String).filter(Boolean);
   const data = {
     title: str(formData, "title"),
     subtitle: str(formData, "subtitle") || null,
@@ -115,9 +130,18 @@ export async function savePlanAction(_prev: AdminState, formData: FormData): Pro
   if (!data.title) return { error: "عنوان پلن الزامی است." };
   if (data.priceToman < 0) return { error: "قیمت نمی‌تواند منفی باشد." };
 
-  if (id) await db.plan.update({ where: { id }, data });
-  else await db.plan.create({ data });
+  if (id) {
+    await db.plan.update({
+      where: { id },
+      data: { ...data, panels: { set: panelIds.map((panelId) => ({ id: panelId })) } },
+    });
+  } else {
+    await db.plan.create({
+      data: { ...data, panels: { connect: panelIds.map((panelId) => ({ id: panelId })) } },
+    });
+  }
 
+  await logAdmin("plan_saved", data.title, panelIds.length ? `${panelIds.length} سرور` : "همه سرورها");
   revalidatePath("/admin/plans");
   revalidatePath("/plans");
   revalidatePath("/");
@@ -197,6 +221,7 @@ export async function savePanelAction(_prev: AdminState, formData: FormData): Pr
     await db.panel.create({ data: data as never });
   }
 
+  await logAdmin("panel_saved", String(data.name));
   revalidatePath("/admin/panels");
   revalidatePath("/plans");
   return { success: "سرور ذخیره شد." };
@@ -349,6 +374,7 @@ export async function saveSettingsAction(_prev: AdminState, formData: FormData):
     else values[def.key] = String(formData.get(def.key) ?? "");
   }
   await saveSettings(values);
+  await logAdmin("settings_saved");
   revalidatePath("/", "layout");
   return { success: "تنظیمات ذخیره شد." };
 }
@@ -365,6 +391,7 @@ export async function toggleUserBlockAction(_prev: AdminState, formData: FormDat
   if (user.role === "admin") return { error: "حساب مدیر قابل مسدود کردن نیست." };
 
   await db.user.update({ where: { id }, data: { isBlocked: !user.isBlocked } });
+  await logAdmin(user.isBlocked ? "user_unblocked" : "user_blocked", user.email);
   revalidatePath("/admin/users");
   flash("/admin/users", user.isBlocked ? "کاربر آزاد شد." : "کاربر مسدود شد.");
 }
@@ -374,6 +401,7 @@ export async function resetTrialFlagAction(_prev: AdminState, formData: FormData
   if (denied) return denied;
   const id = str(formData, "id");
   await db.user.update({ where: { id }, data: { trialUsedAt: null } });
+  await logAdmin("user_trial_reset", id);
   revalidatePath("/admin/users");
   flash("/admin/users", "امکان دریافت تست رایگان برای این کاربر آزاد شد.");
 }
@@ -415,4 +443,186 @@ export async function deleteServiceAction(_prev: AdminState, formData: FormData)
   }
   revalidatePath("/admin/services");
   flash("/admin/services", "سرویس حذف شد.");
+}
+
+/* ------------------------- سرویس‌دهی دستی توسط مدیر ------------------------- */
+
+/** ساخت سرویس برای یک کاربر بدون سفارش (هدیه، جبران خسارت، فروش آفلاین) */
+export async function createServiceForUserAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const userId = str(formData, "userId");
+  const planId = str(formData, "planId");
+  const panelId = str(formData, "panelId") || null;
+  const note = str(formData, "note");
+
+  const user = await db.user.findUnique({ where: { id: userId } });
+  if (!user) return { error: "کاربر پیدا نشد." };
+
+  const plan = await db.plan.findFirst({ where: { id: planId }, include: { panels: true } });
+  if (!plan) return { error: "پلن انتخابی پیدا نشد." };
+
+  try {
+    const panel = await pickPanel(
+      panelId,
+      plan.panels.map((p) => p.id),
+    );
+    const { getSettings } = await import("@/lib/settings");
+    const settings = await getSettings();
+    const service = await createServiceOnPanel({
+      userId: user.id,
+      userEmail: user.email,
+      plan,
+      planId: plan.id,
+      panel,
+      code: `admin-${Date.now().toString(36)}`,
+      remark: `${settings.site_name} | ${plan.title}`,
+    });
+    await logAdmin("service_created", user.email, `${plan.title} روی ${panel.location}${note ? ` — ${note}` : ""}`);
+    revalidatePath(`/admin/users/${user.id}`);
+    revalidatePath("/admin/services");
+    return { success: `سرویس «${plan.title}» برای ${user.email} ساخته شد (${service.clientEmail}).` };
+  } catch (err) {
+    return { error: `ساخت سرویس ناموفق بود: ${(err as Error).message}` };
+  }
+}
+
+/** افزودن دستی حجم و زمان به یک سرویس */
+export async function extendServiceAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const id = str(formData, "id");
+  const days = num(formData, "days");
+  const gb = num(formData, "gb");
+  if (days <= 0 && gb <= 0) return { error: "حداقل یکی از حجم یا روز را وارد کنید." };
+
+  const service = await db.service.findUnique({ where: { id }, include: { user: true } });
+  if (!service) return { error: "سرویس پیدا نشد." };
+
+  try {
+    await renewServiceOnPanel(service, { volumeGb: gb, days, deviceLimit: 0, id: null });
+    await logAdmin(
+      "service_extended",
+      service.user.email,
+      `${gb > 0 ? `${gb} گیگ` : ""}${gb > 0 && days > 0 ? " و " : ""}${days > 0 ? `${days} روز` : ""}`,
+    );
+    revalidatePath("/admin/services");
+    revalidatePath(`/admin/users/${service.userId}`);
+    return { success: "سرویس با موفقیت تمدید شد." };
+  } catch (err) {
+    return { error: `تمدید ناموفق بود: ${(err as Error).message}` };
+  }
+}
+
+/** صفر کردن مصرف یک سرویس */
+export async function resetServiceTrafficAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const id = str(formData, "id");
+  const service = await db.service.findUnique({ where: { id }, include: { user: true } });
+  if (!service) return { error: "سرویس پیدا نشد." };
+
+  try {
+    await resetServiceTraffic(id);
+    await logAdmin("service_traffic_reset", service.user.email, service.clientEmail);
+    revalidatePath("/admin/services");
+    revalidatePath(`/admin/users/${service.userId}`);
+    return { success: "مصرف سرویس صفر شد." };
+  } catch (err) {
+    return { error: `صفر کردن مصرف ناموفق بود: ${(err as Error).message}` };
+  }
+}
+
+/* ----------------------------- اقدام‌های گروهی ----------------------------- */
+
+/** همگام‌سازی مصرف همه سرویس‌ها با پنل */
+export async function syncAllServicesAction(_prev: AdminState, _formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const services = await db.service.findMany({ select: { id: true } });
+  let ok = 0;
+  for (const service of services) {
+    try {
+      await syncService(service.id, true);
+      ok += 1;
+    } catch {
+      /* سرویس‌های ناموفق نادیده گرفته می‌شوند */
+    }
+  }
+  await logAdmin("services_synced", `${ok} سرویس`);
+  revalidatePath("/admin/services");
+  return { success: `${ok} سرویس از ${services.length} سرویس به‌روزرسانی شد.` };
+}
+
+/** حذف سرویس‌های منقضی‌شده از پنل و سایت */
+export async function pruneExpiredServicesAction(_prev: AdminState, _formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const expired = await db.service.findMany({
+    where: { status: "expired", expiresAt: { lt: new Date(Date.now() - 7 * 86_400_000) } },
+    select: { id: true },
+  });
+  let removed = 0;
+  for (const service of expired) {
+    try {
+      await removeService(service.id);
+      removed += 1;
+    } catch {
+      /* ادامه می‌دهیم */
+    }
+  }
+  await logAdmin("services_pruned", `${removed} سرویس`);
+  revalidatePath("/admin/services");
+  return {
+    success: removed
+      ? `${removed} سرویس منقضی (بیش از ۷ روز) حذف شد.`
+      : "سرویس منقضی‌ای برای حذف پیدا نشد.",
+  };
+}
+
+/** تست اتصال همه سرورها */
+export async function testAllPanelsAction(_prev: AdminState, _formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const panels = await db.panel.findMany();
+  if (!panels.length) return { error: "سروری ثبت نشده است." };
+
+  const lines: string[] = [];
+  for (const panel of panels) {
+    const result = await panelClient(panel).testConnection();
+    await db.panel.update({
+      where: { id: panel.id },
+      data: { lastError: result.ok ? null : result.message, lastCheckAt: new Date() },
+    });
+    lines.push(`${panel.flag} ${panel.name}: ${result.ok ? "سالم ✅" : `خطا — ${result.message}`}`);
+  }
+  await logAdmin("panel_tested", `${panels.length} سرور`);
+  revalidatePath("/admin/panels");
+  revalidatePath("/admin");
+  return { success: lines.join(" | ") };
+}
+
+/** ارسال پیام آزمایشی تلگرام */
+export async function testTelegramAction(_prev: AdminState, _formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const { getSettings } = await import("@/lib/settings");
+  const settings = await getSettings();
+  if (!settings.telegram_bot_token || !settings.telegram_admin_chat_id) {
+    return { error: "ابتدا توکن ربات و آیدی چت را در همین صفحه ذخیره کنید." };
+  }
+
+  await notifyTelegram(
+    `🔔 پیام آزمایشی از ${settings.site_name}\nاگر این پیام را می‌بینید، اطلاع‌رسانی تلگرام درست کار می‌کند.`,
+    "system",
+  );
+  await logAdmin("telegram_tested");
+  return { success: "پیام آزمایشی ارسال شد. تلگرام خود را بررسی کنید." };
 }

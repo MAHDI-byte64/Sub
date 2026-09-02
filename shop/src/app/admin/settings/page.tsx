@@ -1,5 +1,5 @@
 import { getSettings, SETTING_DEFS } from "@/lib/settings";
-import { saveSettingsAction } from "@/app/actions/admin";
+import { saveSettingsAction, testTelegramAction } from "@/app/actions/admin";
 import ActionForm from "@/components/ActionForm";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +15,32 @@ export default async function AdminSettingsPage() {
           <h1>تنظیمات سایت</h1>
           <p>نام و متن‌های سایت، اطلاعات پرداخت، اکانت تست و اطلاع‌رسانی تلگرام.</p>
         </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title">
+          <h3>ابزارهای سریع</h3>
+        </div>
+        <div className="btn-row">
+          <ActionForm
+            action={testTelegramAction}
+            submitLabel="✈️ ارسال پیام آزمایشی تلگرام"
+            buttonClass="btn btn-sm"
+            inline
+          />
+          <a className="btn btn-sm" href="/api/admin/backup">
+            💾 دانلود پشتیبان دیتابیس
+          </a>
+          <a className="btn btn-sm" href="/api/admin/export/orders">
+            ⬇ خروجی سفارش‌ها
+          </a>
+          <a className="btn btn-sm" href="/api/admin/export/users">
+            ⬇ خروجی کاربران
+          </a>
+        </div>
+        <p className="field-hint" style={{ marginTop: 10 }}>
+          فایل پشتیبان شامل کل دیتابیس (کاربران، سفارش‌ها، سرویس‌ها و تنظیمات) است؛ جای امنی نگه دارید.
+        </p>
       </div>
 
       <ActionForm action={saveSettingsAction} submitLabel="ذخیره همه تنظیمات">

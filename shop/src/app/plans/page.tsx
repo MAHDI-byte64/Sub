@@ -16,7 +16,11 @@ export default async function PlansPage({
 }) {
   const { renew } = await searchParams;
   const [plans, panels, settings] = await Promise.all([
-    db.plan.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
+    db.plan.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: "asc" },
+      include: { panels: { select: { id: true, flag: true, location: true } } },
+    }),
     db.panel.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
     getSettings(),
   ]);

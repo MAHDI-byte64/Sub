@@ -74,8 +74,12 @@ export async function createOrderAction(_prev: ShopState, formData: FormData): P
   const renewServiceId = String(formData.get("renewServiceId") || "") || null;
   const code = String(formData.get("discountCode") || "");
 
-  const plan = await db.plan.findFirst({ where: { id: planId, isActive: true } });
+  const plan = await db.plan.findFirst({
+    where: { id: planId, isActive: true },
+    include: { panels: true },
+  });
   if (!plan) return { error: "پلن انتخابی در دسترس نیست." };
+  const allowedPanels = plan.panels.map((p) => p.id);
 
   if (renewServiceId) {
     const service = await db.service.findFirst({ where: { id: renewServiceId, userId: user.id } });
@@ -85,6 +89,9 @@ export async function createOrderAction(_prev: ShopState, formData: FormData): P
   if (panelId) {
     const panel = await db.panel.findFirst({ where: { id: panelId, isActive: true } });
     if (!panel) return { error: "سرور انتخابی در دسترس نیست." };
+    if (allowedPanels.length && !allowedPanels.includes(panelId)) {
+      return { error: "این پلن روی سرور انتخابی ارائه نمی‌شود." };
+    }
   }
 
   let discountId: string | null = null;

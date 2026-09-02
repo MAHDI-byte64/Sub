@@ -19,14 +19,26 @@ const FILTERS = [
 export default async function AdminOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; msg?: string; type?: string }>;
+  searchParams: Promise<{ status?: string; q?: string; msg?: string; type?: string }>;
 }) {
-  const { status: statusParam, msg, type } = await searchParams;
+  const { status: statusParam, q, msg, type } = await searchParams;
   const status = statusParam || "pending_review";
+  const search = (q ?? "").trim();
 
   const [orders, pendingCount, approvedAgg, todayAgg] = await Promise.all([
     db.order.findMany({
-      where: status === "all" ? {} : { status },
+      where: {
+        ...(status === "all" ? {} : { status }),
+        ...(search
+          ? {
+              OR: [
+                { code: { contains: search } },
+                { user: { email: { contains: search } } },
+                { receiptRef: { contains: search } },
+              ],
+            }
+          : {}),
+      },
       include: { user: true, plan: true, panel: true, service: true },
       orderBy: { createdAt: "desc" },
       take: 100,
@@ -67,6 +79,24 @@ export default async function AdminOrdersPage({
           <span>📅 درآمد امروز</span>
           <b>{toman(todayAgg._sum.payable ?? 0, false)}</b>
         </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 14 }}>
+        <form style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input type="hidden" name="status" value={status} />
+          <input
+            name="q"
+            defaultValue={search}
+            placeholder="جستجوی کد سفارش، ایمیل یا کد پیگیری…"
+            style={{ flex: 1, minWidth: 200 }}
+          />
+          <button className="btn btn-sm btn-primary" type="submit">
+            جستجو
+          </button>
+          <a className="btn btn-sm" href="/api/admin/export/orders">
+            ⬇ خروجی CSV
+          </a>
+        </form>
       </div>
 
       <div className="tabs">

@@ -10,7 +10,11 @@ export const dynamic = "force-dynamic";
 export default async function HomePage() {
   const [settings, plans, panels, serviceCount, userCount] = await Promise.all([
     getSettings(),
-    db.plan.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
+    db.plan.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: "asc" },
+      include: { panels: { select: { id: true, flag: true, location: true } } },
+    }),
     db.panel.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
     db.service.count(),
     db.user.count({ where: { role: "user" } }),

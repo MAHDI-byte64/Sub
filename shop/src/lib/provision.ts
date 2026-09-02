@@ -17,17 +17,31 @@ export function panelClient(panel: Panel): XuiClient {
   });
 }
 
-/** انتخاب پنل: پنل انتخابی کاربر، وگرنه کم‌بارترین پنل فعال */
-export async function pickPanel(preferredPanelId?: string | null): Promise<Panel> {
-  if (preferredPanelId) {
+/**
+ * انتخاب پنل: پنل انتخابی کاربر، وگرنه کم‌بارترین پنل فعال.
+ * اگر پلن به سرورهای مشخصی محدود شده باشد، فقط از همان‌ها انتخاب می‌شود.
+ */
+export async function pickPanel(
+  preferredPanelId?: string | null,
+  allowedPanelIds?: string[] | null,
+): Promise<Panel> {
+  const allowed = allowedPanelIds?.length ? allowedPanelIds : null;
+
+  if (preferredPanelId && (!allowed || allowed.includes(preferredPanelId))) {
     const panel = await db.panel.findFirst({ where: { id: preferredPanelId, isActive: true } });
     if (panel) return panel;
   }
   const panels = await db.panel.findMany({
-    where: { isActive: true },
+    where: { isActive: true, ...(allowed ? { id: { in: allowed } } : {}) },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
-  if (!panels.length) throw new XuiError("هیچ سروری فعال نیست. لطفاً با پشتیبانی تماس بگیرید.");
+  if (!panels.length) {
+    throw new XuiError(
+      allowed
+        ? "سرورهای این پلن در حال حاضر در دسترس نیستند. لطفاً با پشتیبانی تماس بگیرید."
+        : "هیچ سروری فعال نیست. لطفاً با پشتیبانی تماس بگیرید.",
+    );
+  }
 
   const counts = await db.service.groupBy({
     by: ["panelId"],
@@ -314,8 +328,11 @@ async function fetchClient(
   return findByEmail(clients, ref.email) ?? null;
 }
 
+/** ورودی تمدید: می‌تواند یک پلن واقعی باشد یا مقدار دلخواه مدیر */
+export type RenewInput = PlanShape & { id?: string | null };
+
 /** تمدید سرویس: افزودن حجم و زمان روی همان کلاینت‌ها */
-export async function renewServiceOnPanel(service: Service, plan: Plan): Promise<Service> {
+export async function renewServiceOnPanel(service: Service, plan: RenewInput): Promise<Service> {
   const panel = await db.panel.findUniqueOrThrow({ where: { id: service.panelId } });
   const client = panelClient(panel);
   const refs = serviceRefs(service);
@@ -376,7 +393,7 @@ export async function renewServiceOnPanel(service: Service, plan: Plan): Promise
   return db.service.update({
     where: { id: service.id },
     data: {
-      planId: plan.id,
+      ...(plan.id ? { planId: plan.id } : {}),
       totalBytes: newTotal,
       expiresAt: newExpiry ? new Date(newExpiry) : null,
       deviceLimit: plan.deviceLimit || service.deviceLimit,
@@ -418,7 +435,7 @@ async function sumUsage(
 export async function fulfillOrder(orderId: string): Promise<Service> {
   const order = await db.order.findUniqueOrThrow({
     where: { id: orderId },
-    include: { plan: true, user: true },
+    include: { plan: { include: { panels: true } }, user: true },
   });
 
   if (order.renewServiceId) {
@@ -428,7 +445,10 @@ export async function fulfillOrder(orderId: string): Promise<Service> {
     return renewed;
   }
 
-  const panel = await pickPanel(order.panelId);
+  const panel = await pickPanel(
+    order.panelId,
+    order.plan.panels.map((p) => p.id),
+  );
   const settings = await getSettings();
   const service = await createServiceOnPanel({
     userId: order.userId,
@@ -593,6 +613,23 @@ export async function setServiceEnabled(serviceId: string, enabled: boolean): Pr
   await db.service.update({
     where: { id: service.id },
     data: { status: enabled ? "active" : "disabled" },
+  });
+}
+
+/** صفر کردن مصرف سرویس روی پنل و در دیتابیس */
+export async function resetServiceTraffic(serviceId: string): Promise<void> {
+  const service = await db.service.findUniqueOrThrow({
+    where: { id: serviceId },
+    include: { panel: true },
+  });
+  const client = panelClient(service.panel);
+
+  for (const ref of serviceRefs(service)) {
+    await client.resetClientTraffic(ref.inboundId, ref.email);
+  }
+  await db.service.update({
+    where: { id: service.id },
+    data: { usedBytes: 0, status: "active", lastSyncAt: new Date() },
   });
 }
 

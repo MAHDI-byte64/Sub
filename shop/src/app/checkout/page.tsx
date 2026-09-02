@@ -22,11 +22,18 @@ export default async function CheckoutPage({
     redirect(`/login?next=${encodeURIComponent(next)}`);
   }
 
-  const plan = await db.plan.findFirst({ where: { id: planId, isActive: true } });
+  const plan = await db.plan.findFirst({
+    where: { id: planId, isActive: true },
+    include: { panels: true },
+  });
   if (!plan) notFound();
 
+  const allowedIds = plan.panels.map((p) => p.id);
   const [panels, renewService] = await Promise.all([
-    db.panel.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
+    db.panel.findMany({
+      where: { isActive: true, ...(allowedIds.length ? { id: { in: allowedIds } } : {}) },
+      orderBy: { sortOrder: "asc" },
+    }),
     renewId ? db.service.findFirst({ where: { id: renewId, userId: user.id } }) : Promise.resolve(null),
   ]);
 
