@@ -18,7 +18,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ name: string }
   await logAdmin("backup_downloaded", safe, `${Math.round(buffer.length / 1024)} کیلوبایت`);
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
-      "Content-Type": "application/gzip",
+      "Content-Type": safe.endsWith(".enc") ? "application/octet-stream" : "application/gzip",
       "Content-Disposition": `attachment; filename="${safe}"`,
       "Cache-Control": "no-store",
     },

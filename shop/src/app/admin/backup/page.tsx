@@ -15,7 +15,13 @@ import Flash from "@/components/Flash";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "پشتیبان‌گیری" };
 
-const BACKUP_KEYS = ["backup_auto", "backup_interval_hours", "backup_keep", "backup_telegram"];
+const BACKUP_KEYS = [
+  "backup_auto",
+  "backup_interval_hours",
+  "backup_keep",
+  "backup_telegram",
+  "backup_password",
+];
 
 function sizeLabel(bytes: number): string {
   const mb = bytes / (1024 * 1024);
@@ -36,6 +42,8 @@ export default async function AdminBackupPage({
   const lastAuto = Number(settings.backup_last_at || 0);
   const autoOn = asBool(settings.backup_auto);
   const telegramReady = Boolean(settings.telegram_bot_token && settings.telegram_admin_chat_id);
+  const encryptOn = Boolean(settings.backup_password?.trim());
+  const hasEncrypted = backups.some((file) => file.encrypted);
 
   return (
     <div>
@@ -105,7 +113,10 @@ export default async function AdminBackupPage({
                   <tr key={file.name}>
                     <td>
                       <span className="cell-main mono ltr">{file.name}</span>
-                      <span className="cell-sub">{relativeTime(file.createdAt)}</span>
+                      <span className="cell-sub">
+                        {file.encrypted ? "🔒 رمزگذاری‌شده — " : ""}
+                        {relativeTime(file.createdAt)}
+                      </span>
                     </td>
                     <td className="nowrap">{faDate(file.createdAt, true)}</td>
                     <td className="nowrap">{sizeLabel(file.size)}</td>
@@ -157,12 +168,20 @@ export default async function AdminBackupPage({
           <span className={`badge ${autoOn ? "badge-success" : "badge"}`}>
             {autoOn ? "روشن" : "خاموش"}
           </span>
+          {encryptOn ? <span className="badge badge-info">🔒 رمزگذاری روشن</span> : null}
         </div>
         <p className="field-hint">
           کارهای پس‌زمینه هر ۱۵ دقیقه اجرا می‌شوند و اگر از آخرین پشتیبان به‌اندازهٔ فاصلهٔ تعیین‌شده
           گذشته باشد، یک پشتیبان تازه می‌سازند و قدیمی‌ترها را پاک می‌کنند.
           {lastAuto ? ` آخرین پشتیبان خودکار: ${faDate(new Date(lastAuto), true)}.` : ""}
         </p>
+        {encryptOn ? (
+          <div className="alert alert-warn">
+            گذرواژهٔ رمزگذاری تنظیم شده است. پشتیبان‌های تازه با پسوند{" "}
+            <span className="mono ltr">.tar.gz.enc</span> ساخته می‌شوند و{" "}
+            <b>بدون همین گذرواژه قابل بازیابی نیستند</b> — جایی بیرون از این سرور یادداشتش کنید.
+          </div>
+        ) : null}
         {!telegramReady && asBool(settings.backup_telegram) ? (
           <div className="alert alert-warn">
             برای ارسال به تلگرام، اول توکن ربات و آیدی چت مدیر را در{" "}
@@ -203,8 +222,9 @@ export default async function AdminBackupPage({
                   <input
                     id={key}
                     name={key}
-                    type="number"
+                    type={def.type === "password" ? "password" : "number"}
                     className="ltr"
+                    autoComplete={def.type === "password" ? "new-password" : undefined}
                     defaultValue={settings[key] ?? ""}
                   />
                   {def.hint ? <span className="field-hint">{def.hint}</span> : null}
@@ -247,6 +267,23 @@ export default async function AdminBackupPage({
             <input id="file" name="file" type="file" accept=".gz,application/gzip" />
             <span className="field-hint">
               همان فایل <span className="mono ltr">.tar.gz</span> که از این صفحه دانلود کرده‌اید.
+            </span>
+          </div>
+
+          <div className="field">
+            <label htmlFor="password">گذرواژهٔ پشتیبان (اگر رمزگذاری‌شده است)</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              className="ltr"
+              autoComplete="off"
+              defaultValue=""
+            />
+            <span className="field-hint">
+              {hasEncrypted || encryptOn
+                ? "برای فایل‌های 🔒 همان گذرواژه‌ای که هنگام ساخت پشتیبان تنظیم بود لازم است."
+                : "پشتیبان‌های فعلی رمز ندارند؛ این کادر را خالی بگذارید."}
             </span>
           </div>
 

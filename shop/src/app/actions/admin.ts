@@ -697,6 +697,8 @@ const RESTORE_MESSAGE: Record<RestoreCode, string> = {
   restored: "بازیابی انجام شد.",
   corrupt: "فایل خراب است یا فرمتش پشتیبان این سایت نیست.",
   "not-a-backup": "داخل این فایل دیتابیس سالمی پیدا نشد.",
+  "needs-password": "این پشتیبان رمزگذاری شده است؛ گذرواژهٔ همان زمان را وارد کنید.",
+  "bad-password": "گذرواژه درست نیست (یا فایل دست‌خورده است).",
   failed: "نوشتن فایل‌ها انجام نشد",
 };
 
@@ -720,7 +722,8 @@ export async function createBackupAction(_prev: AdminState, formData: FormData):
     }
 
     revalidatePath("/admin/backup");
-    return { success: `پشتیبان ساخته شد: ${file} — ${sizeLabel(size)}${extra}` };
+    const lock = file.endsWith(".enc") ? " (رمزگذاری‌شده 🔒)" : "";
+    return { success: `پشتیبان ساخته شد: ${file} — ${sizeLabel(size)}${lock}${extra}` };
   } catch (err) {
     return { error: `ساخت پشتیبان ناموفق بود: ${(err as Error).message}` };
   }
@@ -775,7 +778,7 @@ export async function restoreBackupAction(_prev: AdminState, formData: FormData)
   }
   if (!archive) return { error: "فایل پشتیبان را انتخاب یا آپلود کنید." };
 
-  const result = await restoreBackup(archive);
+  const result = await restoreBackup(archive, str(formData, "password"));
   if (!result.ok) {
     const message = RESTORE_MESSAGE[result.code];
     return { error: result.detail ? `${message}: ${result.detail}` : message };

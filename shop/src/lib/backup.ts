@@ -1,4 +1,5 @@
 import "server-only";
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -27,6 +28,7 @@ export type BackupFile = {
   name: string;
   size: number;
   createdAt: Date;
+  encrypted: boolean;
 };
 
 export type BackupManifest = {
@@ -115,7 +117,83 @@ export function backupDir(): string {
 /** Only our own archive names are accepted, which blocks path traversal. */
 export function safeBackupName(name: string): string | null {
   const base = path.basename(name);
-  return /^[A-Za-z0-9._-]+\.tar\.gz$/.test(base) && base.startsWith(BACKUP_PREFIX) ? base : null;
+  const shaped = /^[A-Za-z0-9._-]+\.tar\.gz(\.enc)?$/.test(base);
+  return shaped && base.startsWith(BACKUP_PREFIX) ? base : null;
+}
+
+export function isEncryptedName(name: string): boolean {
+  return name.endsWith(".enc");
+}
+
+/* -------------------------------------------------------------------------- */
+/*                                 encryption                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Optional passphrase protection.
+ *
+ * An archive holds every customer record and the panel credentials, so a file
+ * that leaves the server should not be readable on its own. With a passphrase
+ * in the settings, the gzip stream is sealed with AES-256-GCM and the key is
+ * derived per file with scrypt, so the same passphrase never reuses a key.
+ *
+ * Layout: magic(9) | salt(16) | iv(12) | tag(16) | ciphertext
+ */
+const ENC_MAGIC = "FNDGHENC";
+const ENC_VERSION = 1;
+const SALT_LEN = 16;
+const IV_LEN = 12;
+const TAG_LEN = 16;
+const HEADER_LEN = ENC_MAGIC.length + 1 + SALT_LEN + IV_LEN + TAG_LEN;
+
+/** Was this buffer produced by encryptArchive? */
+export function isEncryptedArchive(buffer: Buffer): boolean {
+  return (
+    buffer.length > HEADER_LEN &&
+    buffer.subarray(0, ENC_MAGIC.length).toString("utf8") === ENC_MAGIC
+  );
+}
+
+function deriveKey(password: string, salt: Buffer): Buffer {
+  return scryptSync(password.normalize("NFKC"), salt, 32);
+}
+
+export function encryptArchive(plain: Buffer, password: string): Buffer {
+  const salt = randomBytes(SALT_LEN);
+  const iv = randomBytes(IV_LEN);
+  const cipher = createCipheriv("aes-256-gcm", deriveKey(password, salt), iv);
+  const body = Buffer.concat([cipher.update(plain), cipher.final()]);
+
+  return Buffer.concat([
+    Buffer.from(ENC_MAGIC, "utf8"),
+    Buffer.from([ENC_VERSION]),
+    salt,
+    iv,
+    cipher.getAuthTag(),
+    body,
+  ]);
+}
+
+/** Returns null when the passphrase is wrong or the file was tampered with. */
+export function decryptArchive(sealed: Buffer, password: string): Buffer | null {
+  if (!isEncryptedArchive(sealed)) return null;
+
+  let offset = ENC_MAGIC.length;
+  const version = sealed[offset];
+  offset += 1;
+  if (version !== ENC_VERSION) return null;
+
+  const salt = sealed.subarray(offset, (offset += SALT_LEN));
+  const iv = sealed.subarray(offset, (offset += IV_LEN));
+  const tag = sealed.subarray(offset, (offset += TAG_LEN));
+
+  try {
+    const decipher = createDecipheriv("aes-256-gcm", deriveKey(password, Buffer.from(salt)), iv);
+    decipher.setAuthTag(Buffer.from(tag));
+    return Buffer.concat([decipher.update(sealed.subarray(offset)), decipher.final()]);
+  } catch {
+    return null; // wrong passphrase: GCM refuses to authenticate
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -171,7 +249,7 @@ export async function createBackup(reason = "manual"): Promise<{ file: string; s
     files: ["database.db", ...uploads.map((entry) => entry.name)],
   };
 
-  const archive = gzipSync(
+  const packed = gzipSync(
     makeTar([
       { name: "manifest.json", data: Buffer.from(JSON.stringify(manifest, null, 2), "utf8") },
       { name: "database.db", data: dbBuffer },
@@ -180,11 +258,14 @@ export async function createBackup(reason = "manual"): Promise<{ file: string; s
     { level: 9 },
   );
 
+  const password = settings.backup_password?.trim();
+  const archive = password ? encryptArchive(packed, password) : packed;
+
   const stamp = new Date()
     .toISOString()
     .replace(/[:T]/g, "-")
     .replace(/\..+$/, "");
-  const name = `${BACKUP_PREFIX}${stamp}.tar.gz`;
+  const name = `${BACKUP_PREFIX}${stamp}.tar.gz${password ? ".enc" : ""}`;
 
   const dir = backupDir();
   await mkdir(/*turbopackIgnore: true*/ dir, { recursive: true });
@@ -202,7 +283,12 @@ export async function listBackups(): Promise<BackupFile[]> {
       if (!safeBackupName(name)) continue;
       const info = await stat(/*turbopackIgnore: true*/ path.join(dir, name)).catch(() => null);
       if (!info?.isFile()) continue;
-      files.push({ name, size: info.size, createdAt: info.mtime });
+      files.push({
+        name,
+        size: info.size,
+        createdAt: info.mtime,
+        encrypted: isEncryptedName(name),
+      });
     }
     return files.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   } catch {
@@ -237,7 +323,13 @@ export async function pruneBackups(keep: number): Promise<number> {
 /* -------------------------------------------------------------------------- */
 
 /** Result codes; the admin actions turn these into Persian sentences. */
-export type RestoreCode = "restored" | "corrupt" | "not-a-backup" | "failed";
+export type RestoreCode =
+  | "restored"
+  | "corrupt"
+  | "not-a-backup"
+  | "needs-password"
+  | "bad-password"
+  | "failed";
 
 export type RestoreResult = {
   ok: boolean;
@@ -259,10 +351,21 @@ function looksLikeSqlite(buffer: Buffer): boolean {
  * closed so the file can be replaced, and the WAL side files are removed so
  * the restored database is not mixed with the previous state.
  */
-export async function restoreBackup(archive: Buffer): Promise<RestoreResult> {
+export async function restoreBackup(archive: Buffer, password?: string): Promise<RestoreResult> {
+  let payload = archive;
+
+  if (isEncryptedArchive(archive)) {
+    const pass = password?.trim();
+    if (!pass) return { ok: false, code: "needs-password" };
+
+    const opened = decryptArchive(archive, pass);
+    if (!opened) return { ok: false, code: "bad-password" };
+    payload = opened;
+  }
+
   let entries: TarEntry[];
   try {
-    entries = readTar(gunzipSync(archive));
+    entries = readTar(gunzipSync(payload));
   } catch {
     return { ok: false, code: "corrupt" };
   }

@@ -591,8 +591,8 @@ try {
   check("وقتی پشتیبانی نیست هشدار داده می‌شود", backupEmpty.includes("هنوز هیچ پشتیبانی ندارید"));
 
   await admin.click("button:has-text('ساخت پشتیبان تازه')");
-  await admin.waitForSelector(".alert-success", { timeout: 60000 });
-  const created = await admin.textContent(".alert-success");
+  await admin.waitForSelector(".page-head .alert-success", { timeout: 60000 });
+  const created = await admin.textContent(".page-head .alert-success");
   check("پشتیبان ساخته شد", created.includes("پشتیبان ساخته شد"), created);
 
   await admin.reload({ waitUntil: "domcontentloaded" });
@@ -627,7 +627,7 @@ try {
   await admin.fill("#backup_interval_hours", "6");
   await admin.fill("#backup_keep", "3");
   await admin.click("button:has-text('ذخیره تنظیمات پشتیبان‌گیری')");
-  await admin.waitForSelector(".alert-success", { timeout: 20000 });
+  await admin.waitForSelector("form:has(#backup_auto) .alert-success", { timeout: 20000 });
   await admin.reload({ waitUntil: "domcontentloaded" });
   check("پشتیبان‌گیری خودکار روشن ماند", await admin.isChecked("#backup_auto"));
   check("فاصلهٔ پشتیبان‌گیری ذخیره شد", (await admin.inputValue("#backup_interval_hours")) === "6");
@@ -645,17 +645,17 @@ try {
   await admin.selectOption("#name", fileName);
   await admin.fill("#confirm", "بله");
   await admin.click("button:has-text('بازیابی')");
-  await admin.waitForSelector(".alert-error", { timeout: 20000 });
+  await admin.waitForSelector("form:has(#confirm) .alert-error", { timeout: 20000 });
   check(
     "بدون کلمهٔ تأیید، بازیابی انجام نمی‌شود",
-    (await admin.textContent(".alert-error")).includes("بازیابی"),
+    (await admin.textContent("form:has(#confirm) .alert-error")).includes("بازیابی"),
   );
 
   await admin.selectOption("#name", fileName);
   await admin.fill("#confirm", "بازیابی");
   await admin.click("button:has-text('بازیابی')");
-  await admin.waitForSelector(".alert-success", { timeout: 60000 });
-  const restored = await admin.textContent(".alert-success");
+  await admin.waitForSelector("form:has(#confirm) .alert-success", { timeout: 60000 });
+  const restored = await admin.textContent("form:has(#confirm) .alert-success");
   check("بازیابی انجام شد", restored.includes("بازیابی انجام شد"), restored);
   check("پشتیبان ایمنی هم ساخته شد", restored.includes("پشتیبان ایمنی"), restored);
 
@@ -671,6 +671,68 @@ try {
   await admin.waitForURL(/msg=/, { timeout: 20000 });
   const afterDelete = await admin.$$eval("table tbody tr", (list) => list.length);
   check("پشتیبان حذف شد", afterDelete === afterRestoreRows - 1, afterDelete);
+
+  await admin.goto(`${BASE}/admin/backup`, { waitUntil: "domcontentloaded" });
+
+  console.log("→ پشتیبان رمزگذاری‌شده");
+  await admin.fill("#backup_password", "گذرواژه-تست-۱۲۳");
+  await admin.click("button:has-text('ذخیره تنظیمات پشتیبان‌گیری')");
+  await admin.waitForSelector("form:has(#backup_auto) .alert-success", { timeout: 20000 });
+  await admin.reload({ waitUntil: "domcontentloaded" });
+  check("هشدار گذرواژه نمایش داده می‌شود", (await admin.textContent("body")).includes("قابل بازیابی نیستند"));
+
+  await admin.click("button:has-text('ساخت پشتیبان تازه')");
+  await admin.waitForSelector(".page-head .alert-success", { timeout: 60000 });
+  check(
+    "پشتیبان تازه رمزگذاری شد",
+    (await admin.textContent(".page-head .alert-success")).includes("رمزگذاری‌شده"),
+    await admin.textContent(".page-head .alert-success"),
+  );
+
+  await admin.reload({ waitUntil: "domcontentloaded" });
+  const encName = (await admin.textContent("table tbody tr:first-child .cell-main")).trim();
+  check("نام فایل رمزشده پسوند enc دارد", encName.endsWith(".tar.gz.enc"), encName);
+  check(
+    "نشان قفل در جدول دیده می‌شود",
+    (await admin.textContent("table tbody tr:first-child .cell-sub")).includes("🔒"),
+  );
+
+  const encFile = await adminCtx.request.get(`${BASE}/api/admin/backup/${encName}`);
+  const encBody = await encFile.body();
+  check("دانلود فایل رمزشده کار می‌کند", encFile.status() === 200, encFile.status());
+  check(
+    "فایل دانلودشده رمز است (نه gzip خام)",
+    encBody.subarray(0, 8).toString("utf8") === "FNDGHENC",
+    encBody.subarray(0, 8).toString("utf8"),
+  );
+
+  /** یک تلاش بازیابی از صفحهٔ تازه، تا پیام قبلی با پیام تازه قاطی نشود */
+  const tryRestore = async (name, password) => {
+    await admin.goto(`${BASE}/admin/backup`, { waitUntil: "domcontentloaded" });
+    await admin.selectOption("#name", name);
+    if (password) await admin.fill("#password", password);
+    await admin.fill("#confirm", "بازیابی");
+    await admin.click("button:has-text('بازیابی')");
+    await admin.waitForSelector("form:has(#confirm) .alert-error, form:has(#confirm) .alert-success", {
+      timeout: 60000,
+    });
+    return admin.textContent("form:has(#confirm) .alert-error, form:has(#confirm) .alert-success");
+  };
+
+  const noPass = await tryRestore(encName, "");
+  check("بازیابی فایل رمزشده بدون گذرواژه رد می‌شود", noPass.includes("رمزگذاری شده"), noPass);
+
+  const badPass = await tryRestore(encName, "گذرواژه-غلط");
+  check("گذرواژهٔ غلط پذیرفته نمی‌شود", badPass.includes("گذرواژه درست نیست"), badPass);
+
+  const goodPass = await tryRestore(encName, "گذرواژه-تست-۱۲۳");
+  check("بازیابی با گذرواژهٔ درست انجام شد", goodPass.includes("بازیابی انجام شد"), goodPass);
+
+  // گذرواژه را برای بقیهٔ تست‌ها برمی‌داریم
+  await admin.goto(`${BASE}/admin/backup`, { waitUntil: "domcontentloaded" });
+  await admin.fill("#backup_password", "");
+  await admin.click("button:has-text('ذخیره تنظیمات پشتیبان‌گیری')");
+  await admin.waitForSelector("form:has(#backup_auto) .alert-success", { timeout: 20000 });
 
   console.log("→ تیکت پشتیبانی");
   await user.goto(`${BASE}/dashboard/tickets`, { waitUntil: "domcontentloaded" });

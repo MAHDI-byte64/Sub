@@ -60,6 +60,9 @@ import {
 import {
   autoBackupDue,
   createBackup,
+  decryptArchive,
+  encryptArchive,
+  isEncryptedArchive,
   deleteBackup,
   listBackups,
   makeTar,
@@ -1532,6 +1535,62 @@ async function backupScenario() {
   await saveSettings({ backup_last_at: "0", monitor_enabled: "0" });
   const tick = await runMaintenance();
   check("چرخهٔ کارهای پس‌زمینه پشتیبان ساخت", Boolean(tick.backup), tick.backup);
+
+  /* ۱۱) رمزگذاری با گذرواژه */
+  const plain = gzipSync(makeTar([{ name: "database.db", data: Buffer.from("SQLite format 3\u0000rest") }]));
+  const sealed = encryptArchive(plain, "رمز-تست ۱۲۳");
+  check("فایل رمزشده نشانهٔ خودش را دارد", isEncryptedArchive(sealed));
+  check("فایل رمزنشده نشانهٔ رمز ندارد", !isEncryptedArchive(plain));
+  check("رمزشده با اصل فرق دارد", !sealed.equals(plain));
+  check(
+    "با گذرواژهٔ درست دقیقاً همان فایل برمی‌گردد",
+    decryptArchive(sealed, "رمز-تست ۱۲۳")?.equals(plain) === true,
+  );
+  check("با گذرواژهٔ غلط باز نمی‌شود", decryptArchive(sealed, "رمز-غلط") === null);
+  check(
+    "دست‌کاری فایل رمزشده لو می‌رود",
+    decryptArchive(
+      Buffer.concat([sealed.subarray(0, sealed.length - 1), Buffer.from([sealed[sealed.length - 1] ^ 0xff])]),
+      "رمز-تست ۱۲۳",
+    ) === null,
+  );
+  check("هر بار نمک و بردار تازه است", !encryptArchive(plain, "x").equals(encryptArchive(plain, "x")));
+
+  await saveSettings({ backup_password: "گذرواژهٔ فروشگاه ۹۹" });
+  await saveSettings({ site_name: "فندق رمزدار" });
+  const encBackup = await createBackup("تست رمزگذاری");
+  check("نام فایل رمزشده پسوند enc دارد", encBackup.file.endsWith(".tar.gz.enc"), encBackup.file);
+  check(
+    "فایل رمزشده در فهرست با نشان رمز می‌آید",
+    (await listBackups()).find((f) => f.name === encBackup.file)?.encrypted === true,
+  );
+  check("محتوای روی دیسک رمز است", isEncryptedArchive((await readBackup(encBackup.file))!));
+
+  const needsPass = await restoreBackup((await readBackup(encBackup.file))!);
+  check("بازیابی بدون گذرواژه رد می‌شود", needsPass.code === "needs-password", needsPass);
+
+  const wrongPass = await restoreBackup((await readBackup(encBackup.file))!, "یک چیز دیگر");
+  check("بازیابی با گذرواژهٔ غلط رد می‌شود", wrongPass.code === "bad-password", wrongPass);
+
+  await saveSettings({ site_name: "عوض شد دوباره" });
+  const withPass = await restoreBackup((await readBackup(encBackup.file))!, "گذرواژهٔ فروشگاه ۹۹");
+  check("بازیابی با گذرواژهٔ درست انجام می‌شود", withPass.ok && withPass.code === "restored", withPass);
+  check(
+    "دادهٔ داخل پشتیبان رمزشده درست برگشت",
+    (await getSettings()).site_name === "فندق رمزدار",
+    (await getSettings()).site_name,
+  );
+
+  await saveSettings({ backup_password: "" });
+  const backToPlain = await createBackup("بدون رمز");
+  check("با خالی‌کردن گذرواژه، پشتیبان تازه رمز ندارد", !backToPlain.file.endsWith(".enc"), backToPlain.file);
+  check(
+    "پشتیبان رمزنشده بدون گذرواژه بازیابی می‌شود",
+    (await restoreBackup((await readBackup(backToPlain.file))!)).ok,
+  );
+
+  check("نام فایل enc معتبر است", safeBackupName("fandogh-backup-2026-01-01-00-00-00.tar.gz.enc") !== null);
+  check("پسوند ناشناس رد می‌شود", safeBackupName("fandogh-backup-x.tar.gz.exe") === null);
 
   await rm(dir, { recursive: true, force: true });
   delete process.env.BACKUP_DIR;
