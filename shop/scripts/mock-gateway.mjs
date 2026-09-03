@@ -69,11 +69,12 @@ const server = http.createServer(async (req, res) => {
     }
     const failed = url.searchParams.get("fail") === "1";
     record.paid = !failed;
-    if (!record.callback) {
+    const backTo = record.returnUrl || record.callback;
+    if (!backTo) {
       res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
       return res.end(failed ? "پرداخت ناموفق" : "پرداخت انجام شد");
     }
-    const back = new URL(record.callback);
+    const back = new URL(backTo);
     back.searchParams.set("token", token);
     back.searchParams.set("status", failed ? "0" : "1");
     res.writeHead(302, { Location: back.toString() });
@@ -112,6 +113,8 @@ const server = http.createServer(async (req, res) => {
       payable,
       orderId: String(body.order_id || ""),
       callback: String(body.callback_url || ""),
+      // هوش‌پی کاربر را به return_url برمی‌گرداند و وب‌هوک را به callback_url می‌زند
+      returnUrl: String(body.return_url || ""),
       feeMode: String(body.fee_mode || "seller"),
       paid: false,
       verified: false,

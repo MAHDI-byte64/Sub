@@ -4,6 +4,7 @@
  * اجرا: bash scripts/ui-test.sh
  */
 import { chromium } from "playwright-core";
+import { createHmac } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -245,6 +246,79 @@ try {
   await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
   const services = await user.locator(".svc").count();
   check("سرویس دوم با پرداخت آنلاین تحویل شد", services >= 2, services);
+
+  console.log("→ وب‌هوک هوش‌پی");
+  const HP_SECRET = "hp-secret-uitest";
+  await admin.goto(`${BASE}/admin/payments`, { waitUntil: "domcontentloaded" });
+  await admin.selectOption("#driver", "hooshpay");
+  await admin.fill("#label", "هوش‌پی تست");
+  await admin.fill("#apiKey", GATEWAY_KEY);
+  await admin.fill("#apiSecret", HP_SECRET);
+  await admin.fill("#minAmount", "1000");
+  await admin.fill("#sortOrder", "5");
+  await admin.click("button:has-text('افزودن درگاه')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 20000 });
+  check("درگاه هوش‌پی ساخته شد", true);
+
+  const sign = (payload) => {
+    const sorted = Object.keys(payload)
+      .sort()
+      .reduce((acc, key) => ({ ...acc, [key]: payload[key] }), {});
+    return createHmac("sha256", HP_SECRET).update(JSON.stringify(sorted)).digest("hex");
+  };
+
+  // امضای غلط باید رد شود
+  const forged = { event: "payment.success", invoice: "inv_fake", order_id: "FD-NOPE", amount: 1000 };
+  const badRes = await guest.request.post(`${BASE}/api/pay/hooshpay/FD-NOPE`, {
+    headers: { "X-HooshPay-Signature": "0".repeat(64), "Content-Type": "application/json" },
+    data: forged,
+  });
+  check("وب‌هوک با سفارش ناموجود رد می‌شود", badRes.status() === 404, badRes.status());
+
+  // خرید واقعی با هوش‌پی: مسیر بازگشت کاربر
+  await user.goto(`${BASE}/plans`, { waitUntil: "domcontentloaded" });
+  await Promise.all([user.waitForURL("**/checkout**"), user.click("a:has-text('خرید این پلن')")]);
+  check("درگاه هوش‌پی در صفحه خرید دیده می‌شود", await user.isVisible("text=هوش‌پی تست"));
+  await user.click("button:has-text('هوش‌پی تست')");
+  await Promise.all([
+    user.waitForURL(/dashboard\/orders\/FD-/, { timeout: 40000 }),
+    user.click("button:has-text('پرداخت آنلاین و دریافت آنی')"),
+  ]);
+  const hpBody = (await user.textContent("body")) ?? "";
+  check("سفارش هوش‌پی تأیید شد", hpBody.includes("تأیید شده"), hpBody.slice(0, 100));
+  check("کد رهگیری هوش‌پی ثبت شد", hpBody.includes("HP-FD-"), hpBody.match(/HP-FD-\w+/)?.[0]);
+
+  // امضای درست روی سفارشی که همین حالا تکمیل شده: باید بدون خطا «قبلاً انجام شده» بگیرد
+  const paidCode = (user.url().match(/FD-[A-Z0-9]+/) ?? [""])[0];
+  const okPayload = { event: "payment.success", invoice: "inv_x", order_id: paidCode, status: "paid" };
+  const okRes = await guest.request.post(`${BASE}/api/pay/hooshpay`, {
+    headers: { "X-HooshPay-Signature": sign(okPayload), "Content-Type": "application/json" },
+    data: okPayload,
+  });
+  const okJson = await okRes.json();
+  check("وب‌هوک پیش‌فرض (بدون کد سفارش) سفارش را پیدا می‌کند", okRes.ok() && okJson.already === true, okJson);
+
+  // امضای جعلی روی یک سفارش پرداخت‌نشده باید رد شود
+  await user.goto(`${BASE}/plans`, { waitUntil: "domcontentloaded" });
+  await Promise.all([user.waitForURL("**/checkout**"), user.click("a:has-text('خرید این پلن')")]);
+  await user.click("button:has-text('💳 کارت‌به‌کارت')");
+  await Promise.all([
+    user.waitForURL(/dashboard\/orders\/FD-/, { timeout: 30000 }),
+    user.click("button:has-text('ثبت سفارش و رفتن به پرداخت')"),
+  ]);
+  const pendingCode = (user.url().match(/FD-[A-Z0-9]+/) ?? [""])[0];
+
+  const forgedRes = await guest.request.post(`${BASE}/api/pay/hooshpay/${pendingCode}`, {
+    headers: { "X-HooshPay-Signature": "1".repeat(64), "Content-Type": "application/json" },
+    data: { event: "payment.success", invoice: "inv_forged", order_id: pendingCode, amount: 1 },
+  });
+  check("امضای جعلی روی سفارش پرداخت‌نشده رد می‌شود", forgedRes.status() === 401, forgedRes.status());
+
+  await user.goto(`${BASE}/dashboard/orders/${pendingCode}`, { waitUntil: "domcontentloaded" });
+  check(
+    "سفارش با وب‌هوک جعلی تأیید نشد",
+    !(await user.textContent("body")).includes("تأیید شده"),
+  );
 
   console.log("→ پرداخت با تتر (TRC20)");
   await admin.goto(`${BASE}/admin/payments`, { waitUntil: "domcontentloaded" });
