@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { deletePanelAction, savePanelAction, testPanelAction } from "@/app/actions/admin";
+import { deletePanelAction, savePanelAction, testAllPanelsAction, testPanelAction } from "@/app/actions/admin";
 import { faDate, faNum } from "@/lib/format";
 import ActionForm from "@/components/ActionForm";
 import Flash from "@/components/Flash";
+import { requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,8 @@ export default async function AdminPanelsPage({
 }: {
   searchParams: Promise<{ edit?: string; msg?: string; type?: string }>;
 }) {
+  await requireAdmin();
+
   const { edit, msg, type } = await searchParams;
   const [panels, editing, counts] = await Promise.all([
     db.panel.findMany({ orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
@@ -27,11 +30,19 @@ export default async function AdminPanelsPage({
           <h1>سرورها (پنل 3x-ui)</h1>
           <p>هر سرور یک پنل 3x-ui است؛ کلاینت‌ها از روی «کلاینت الگو» ساخته می‌شوند.</p>
         </div>
-        {editing ? (
-          <Link className="btn btn-sm" href="/admin/panels">
-            + افزودن سرور جدید
-          </Link>
-        ) : null}
+        <div className="btn-row">
+          <ActionForm
+            action={testAllPanelsAction}
+            submitLabel="🔌 تست همه سرورها"
+            buttonClass="btn btn-sm"
+            inline
+          />
+          {editing ? (
+            <Link className="btn btn-sm" href="/admin/panels">
+              + افزودن سرور جدید
+            </Link>
+          ) : null}
+        </div>
       </div>
 
       <Flash msg={msg} type={type} />

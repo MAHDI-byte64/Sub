@@ -13,13 +13,13 @@ const ALLOWED = new Map<string, string>([
 const MAX_BYTES = 6 * 1024 * 1024;
 
 export function uploadDir(): string {
-  return path.resolve(process.env.UPLOAD_DIR || "./data/uploads");
+  return path.resolve(/*turbopackIgnore: true*/ process.env.UPLOAD_DIR || "./data/uploads");
 }
 
 export function uploadPath(fileName: string): string {
   // جلوگیری از path traversal
   const safe = path.basename(fileName);
-  return path.join(uploadDir(), safe);
+  return path.join(/*turbopackIgnore: true*/ uploadDir(), safe);
 }
 
 export async function saveReceipt(file: File): Promise<{ ok: true; fileName: string } | { ok: false; error: string }> {

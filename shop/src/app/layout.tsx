@@ -1,9 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { getSettings } from "@/lib/settings";
+import { getLocale } from "@/lib/locale";
+import { dirOf } from "@/lib/i18n";
 import BackgroundFX from "@/components/BackgroundFX";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
+import PwaBoot from "@/components/PwaBoot";
 
 export async function generateMetadata(): Promise<Metadata> {
   const s = await getSettings();
@@ -14,6 +17,12 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     description: s.site_description,
     robots: { index: true, follow: true },
+    applicationName: s.site_name,
+    appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: s.site_name },
+    icons: {
+      icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+      apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+    },
   };
 }
 
@@ -23,9 +32,10 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const locale = await getLocale();
   return (
-    <html lang="fa" dir="rtl">
+    <html lang={locale} dir={dirOf(locale)}>
       <head>
         <link
           rel="preload"
@@ -37,6 +47,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <BackgroundFX />
+        <PwaBoot />
         <SiteHeader />
         <main>{children}</main>
         <SiteFooter />

@@ -4,6 +4,7 @@ import { deleteDiscountAction, saveDiscountAction } from "@/app/actions/admin";
 import { faDate, faNum, toman } from "@/lib/format";
 import ActionForm from "@/components/ActionForm";
 import Flash from "@/components/Flash";
+import { requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,8 @@ export default async function AdminDiscountsPage({
 }: {
   searchParams: Promise<{ edit?: string; msg?: string; type?: string }>;
 }) {
+  await requireAdmin();
+
   const { edit, msg, type } = await searchParams;
   const [discounts, editing] = await Promise.all([
     db.discount.findMany({ orderBy: { createdAt: "desc" } }),

@@ -159,6 +159,7 @@ PORT=3000
 APP_PORT=${APP_PORT}
 BIND_ADDR=${BIND_ADDR}
 UPLOAD_DIR="/app/data/uploads"
+BACKUP_DIR="/app/data/backups"
 ENVFILE
   chmod 600 "${APP_DIR}/.env"
   ok "فایل .env ساخته شد"
@@ -385,10 +386,11 @@ run_node() {
   npm ci --no-audit --no-fund
   info "ساخت نسخه production"
   sed -i 's#UPLOAD_DIR="/app/data/uploads"#UPLOAD_DIR="./data/uploads"#' .env
+  sed -i 's#BACKUP_DIR="/app/data/backups"#BACKUP_DIR="./data/backups"#' .env
   npm run build
   npx prisma db push --skip-generate
   npx prisma db seed || true
-  mkdir -p data/uploads
+  mkdir -p data/uploads data/backups
 
   local npm_bin
   npm_bin="$(command -v npm)"

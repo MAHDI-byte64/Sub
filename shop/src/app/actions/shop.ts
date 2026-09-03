@@ -8,7 +8,11 @@ import { getCurrentUser } from "@/lib/auth";
 import { saveReceipt } from "@/lib/uploads";
 import { notifyAdmin } from "@/lib/telegram";
 import { asBool, asNum, getSettings } from "@/lib/settings";
-import { createTrialService } from "@/lib/provision";
+import { createTrialService, fulfillOrder, rotateCooldownLeft, rotateService } from "@/lib/provision";
+import { availableMethods, gatewayById, pickWallet, quoteCrypto } from "@/lib/payments";
+import { creditWallet, debitWallet, WalletError } from "@/lib/wallet";
+import { notifyUser } from "@/lib/notify";
+import { payReferralBonus } from "@/lib/referral";
 import { toman } from "@/lib/format";
 
 export type ShopState = { error?: string; success?: string };
@@ -74,8 +78,12 @@ export async function createOrderAction(_prev: ShopState, formData: FormData): P
   const renewServiceId = String(formData.get("renewServiceId") || "") || null;
   const code = String(formData.get("discountCode") || "");
 
-  const plan = await db.plan.findFirst({ where: { id: planId, isActive: true } });
+  const plan = await db.plan.findFirst({
+    where: { id: planId, isActive: true },
+    include: { panels: true },
+  });
   if (!plan) return { error: "پلن انتخابی در دسترس نیست." };
+  const allowedPanels = plan.panels.map((p) => p.id);
 
   if (renewServiceId) {
     const service = await db.service.findFirst({ where: { id: renewServiceId, userId: user.id } });
@@ -85,6 +93,9 @@ export async function createOrderAction(_prev: ShopState, formData: FormData): P
   if (panelId) {
     const panel = await db.panel.findFirst({ where: { id: panelId, isActive: true } });
     if (!panel) return { error: "سرور انتخابی در دسترس نیست." };
+    if (allowedPanels.length && !allowedPanels.includes(panelId)) {
+      return { error: "این پلن روی سرور انتخابی ارائه نمی‌شود." };
+    }
   }
 
   let discountId: string | null = null;
@@ -98,21 +109,107 @@ export async function createOrderAction(_prev: ShopState, formData: FormData): P
     }
   }
 
+  const payable = Math.max(0, plan.priceToman - discountAmount);
+  const settings = await getSettings();
+  const method = String(formData.get("payMethod") || "");
+  const methods = await availableMethods(payable);
+
+  const useWallet = method === "wallet";
+  const useCrypto = method === "crypto";
+  const gatewayChoice = method.startsWith("online:") ? method.slice("online:".length) : null;
+
+  if (useWallet && !methods.wallet) return { error: "پرداخت از کیف پول فعال نیست." };
+  if (useCrypto && !methods.crypto) {
+    return { error: "پرداخت با ارز دیجیتال در حال حاضر فعال نیست." };
+  }
+  if (gatewayChoice && !methods.gateways.some((g) => g.id === gatewayChoice)) {
+    return { error: "این درگاه پرداخت در دسترس نیست. روش دیگری انتخاب کنید." };
+  }
+  if (!useWallet && !useCrypto && !gatewayChoice && !methods.card) {
+    return { error: "پرداخت کارت‌به‌کارت فعال نیست. یکی از روش‌های دیگر را انتخاب کنید." };
+  }
+
+  // پرداخت تتری: مبلغ و نرخ همان لحظه قفل می‌شوند تا نوسان قیمت مشکلی نسازد
+  const crypto = useCrypto ? await quoteCrypto(payable) : null;
+  const wallet = useCrypto ? await pickWallet() : null;
+  if (useCrypto && (!crypto?.amount || !wallet)) {
+    return { error: "آدرس کیف پول ارز دیجیتال تنظیم نشده است. با پشتیبانی تماس بگیرید." };
+  }
+
   const orderCode = await newOrderCode();
-  await db.order.create({
+  const order = await db.order.create({
     data: {
       code: orderCode,
       userId: user.id,
+      kind: "plan",
+      payMethod: useWallet ? "wallet" : gatewayChoice ? "online" : useCrypto ? "crypto" : "card",
+      gatewayId: gatewayChoice,
       planId: plan.id,
       panelId,
       renewServiceId,
       amount: plan.priceToman,
       discountId,
       discountAmount,
-      payable: Math.max(0, plan.priceToman - discountAmount),
-      status: "awaiting_receipt",
+      payable,
+      status: gatewayChoice ? "awaiting_payment" : "awaiting_receipt",
+      ...(useCrypto && crypto && wallet
+        ? {
+            cryptoAmount: crypto.amount,
+            cryptoRate: crypto.rate,
+            cryptoAddress: wallet.address,
+            cryptoNetwork: `${wallet.symbol}-${wallet.network.toUpperCase()}`,
+          }
+        : {}),
     },
   });
+
+  // پرداخت با درگاه: کاربر مستقیم به صفحهٔ بانک می‌رود
+  if (gatewayChoice) redirect(`/pay/${orderCode}`);
+
+  // پرداخت آنی از کیف پول: بدون رسید و بدون انتظار
+  if (useWallet && asBool(settings.wallet_enabled)) {
+    const wallet = await db.user.findUniqueOrThrow({ where: { id: user.id } });
+    if (wallet.balance < payable) {
+      await db.order.update({ where: { id: order.id }, data: { status: "canceled" } });
+      return { error: "موجودی کیف پول کافی نیست. ابتدا حساب خود را شارژ کنید." };
+    }
+
+    try {
+      await debitWallet(user.id, payable, renewServiceId ? "renew" : "purchase", plan.title, order.id);
+      await db.order.update({
+        where: { id: order.id },
+        data: { status: "pending_review", paidAt: new Date() },
+      });
+      await fulfillOrder(order.id);
+      if (discountId) {
+        await db.discount.update({ where: { id: discountId }, data: { usedCount: { increment: 1 } } });
+      }
+      await payReferralBonus(user.id, payable);
+      await notifyUser({
+        userId: user.id,
+        kind: "order_approved",
+        title: "سرویس شما آماده است",
+        body: `${plan.title} با پرداخت از کیف پول فعال شد.`,
+        href: "/dashboard",
+      });
+      await notifyAdmin(
+        `💰 خرید آنی از کیف پول\nکاربر: ${user.email}\nپلن: ${plan.title}\nمبلغ: ${toman(payable)}`,
+        "order",
+      );
+    } catch (err) {
+      // در صورت خطا مبلغ برمی‌گردد تا کاربر ضرر نکند
+      await creditWallet(user.id, payable, "refund", `بازگشت وجه سفارش ${orderCode}`, order.id).catch(() => null);
+      await db.order.update({
+        where: { id: order.id },
+        data: { status: "failed", adminNote: (err as Error).message.slice(0, 300) },
+      });
+      return {
+        error: `تحویل سرویس ناموفق بود و مبلغ به کیف پول شما برگشت. لطفاً با پشتیبانی تماس بگیرید. (${(err as Error).message})`,
+      };
+    }
+
+    redirect(`/dashboard?paid=${orderCode}`);
+  }
 
   redirect(`/dashboard/orders/${orderCode}`);
 }
@@ -167,7 +264,7 @@ export async function uploadReceiptAction(_prev: ShopState, formData: FormData):
       "🧾 <b>رسید پرداخت جدید</b>",
       `کد سفارش: <code>${order.code}</code>`,
       `کاربر: ${user.email}`,
-      `پلن: ${order.plan.title}`,
+      `پلن: ${order.plan?.title ?? "شارژ کیف پول"}`,
       `مبلغ: ${toman(order.payable)}`,
       ref ? `کد پیگیری: ${ref}` : "",
     ]
@@ -213,4 +310,194 @@ export async function requestTrialAction(_prev: ShopState, formData: FormData): 
   await notifyAdmin(`🎁 اکانت تست رایگان برای ${user.email} ساخته شد.`, "system");
   revalidatePath("/dashboard");
   return { success: "اکانت تست شما ساخته شد. در بخش سرویس‌ها آن را ببینید." };
+}
+
+/* ---------------------------- کیف پول و دعوت ---------------------------- */
+
+/** ثبت سفارش شارژ کیف پول (کارت‌به‌کارت) */
+export async function createTopupAction(_prev: ShopState, formData: FormData): Promise<ShopState> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login?next=%2Fdashboard%2Fwallet");
+
+  const settings = await getSettings();
+  if (!asBool(settings.wallet_enabled)) return { error: "کیف پول در حال حاضر غیرفعال است." };
+
+  const amount = Number(formData.get("amount") || 0);
+  const min = asNum(settings.min_topup, 50_000);
+  if (!Number.isFinite(amount) || amount < min) {
+    return { error: `حداقل مبلغ شارژ ${toman(min)} است.` };
+  }
+
+  const method = String(formData.get("payMethod") || "");
+  const methods = await availableMethods(Math.round(amount));
+  const useCrypto = method === "crypto";
+  const gatewayChoice = method.startsWith("online:") ? method.slice("online:".length) : null;
+
+  if (gatewayChoice && !methods.gateways.some((g) => g.id === gatewayChoice)) {
+    return { error: "این درگاه پرداخت در دسترس نیست." };
+  }
+  if (useCrypto && !methods.crypto) return { error: "پرداخت با ارز دیجیتال فعال نیست." };
+  if (!gatewayChoice && !useCrypto && !methods.card) {
+    return { error: "برای شارژ، یکی از روش‌های پرداخت فعال را انتخاب کنید." };
+  }
+
+  const crypto = useCrypto ? await quoteCrypto(Math.round(amount)) : null;
+  const wallet = useCrypto ? await pickWallet() : null;
+  if (useCrypto && (!crypto?.amount || !wallet)) {
+    return { error: "آدرس کیف پول ارز دیجیتال تنظیم نشده است." };
+  }
+
+  const code = await newOrderCode();
+  await db.order.create({
+    data: {
+      code,
+      userId: user.id,
+      kind: "topup",
+      payMethod: gatewayChoice ? "online" : useCrypto ? "crypto" : "card",
+      gatewayId: gatewayChoice,
+      amount: Math.round(amount),
+      payable: Math.round(amount),
+      status: gatewayChoice ? "awaiting_payment" : "awaiting_receipt",
+      ...(useCrypto && crypto && wallet
+        ? {
+            cryptoAmount: crypto.amount,
+            cryptoRate: crypto.rate,
+            cryptoAddress: wallet.address,
+            cryptoNetwork: `${wallet.symbol}-${wallet.network.toUpperCase()}`,
+          }
+        : {}),
+    },
+  });
+
+  redirect(gatewayChoice ? `/pay/${code}` : `/dashboard/orders/${code}`);
+}
+
+/** ثبت هش تراکنش ارز دیجیتال توسط مشتری */
+export async function submitTxHashAction(_prev: ShopState, formData: FormData): Promise<ShopState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "ابتدا وارد حساب خود شوید." };
+
+  const code = String(formData.get("code") || "");
+  const hash = String(formData.get("txHash") || "").trim();
+
+  const order = await db.order.findFirst({ where: { code, userId: user.id } });
+  if (!order) return { error: "سفارش پیدا نشد." };
+  if (order.payMethod !== "crypto") return { error: "این سفارش پرداخت ارز دیجیتال نیست." };
+  if (order.status === "approved") return { error: "این سفارش قبلاً تکمیل شده است." };
+  if (hash.length < 20 || /\s/.test(hash)) {
+    return { error: "هش تراکنش معتبر نیست. کد TXID را کامل و بدون فاصله وارد کنید." };
+  }
+
+  const duplicate = await db.order.findFirst({
+    where: { cryptoTxHash: hash, NOT: { id: order.id } },
+  });
+  if (duplicate) return { error: "این هش تراکنش قبلاً برای سفارش دیگری ثبت شده است." };
+
+  await db.order.update({
+    where: { id: order.id },
+    data: { cryptoTxHash: hash, status: "pending_review", paidAt: new Date() },
+  });
+
+  await notifyAdmin(
+    `🪙 پرداخت تتری در انتظار بررسی\nسفارش: ${order.code}\nکاربر: ${user.email}\n` +
+      `مبلغ: ${toman(order.payable)} (${order.cryptoAmount ?? 0} USDT)\nهش: ${hash}`,
+    "order",
+  );
+  revalidatePath(`/dashboard/orders/${code}`);
+  return { success: "هش تراکنش ثبت شد. بعد از بررسی، سرویس شما تحویل داده می‌شود." };
+}
+
+/** روشن/خاموش کردن تمدید خودکار یک سرویس */
+export async function toggleAutoRenewAction(_prev: ShopState, formData: FormData): Promise<ShopState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "ابتدا وارد حساب خود شوید." };
+
+  const settings = await getSettings();
+  if (!asBool(settings.auto_renew_enabled)) return { error: "تمدید خودکار غیرفعال است." };
+
+  const id = String(formData.get("serviceId") || "");
+  const service = await db.service.findFirst({ where: { id, userId: user.id } });
+  if (!service) return { error: "سرویس پیدا نشد." };
+  if (!service.planId) return { error: "این سرویس پلن مشخصی ندارد و قابل تمدید خودکار نیست." };
+
+  await db.service.update({ where: { id: service.id }, data: { autoRenew: !service.autoRenew } });
+  revalidatePath("/dashboard");
+  return {
+    success: service.autoRenew
+      ? "تمدید خودکار خاموش شد."
+      : "تمدید خودکار روشن شد؛ در زمان انقضا از کیف پول تمدید می‌شود.",
+  };
+}
+
+/**
+ * بازتولید کانفیگ سرویس: UUID و لینک اشتراک عوض می‌شوند تا هر دستگاهی که
+ * کانفیگ قدیمی را دارد قطع شود. حجم، اعتبار و مصرف دست‌نخورده می‌مانند.
+ */
+export async function rotateServiceAction(_prev: ShopState, formData: FormData): Promise<ShopState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "ابتدا وارد حساب خود شوید." };
+
+  const settings = await getSettings();
+  if (!asBool(settings.rotate_enabled)) {
+    return { error: "بازتولید کانفیگ در حال حاضر غیرفعال است. با پشتیبانی تماس بگیرید." };
+  }
+
+  const id = String(formData.get("serviceId") || "");
+  const service = await db.service.findFirst({ where: { id, userId: user.id } });
+  if (!service) return { error: "سرویس پیدا نشد." };
+  if (service.status === "expired") {
+    return { error: "این سرویس منقضی شده است؛ ابتدا آن را تمدید کنید." };
+  }
+
+  const cooldownMs = Math.max(0, asNum(settings.rotate_cooldown_minutes, 30)) * 60_000;
+  const waitMs = rotateCooldownLeft(service, cooldownMs);
+  if (waitMs > 0) {
+    const minutes = Math.max(1, Math.ceil(waitMs / 60_000));
+    return {
+      error: `به‌تازگی کانفیگ این سرویس بازتولید شده است. ${minutes} دقیقه دیگر دوباره امتحان کنید.`,
+    };
+  }
+
+  try {
+    const { failed } = await rotateService(service.id);
+    await notifyUser({
+      userId: user.id,
+      kind: "rotated",
+      title: "کانفیگ سرویس بازتولید شد",
+      body: "لینک اشتراک و شناسه اتصال عوض شد. لینک تازه را در برنامه جایگزین کنید؛ دستگاه‌های قبلی دیگر وصل نمی‌شوند.",
+      href: `/dashboard/services/${service.id}`,
+      serviceId: service.id,
+    });
+    revalidatePath("/dashboard");
+    revalidatePath(`/dashboard/services/${service.id}`);
+
+    if (failed.length) {
+      return {
+        success:
+          "کانفیگ بازتولید شد، اما یکی از سرورها به‌روزرسانی نشد. اگر بخشی از کانفیگ‌ها کار نکرد، به پشتیبانی اطلاع دهید.",
+      };
+    }
+    return {
+      success: "کانفیگ تازه ساخته شد. لینک اشتراک جدید را در برنامه جایگزین کنید؛ لینک قبلی دیگر کار نمی‌کند.",
+    };
+  } catch (err) {
+    return { error: `بازتولید کانفیگ ناموفق بود: ${(err as Error).message}` };
+  }
+}
+
+/** خوانده‌شدن همه اعلان‌ها */
+export async function markNotificationsReadAction(
+  _prev?: ShopState,
+  _formData?: FormData,
+): Promise<ShopState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "ابتدا وارد حساب خود شوید." };
+
+  await db.notification.updateMany({
+    where: { userId: user.id, readAt: null },
+    data: { readAt: new Date() },
+  });
+  revalidatePath("/dashboard/notifications");
+  revalidatePath("/", "layout");
+  return { success: "همه اعلان‌ها خوانده شد." };
 }

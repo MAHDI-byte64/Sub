@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { approveOrderAction, rejectOrderAction } from "@/app/actions/admin";
+import { requireStaff } from "@/lib/auth";
 import { faDate, faNum, toman } from "@/lib/format";
 import { ORDER_STATUS } from "@/lib/status";
 import ActionForm from "@/components/ActionForm";
@@ -19,14 +20,28 @@ const FILTERS = [
 export default async function AdminOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; msg?: string; type?: string }>;
+  searchParams: Promise<{ status?: string; q?: string; msg?: string; type?: string }>;
 }) {
-  const { status: statusParam, msg, type } = await searchParams;
+  const isAdmin = (await requireStaff()).role === "admin";
+
+  const { status: statusParam, q, msg, type } = await searchParams;
   const status = statusParam || "pending_review";
+  const search = (q ?? "").trim();
 
   const [orders, pendingCount, approvedAgg, todayAgg] = await Promise.all([
     db.order.findMany({
-      where: status === "all" ? {} : { status },
+      where: {
+        ...(status === "all" ? {} : { status }),
+        ...(search
+          ? {
+              OR: [
+                { code: { contains: search } },
+                { user: { email: { contains: search } } },
+                { receiptRef: { contains: search } },
+              ],
+            }
+          : {}),
+      },
       include: { user: true, plan: true, panel: true, service: true },
       orderBy: { createdAt: "desc" },
       take: 100,
@@ -69,6 +84,24 @@ export default async function AdminOrdersPage({
         </div>
       </div>
 
+      <div className="card" style={{ marginBottom: 14 }}>
+        <form style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input type="hidden" name="status" value={status} />
+          <input
+            name="q"
+            defaultValue={search}
+            placeholder="جستجوی کد سفارش، ایمیل یا کد پیگیری…"
+            style={{ flex: 1, minWidth: 200 }}
+          />
+          <button className="btn btn-sm btn-primary" type="submit">
+            جستجو
+          </button>
+          <a className="btn btn-sm" href="/api/admin/export/orders">
+            ⬇ خروجی CSV
+          </a>
+        </form>
+      </div>
+
       <div className="tabs">
         {FILTERS.map((f) => (
           <Link key={f.key} href={`/admin/orders?status=${f.key}`} className={status === f.key ? "active" : ""}>
@@ -85,7 +118,7 @@ export default async function AdminOrdersPage({
               <div className="card" key={order.id}>
                 <div className="card-title">
                   <h3>
-                    <span className="mono">{order.code}</span> — {order.plan.title}
+                    <span className="mono">{order.code}</span> — {order.plan?.title ?? "شارژ کیف پول"}
                     {order.renewServiceId ? <span className="badge" style={{ marginInlineStart: 6 }}>تمدید</span> : null}
                   </h3>
                   <span className={`badge ${badge.badge}`}>{badge.label}</span>
@@ -115,8 +148,59 @@ export default async function AdminOrdersPage({
                           <td>{order.panel ? `${order.panel.flag} ${order.panel.location}` : "انتخاب خودکار"}</td>
                         </tr>
                         <tr>
+                          <th>روش پرداخت</th>
+                          <td>
+                            {order.payMethod === "online"
+                              ? `🏦 درگاه آنلاین${order.gateway ? ` (${order.gateway})` : ""}`
+                              : order.payMethod === "wallet"
+                                ? "💰 کیف پول"
+                                : order.payMethod === "crypto"
+                                  ? `🪙 ${order.cryptoNetwork ?? "تتر"}`
+                                  : "💳 کارت‌به‌کارت"}
+                          </td>
+                        </tr>
+                        {order.payMethod === "crypto" ? (
+                          <>
+                            <tr>
+                              <th>مبلغ تتری</th>
+                              <td className="mono ltr">
+                                {(order.cryptoAmount ?? 0).toFixed(2)} USDT
+                                {order.cryptoRate ? (
+                                  <span className="cell-sub">نرخ {toman(order.cryptoRate)}</span>
+                                ) : null}
+                              </td>
+                            </tr>
+                            <tr>
+                              <th>آدرس دریافت</th>
+                              <td className="mono ltr" style={{ overflowWrap: "anywhere" }}>
+                                {order.cryptoAddress ?? "—"}
+                              </td>
+                            </tr>
+                            <tr>
+                              <th>هش تراکنش</th>
+                              <td className="mono ltr" style={{ overflowWrap: "anywhere" }}>
+                                {order.cryptoTxHash ? (
+                                  <a
+                                    href={`https://tronscan.org/#/transaction/${order.cryptoTxHash}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    {order.cryptoTxHash}
+                                  </a>
+                                ) : (
+                                  "هنوز ثبت نشده"
+                                )}
+                              </td>
+                            </tr>
+                          </>
+                        ) : null}
+                        <tr>
                           <th>کد پیگیری</th>
-                          <td className="mono">{order.receiptRef || "—"}</td>
+                          <td className="mono">
+                            {order.payMethod === "online"
+                              ? order.bankRef || order.gatewayRef || "—"
+                              : order.receiptRef || "—"}
+                          </td>
                         </tr>
                         <tr>
                           <th>تاریخ ثبت</th>
@@ -163,6 +247,10 @@ export default async function AdminOrdersPage({
                       سفارش تمدید با موفقیت اعمال شد.
                     </div>
                   )
+                ) : !isAdmin ? (
+                  <div className="alert alert-warn" style={{ marginTop: 12 }}>
+                    تأیید یا رد سفارش کار مدیر است؛ این حساب دسترسی مالی ندارد.
+                  </div>
                 ) : (
                   <div className="grid grid-2" style={{ marginTop: 12 }}>
                     <ActionForm

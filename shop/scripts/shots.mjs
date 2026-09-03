@@ -75,7 +75,8 @@ try {
   const user = await userCtx.newPage();
   user.on("dialog", (d) => d.accept());
   await user.goto(`${BASE}/register`, { waitUntil: "domcontentloaded" });
-  await user.fill("#email", `shot${Date.now()}@test.local`);
+  const shopperEmail = `shot${Date.now()}@test.local`;
+  await user.fill("#email", shopperEmail);
   await user.fill("#password", "test12345");
   await user.fill("#confirm", "test12345");
   await Promise.all([user.waitForURL("**/dashboard"), user.click("button[type=submit]")]);
@@ -97,9 +98,11 @@ try {
   await user.fill("#body", "سلام، سرعت سرویس امروز کم شده. لطفاً بررسی کنید.");
   await Promise.all([user.waitForURL("**/dashboard/tickets/**"), user.click("button:has-text('ارسال تیکت')")]);
 
-  const serviceUrl = await user.evaluate(() => {
-    return null;
-  });
+  // آدرس صفحه جزئیات سرویس تحویل‌شده
+  await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
+  await user.click("a:has-text('کانفیگ و QR')");
+  await user.waitForSelector("text=کانفیگ مستقیم", { timeout: 30000 });
+  const serviceUrl = user.url();
 
   // یک سفارش پرداخت‌نشده برای نمایش کارت بانکی
   await user.goto(`${BASE}/plans`, { waitUntil: "domcontentloaded" });
@@ -107,10 +110,55 @@ try {
   await Promise.all([user.waitForURL("**/dashboard/orders/**"), user.click("button:has-text('ثبت سفارش')")]);
   const payUrl = user.url();
 
+  // فعال‌کردن نمایندگی برای کاربر تست تا صفحه‌های پنل نمایندگی داده داشته باشند
+  await admin.goto(`${BASE}/admin/users?q=${encodeURIComponent(shopperEmail)}`, {
+    waitUntil: "domcontentloaded",
+  });
+  const userLink = await admin.getAttribute("a.cell-main", "href").catch(() => null);
+  console.log("  · نماینده‌کردن", shopperEmail, "→", userLink);
+  if (userLink) {
+    await admin.goto(`${BASE}${userLink}`, { waitUntil: "domcontentloaded" });
+    await admin.fill("#resellerOff", "25");
+    await admin.fill("#resellerName", "فروشگاه نمونه");
+    await admin.check("#isReseller");
+    await admin.click("button:has-text('ذخیره نمایندگی')");
+    await admin.waitForSelector(".alert-success, .alert-error", { timeout: 30000 });
+    await admin.fill("#wallet-amount", "800000");
+    await admin.fill("#wallet-note", "اعتبار نمایندگی");
+    await admin.click("button:has-text('اعمال')");
+    await admin.waitForSelector(".alert-success, .alert-error", { timeout: 30000 });
+
+    await user.goto(`${BASE}/reseller/sell`, { waitUntil: "domcontentloaded" });
+    await user.fill("#customerName", "علی رضایی");
+    await user.click("button:has-text('ساخت و تحویل سرویس')").catch(() => null);
+    await user.waitForURL(/reseller\/services\//, { timeout: 30000 }).catch(async () => {
+      const problem = await user.textContent(".alert-error").catch(() => null);
+      console.log("  · فروش نمایندگی انجام نشد:", problem ?? "بدون پیام");
+    });
+  }
+
+
   // صفحات عمومی را با کاربر مهمان (خارج‌شده) می‌گیریم
   const guestCtx = await browser.newContext({ locale: "fa-IR", viewport: DESKTOP });
   await blockExternal(guestCtx);
   const guest = await guestCtx.newPage();
+
+  // اعلان پوش روشن شود تا کارت آن در صفحه اعلان‌ها دیده شود
+  await admin.goto(`${BASE}/admin/settings`, { waitUntil: "domcontentloaded" });
+  await admin.click("button:has-text('فعال‌سازی اعلان پوش')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 30000 });
+
+  // چند بررسی سلامت تا صفحه پایش داده داشته باشد
+  for (let i = 0; i < 3; i += 1) {
+    await admin.goto(`${BASE}/admin/monitor`, { waitUntil: "domcontentloaded" });
+    await admin.click("button:has-text('بررسی همه همین حالا')");
+    await admin.waitForSelector(".alert-success, .alert-error", { timeout: 40000 });
+  }
+
+  // یک پشتیبان بساز تا جدول صفحهٔ پشتیبان‌گیری خالی نباشد
+  await admin.goto(`${BASE}/admin/backup`, { waitUntil: "domcontentloaded" });
+  await admin.click("button:has-text('ساخت پشتیبان تازه')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 60000 });
 
   const publicPages = [
     ["home", "/"],
@@ -119,16 +167,25 @@ try {
     ["faq", "/faq"],
     ["terms", "/terms"],
     ["contact", "/contact"],
+    ["status", "/status"],
+    ["maintenance", "/maintenance"],
     ["login", "/login"],
     ["register", "/register"],
   ];
   const userPages = [
     ["dashboard", "/dashboard"],
+    ["service-detail", serviceUrl.replace(BASE, "")],
     ["orders", "/dashboard/orders"],
     ["order-detail", orderUrl.replace(BASE, "")],
     ["payment", payUrl.replace(BASE, "")],
+    ["wallet", "/dashboard/wallet"],
+    ["notifications", "/dashboard/notifications"],
     ["tickets", "/dashboard/tickets"],
     ["profile", "/dashboard/profile"],
+    ["reseller", "/reseller"],
+    ["reseller-sell", "/reseller/sell"],
+    ["reseller-services", "/reseller/services"],
+    ["reseller-prices", "/reseller/prices"],
   ];
   const adminPages = [
     ["admin-home", "/admin"],
@@ -136,11 +193,22 @@ try {
     ["admin-panels", "/admin/panels"],
     ["admin-plans", "/admin/plans"],
     ["admin-services", "/admin/services"],
+    ["admin-monitor", "/admin/monitor"],
+    ["admin-payments", "/admin/payments"],
+    ["admin-resellers", "/admin/resellers"],
     ["admin-settings", "/admin/settings"],
     ["admin-tickets", "/admin/tickets"],
     ["admin-users", "/admin/users"],
     ["admin-discounts", "/admin/discounts"],
+    ["admin-logs", "/admin/logs"],
+    ["admin-backup", "/admin/backup"],
+    ["admin-security", "/admin/security"],
   ];
+
+  // پروندهٔ یک کاربر واقعی
+  await admin.goto(`${BASE}/admin/users`, { waitUntil: "domcontentloaded" });
+  const userHref = await admin.getAttribute("a.cell-main", "href").catch(() => null);
+  if (userHref) adminPages.push(["admin-user", userHref]);
 
   for (const [size, viewport] of [["m", MOBILE], ["d", DESKTOP]]) {
     console.log(`\n${size === "m" ? "موبایل" : "دسکتاپ"}:`);
@@ -159,6 +227,23 @@ try {
   }
 
   // بررسی سرریز افقی در موبایل
+  // چند صفحه در حالت انگلیسی (چپ‌چین)
+  const enCtx = await browser.newContext({ locale: "en-US", viewport: DESKTOP });
+  await blockExternal(enCtx);
+  const enPage = await enCtx.newPage();
+  await enPage.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+  await enPage.click(".lang-switch button:has-text('EN')");
+  await enPage.waitForTimeout(800);
+  for (const [name, path] of [
+    ["en-home", "/"],
+    ["en-plans", "/plans"],
+    ["en-status", "/status"],
+  ]) {
+    await enPage.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded" });
+    await shoot(enPage, `d-${name}`, DESKTOP);
+    await shoot(enPage, `m-${name}`, MOBILE);
+  }
+
   console.log("\nبررسی سرریز افقی (موبایل):");
   for (const [name, url] of [...publicPages, ...userPages, ...adminPages]) {
     const page = url.startsWith("/admin")
@@ -208,7 +293,6 @@ try {
           : ""),
     );
   }
-  void serviceUrl;
 } catch (err) {
   console.error("خطا:", err.message);
 } finally {

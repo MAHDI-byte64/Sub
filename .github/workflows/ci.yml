@@ -1,0 +1,84 @@
+# اجرای خودکار تست‌های فروشگاه فندق روی هر push و هر PR
+name: CI
+
+on:
+  push:
+    paths:
+      - "shop/**"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    paths:
+      - "shop/**"
+      - ".github/workflows/ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# اجرای قبلی همان شاخه لغو می‌شود تا صف طولانی نشود
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: shop
+
+env:
+  # اسکریپت‌های تست خودشان دیتابیس مخصوص می‌سازند؛ این مقدار برای prisma generate لازم است
+  DATABASE_URL: "file:../data/ci.db"
+
+jobs:
+  logic:
+    name: تست منطق و تایپ‌ها
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: shop/package-lock.json
+
+      - run: npm ci
+      - run: npx prisma generate
+
+      - name: بررسی تایپ‌ها
+        run: npx tsc --noEmit
+
+      - name: تست منطق فروش و پنل (پنل شبیه‌سازی‌شده)
+        run: npm test
+
+  browser:
+    name: تست رابط کاربری با مرورگر
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: shop/package-lock.json
+
+      - run: npm ci
+
+      - name: ساخت نسخه production
+        run: npm run build
+
+      - name: نصب کرومیوم برای Playwright
+        run: npx playwright-core install --with-deps chromium || npx playwright-core install chromium
+
+      - name: پیدا کردن مسیر کرومیوم
+        run: |
+          echo "CHROMIUM_PATH=$(node -e "console.log(require('playwright-core').chromium.executablePath())")" >> "$GITHUB_ENV"
+
+      - name: تست سرتاسری رابط کاربری
+        run: npm run test:ui
+
+      - name: لاگ سرور در صورت شکست
+        if: failure()
+        run: tail -100 /tmp/next-uitest.log || true

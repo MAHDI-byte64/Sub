@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
+import { roleLabel } from "@/lib/auth";
 import { resetTrialFlagAction, toggleUserBlockAction } from "@/app/actions/admin";
 import { faDate, faNum } from "@/lib/format";
+import Link from "next/link";
 import ActionForm from "@/components/ActionForm";
 import Flash from "@/components/Flash";
 
@@ -29,7 +31,12 @@ export default async function AdminUsersPage({
           <h1>کاربران</h1>
           <p>حساب‌های ثبت‌شده، سفارش‌ها و وضعیت دسترسی آن‌ها.</p>
         </div>
-        <span className="badge badge-info">{faNum(total)} کاربر</span>
+        <div className="btn-row">
+          <a className="btn btn-sm" href="/api/admin/export/users">
+            ⬇ خروجی CSV
+          </a>
+          <span className="badge badge-info">{faNum(total)} کاربر</span>
+        </div>
       </div>
 
       <Flash msg={msg} type={type} />
@@ -66,9 +73,13 @@ export default async function AdminUsersPage({
                         {(user.name || user.email).charAt(0).toUpperCase()}
                       </span>
                       <span>
-                        <span className="cell-main ltr">{user.email}</span>
+                        <Link className="cell-main ltr gold" href={`/admin/users/${user.id}`}>
+                          {user.email}
+                        </Link>
                         <span className="cell-sub">
-                          {user.role === "admin" ? "مدیر · " : ""}
+                          {user.role !== "user" ? `${roleLabel(user.role)} · ` : ""}
+                          {user.isReseller ? `نماینده (${faNum(user.resellerOff)}٪) · ` : ""}
+                          {user.isVip ? "⭐ ویژه · " : ""}
                           عضویت {faDate(user.createdAt)}
                         </span>
                       </span>
@@ -84,6 +95,9 @@ export default async function AdminUsersPage({
                   </td>
                   <td>
                     <div className="cell-actions">
+                      <Link className="btn btn-sm" href={`/admin/users/${user.id}`}>
+                        پرونده
+                      </Link>
                       {user.role !== "admin" ? (
                         <ActionForm
                           action={toggleUserBlockAction}

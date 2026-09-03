@@ -3,8 +3,9 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, isStaff } from "@/lib/auth";
 import { notifyAdmin } from "@/lib/telegram";
+import { notifyUser } from "@/lib/notify";
 
 export type TicketState = { error?: string; success?: string };
 
@@ -35,7 +36,8 @@ export async function createTicketAction(_prev: TicketState, formData: FormData)
   });
 
   await notifyAdmin(
-    `💬 <b>تیکت جدید</b>\nموضوع: ${subject}\nکاربر: ${user.email}`,
+    `💬 <b>تیکت جدید</b>\nموضوع: ${subject}\nکاربر: ${user.email}\n\n${body.slice(0, 300)}\n\n` +
+      `برای پاسخ، همین پیام را ریپلای کنید یا بنویسید:\n<code>/reply ${ticket.id} متن پاسخ</code>\n#T${ticket.id}`,
     "ticket",
   );
 
@@ -50,7 +52,7 @@ export async function replyTicketAction(_prev: TicketState, formData: FormData):
   const body = String(formData.get("body") || "").trim();
   if (body.length < 2) return { error: "متن پیام خالی است." };
 
-  const isAdmin = user.role === "admin";
+  const isAdmin = isStaff(user.role);
   const ticket = await db.ticket.findFirst({
     where: isAdmin ? { id: ticketId } : { id: ticketId, userId: user.id },
     include: { user: true },
@@ -64,8 +66,22 @@ export async function replyTicketAction(_prev: TicketState, formData: FormData):
     data: { status: isAdmin ? "answered" : "open", updatedAt: new Date() },
   });
 
+  if (isAdmin) {
+    await notifyUser({
+      userId: ticket.userId,
+      kind: "ticket_reply",
+      title: "پشتیبانی به تیکت شما پاسخ داد",
+      body: `${ticket.subject}: ${body.slice(0, 120)}`,
+      href: `/dashboard/tickets/${ticket.id}`,
+    });
+  }
+
   if (!isAdmin) {
-    await notifyAdmin(`💬 پاسخ جدید روی تیکت «${ticket.subject}» از ${ticket.user.email}`, "ticket");
+    await notifyAdmin(
+      `💬 <b>پاسخ جدید</b> روی تیکت «${ticket.subject}»\nاز: ${ticket.user.email}\n\n${body.slice(0, 300)}\n\n` +
+        `پاسخ سریع: ریپلای کنید یا <code>/reply ${ticket.id} متن</code>\n#T${ticket.id}`,
+      "ticket",
+    );
   }
 
   revalidatePath(`/dashboard/tickets/${ticket.id}`);
@@ -79,7 +95,7 @@ export async function closeTicketAction(_prev: TicketState, formData: FormData):
   const ticketId = String(formData.get("ticketId") || "");
 
   const ticket = await db.ticket.findFirst({
-    where: user.role === "admin" ? { id: ticketId } : { id: ticketId, userId: user.id },
+    where: isStaff(user.role) ? { id: ticketId } : { id: ticketId, userId: user.id },
   });
   if (!ticket) return { error: "تیکت پیدا نشد." };
 

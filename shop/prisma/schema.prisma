@@ -11,26 +11,85 @@ datasource db {
 
 /// کاربران سایت (نقش user یا admin)
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  passwordHash String
-  name         String?
-  role         String    @default("user")
-  telegramId   String?
-  isBlocked    Boolean   @default(false)
-  trialUsedAt  DateTime?
-  createdAt    DateTime  @default(now())
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String
+  name            String?
+  /// user | support (پشتیبان با دسترسی محدود) | admin
+  role            String    @default("user")
+  /// ورود دومرحله‌ای: کلید TOTP، زمان فعال‌سازی و کدهای پشتیبانِ هش‌شده
+  totpSecret      String?
+  totpEnabledAt   DateTime?
+  totpBackupCodes String?
+  telegramId      String?
+  isBlocked       Boolean   @default(false)
+  /// کاربر ویژه: روش‌های پرداختِ «فقط ویژه» (مثل کارت‌به‌کارت) برای او باز است
+  isVip           Boolean   @default(false)
+  vipNote         String?
+  /// نمایندگی: پنل جدا + خرید با قیمت عمده از کیف پول
+  isReseller      Boolean   @default(false)
+  /// درصد تخفیف نماینده روی قیمت پلن‌ها
+  resellerOff     Int       @default(0)
+  /// نام فروشگاه/برند نماینده (فقط برای نمایش در پنل خودش و گزارش‌ها)
+  resellerName    String?
+  trialUsedAt     DateTime?
+  /// موجودی کیف پول به تومان
+  balance         Int       @default(0)
+  /// کد دعوت این کاربر (برای معرفی به دیگران)
+  referralCode    String?   @unique
+  /// کاربری که این حساب را دعوت کرده است
+  referredById    String?
+  createdAt       DateTime  @default(now())
 
-  sessions Session[]
-  orders   Order[]
-  services Service[]
-  tickets  Ticket[]
+  sessions      Session[]
+  orders        Order[]
+  services      Service[]
+  tickets       Ticket[]
+  notifications Notification[]
+  walletTxs     WalletTx[]
+  referredBy    User?          @relation("Referrals", fields: [referredById], references: [id])
+  referrals     User[]         @relation("Referrals")
+  pushSubs      PushSub[]
+}
+
+/// تراکنش کیف پول (مثبت = شارژ، منفی = برداشت)
+model WalletTx {
+  id        String   @id @default(cuid())
+  userId    String
+  amount    Int
+  kind      String
+  note      String?
+  orderId   String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// اعلان درون‌سایتی برای کاربر
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  kind      String
+  title     String
+  body      String?
+  href      String?
+  serviceId String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
 }
 
 /// نشست‌های ورود (کوکی httpOnly)
 model Session {
   id        String   @id
   userId    String
+  /// نشست نیمه‌کاره: رمز درست بوده ولی کد دومرحله‌ای هنوز تأیید نشده
+  pending   Boolean  @default(false)
   /// مرورگر/دستگاهی که با آن وارد شده (برای فهرست دستگاه‌های فعال)
   userAgent String?
   expiresAt DateTime
@@ -67,10 +126,87 @@ model Panel {
   note          String?
   lastError     String?
   lastCheckAt   DateTime?
+  /// وضعیت آخرین بررسی سلامت
+  healthOk      Boolean   @default(true)
+  /// زمان پاسخ آخرین بررسی (میلی‌ثانیه)
+  latencyMs     Int       @default(0)
+  /// چند بررسی پیاپی ناموفق بوده است
+  failCount     Int       @default(0)
+  /// بعد از خرابی پیاپی، فروش روی این سرور خودکار متوقف می‌شود
+  autoDisabled  Boolean   @default(false)
   createdAt     DateTime  @default(now())
 
   services Service[]
   orders   Order[]
+  checks   PanelCheck[]
+  /// پلن‌هایی که فقط روی این سرور فروخته می‌شوند (خالی = همه پلن‌ها)
+  plans    Plan[]       @relation("PlanPanels")
+}
+
+/// دستگاه‌هایی که اعلان پوش را روشن کرده‌اند
+model PushSub {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// درگاه پرداخت آنلاین؛ می‌توان چند درگاه هم‌زمان فعال داشت
+model Gateway {
+  id        String   @id @default(cuid())
+  /// hooshpay | zarinpal | idpay | zibal | payping | nextpay | custom
+  driver    String
+  /// نامی که به مشتری نشان داده می‌شود
+  label     String
+  apiKey    String   @default("")
+  /// کلید محرمانه برای اعتبارسنجی وب‌هوک (هوش‌پی)
+  apiSecret String   @default("")
+  sandbox   Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  minAmount Int      @default(10000)
+  maxAmount Int      @default(0)
+  sortOrder Int      @default(0)
+  /// تنظیمات اختصاصی هر درایور به‌صورت JSON (مثلاً fee_mode یا درگاه دلخواه)
+  config    String?
+  note      String?
+  createdAt DateTime @default(now())
+
+  orders Order[]
+}
+
+/// آدرس کیف پول ارز دیجیتال برای دریافت پرداخت
+model CryptoWallet {
+  id        String   @id @default(cuid())
+  /// فعلاً فقط trc20
+  network   String   @default("trc20")
+  symbol    String   @default("USDT")
+  address   String
+  label     String   @default("")
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  note      String?
+  createdAt DateTime @default(now())
+}
+
+/// تاریخچهٔ بررسی سلامت سرورها (برای درصد آپتایم و نمودار پینگ)
+model PanelCheck {
+  id        String   @id @default(cuid())
+  panelId   String
+  ok        Boolean
+  latencyMs Int      @default(0)
+  message   String?
+  createdAt DateTime @default(now())
+
+  panel Panel @relation(fields: [panelId], references: [id], onDelete: Cascade)
+
+  @@index([panelId, createdAt])
 }
 
 /// پلن‌های فروش
@@ -88,6 +224,8 @@ model Plan {
 
   orders   Order[]
   services Service[]
+  /// سرورهایی که این پلن روی آن‌ها فروخته می‌شود (خالی = همه سرورهای فعال)
+  panels   Panel[]   @relation("PlanPanels")
 }
 
 /// کدهای تخفیف
@@ -111,7 +249,26 @@ model Order {
   id             String    @id @default(cuid())
   code           String    @unique
   userId         String
-  planId         String
+  /// plan = خرید سرویس، topup = شارژ کیف پول
+  kind           String    @default("plan")
+  /// card = کارت‌به‌کارت، wallet = پرداخت از کیف پول، online = درگاه پرداخت
+  payMethod      String    @default("card")
+  /// شناسهٔ درگاهی که پرداخت با آن شروع شده (zarinpal, idpay, …)
+  gateway        String?
+  /// کد پیگیری درگاه (authority / trackId / trans_id)
+  gatewayRef     String?
+  /// شمارهٔ پیگیری بانکی بعد از تأیید
+  bankRef        String?
+  /// درگاهی که این سفارش با آن پرداخت شده (رکورد جدول Gateway)
+  gatewayId      String?
+  /// مبلغ معادل تتر و نرخ لحظهٔ ثبت سفارش (برای پرداخت ارز دیجیتال)
+  cryptoAmount   Float?
+  cryptoRate     Int?
+  cryptoAddress  String?
+  cryptoNetwork  String?
+  /// هش تراکنش که مشتری وارد کرده
+  cryptoTxHash   String?
+  planId         String?
   panelId        String?
   renewServiceId String?
   amount         Int       @default(0)
@@ -126,11 +283,12 @@ model Order {
   paidAt         DateTime?
   reviewedAt     DateTime?
 
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan     Plan      @relation(fields: [planId], references: [id])
-  panel    Panel?    @relation(fields: [panelId], references: [id])
-  discount Discount? @relation(fields: [discountId], references: [id])
-  service  Service?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan       Plan?     @relation(fields: [planId], references: [id])
+  panel      Panel?    @relation(fields: [panelId], references: [id])
+  discount   Discount? @relation(fields: [discountId], references: [id])
+  gatewayRow Gateway?  @relation(fields: [gatewayId], references: [id])
+  service    Service?
 
   @@index([userId])
   @@index([status])
@@ -138,26 +296,39 @@ model Order {
 
 /// سرویس تحویل‌شده = یک client داخل inbound پنل
 model Service {
-  id          String    @id @default(cuid())
-  userId      String
-  planId      String?
-  panelId     String
-  orderId     String?   @unique
-  remark      String
-  clientEmail String    @unique
-  uuid        String
-  subId       String
-  inboundId   Int
+  id           String    @id @default(cuid())
+  userId       String
+  planId       String?
+  panelId      String
+  orderId      String?   @unique
+  remark       String
+  clientEmail  String    @unique
+  uuid         String
+  subId        String
+  inboundId    Int
   /// همهٔ کلاینت‌های این سرویس روی پنل: [{"inboundId":1,"email":"..."}]
-  clientRefs  String?
-  totalBytes  Float     @default(0)
-  usedBytes   Float     @default(0)
-  deviceLimit Int       @default(0)
-  expiresAt   DateTime?
-  isTrial     Boolean   @default(false)
-  status      String    @default("active")
-  lastSyncAt  DateTime?
-  createdAt   DateTime  @default(now())
+  clientRefs   String?
+  totalBytes   Float     @default(0)
+  usedBytes    Float     @default(0)
+  /// مصرف انتقال‌یافته از سرورهای قبلی؛ شمارندهٔ پنل تازه از صفر شروع می‌شود
+  usageOffset  Float     @default(0)
+  /// آخرین انتقال بین سرورها و نام سرور قبلی
+  movedAt      DateTime?
+  movedFrom    String?
+  deviceLimit  Int       @default(0)
+  expiresAt    DateTime?
+  isTrial      Boolean   @default(false)
+  /// تمدید خودکار از کیف پول در زمان انقضا
+  autoRenew    Boolean   @default(false)
+  /// اگر از پنل نمایندگی ساخته شده، شناسهٔ نماینده و نام مشتریِ او
+  resellerId   String?
+  customerName String?
+  /// آخرین بازتولید کانفیگ (تعویض UUID و لینک اشتراک)
+  rotatedAt    DateTime?
+  rotateCount  Int       @default(0)
+  status       String    @default("active")
+  lastSyncAt   DateTime?
+  createdAt    DateTime  @default(now())
 
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan    Plan?    @relation(fields: [planId], references: [id])
@@ -166,6 +337,7 @@ model Service {
   tickets Ticket[]
 
   @@index([userId])
+  @@index([resellerId])
 }
 
 /// تیکت پشتیبانی
@@ -196,6 +368,18 @@ model TicketMessage {
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@index([ticketId])
+}
+
+/// گزارش کارهای مدیر (چه کسی، چه کاری، روی چه چیزی)
+model AdminLog {
+  id         String   @id @default(cuid())
+  adminEmail String
+  action     String
+  target     String?
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 /// تنظیمات قابل ویرایش در پنل ادمین (شماره کارت، تلگرام، تست رایگان و ...)

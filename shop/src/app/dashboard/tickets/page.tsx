@@ -2,9 +2,11 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
-import { durationLabel, faNum, relativeTime } from "@/lib/format";
+import { durationLabel, fmt } from "@/lib/format";
+import { getLocale } from "@/lib/locale";
+import { translator } from "@/lib/i18n";
 import { averageResponseMs } from "@/lib/tickets";
-import { TICKET_STATUS } from "@/lib/status";
+import { ticketStatus } from "@/lib/status";
 import NewTicketForm from "@/components/NewTicketForm";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +14,9 @@ export const metadata = { title: "تیکت‌ها" };
 
 export default async function TicketsPage() {
   const user = await requireUser("/dashboard/tickets");
+  const locale = await getLocale();
+  const tr = translator(locale);
+  const f = fmt(locale);
 
   const [tickets, services, settings] = await Promise.all([
     db.ticket.findMany({
@@ -23,7 +28,7 @@ export default async function TicketsPage() {
       },
     }),
     db.service.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, resellerId: null },
       include: { panel: true, plan: true },
       orderBy: { createdAt: "desc" },
     }),
@@ -45,11 +50,11 @@ export default async function TicketsPage() {
     <div>
       <div className="page-head">
         <div>
-          <h1>پشتیبانی</h1>
-          <p>سوال یا مشکلی دارید؟ اینجا بنویسید؛ کل گفتگو و سابقه‌اش همین‌جا می‌ماند.</p>
+          <h1>{tr("ticket.title")}</h1>
+          <p>{tr("ticket.subtitle")}</p>
         </div>
         <span className={`badge ${open ? "badge-warn" : "badge-success"}`}>
-          {open ? `${faNum(open)} در انتظار پاسخ` : "همه پاسخ داده شده"}
+          {open ? tr("ticket.waiting", { count: f.num(open) }) : tr("ticket.allAnswered")}
         </span>
       </div>
 
@@ -57,27 +62,27 @@ export default async function TicketsPage() {
       <div className="sla-card">
         <span className="sla-icon">🎧</span>
         <div className="sla-main">
-          <b>پشتیبانی {settings.support_hours} در دسترس است</b>
+          <b>{tr("ticket.slaTitle", { hours: settings.support_hours })}</b>
           <span>
             {avgResponse
-              ? `میانگین زمان پاسخ به شما تا امروز: ${durationLabel(avgResponse)}`
-              : "اولین سوالتان را بپرسید؛ معمولاً کمتر از یک ساعت پاسخ می‌دهیم."}
+              ? tr("ticket.slaAvg", { time: durationLabel(avgResponse) })
+              : tr("ticket.slaFirst")}
           </span>
         </div>
         {tickets.length ? (
           <>
             <div className="sla-stat">
-              <b>{faNum(tickets.length)}</b>
-              <span>گفتگو</span>
+              <b>{f.num(tickets.length)}</b>
+              <span>{tr("ticket.conversations")}</span>
             </div>
             <div className="sla-stat">
-              <b>{faNum(answered)}</b>
-              <span>پاسخ داده شده</span>
+              <b>{f.num(answered)}</b>
+              <span>{tr("ticket.answered")}</span>
             </div>
             {avgResponse ? (
               <div className="sla-stat">
                 <b>{durationLabel(avgResponse)}</b>
-                <span>میانگین پاسخ</span>
+                <span>{tr("ticket.avgResponse")}</span>
               </div>
             ) : null}
           </>
@@ -87,11 +92,11 @@ export default async function TicketsPage() {
       {tickets.length ? (
         <div className="card">
           <div className="card-title">
-            <h3>گفتگوهای شما</h3>
+            <h3>{tr("ticket.yours")}</h3>
           </div>
           <div className="grid" style={{ gap: 10 }}>
             {tickets.map((ticket) => {
-              const status = TICKET_STATUS[ticket.status] ?? TICKET_STATUS.open;
+              const status = ticketStatus(locale, ticket.status);
               const last = ticket.messages[ticket.messages.length - 1];
               const iconState =
                 ticket.status === "open" ? "is-open" : ticket.status === "answered" ? "is-answered" : "";
@@ -103,21 +108,26 @@ export default async function TicketsPage() {
                   <span className="tc-body">
                     <b>{ticket.subject}</b>
                     <span className="tc-preview">
-                      {last ? `${last.fromAdmin ? "پشتیبانی: " : "شما: "}${last.body}` : "—"}
+                      {last
+                        ? `${last.fromAdmin ? tr("ticket.fromSupport") : tr("ticket.fromYou")}${last.body}`
+                        : "—"}
                     </span>
                     <span className="tc-meta">
-                      <span>💬 {faNum(ticket.messages.length)} پیام</span>
-                      <span>🕒 {relativeTime(ticket.updatedAt)}</span>
+                      <span>
+                        💬 {f.num(ticket.messages.length)} {tr("ticket.messages")}
+                      </span>
+                      <span>🕒 {f.relative(ticket.updatedAt)}</span>
                       {ticket.service ? (
                         <span>
-                          {ticket.service.panel.flag} {ticket.service.plan?.title ?? "سرویس"}
+                          {ticket.service.panel.flag}{" "}
+                          {ticket.service.plan?.title ?? tr("ticket.service")}
                         </span>
                       ) : null}
                     </span>
                   </span>
                   <span className="tc-side">
                     <span className={`badge ${status.badge}`}>{status.label}</span>
-                    <span className="btn btn-sm">مشاهده گفتگو</span>
+                    <span className="btn btn-sm">{tr("ticket.open")}</span>
                   </span>
                 </Link>
               );
@@ -127,19 +137,20 @@ export default async function TicketsPage() {
       ) : (
         <div className="card empty">
           <div className="empty-icon">🎫</div>
-          <p>هنوز گفتگویی ندارید. اولین سوالتان را همین پایین بپرسید.</p>
+          <p>{tr("ticket.empty")}</p>
         </div>
       )}
 
       <div className="card">
         <div className="card-title">
-          <h3>✏️ گفتگوی جدید</h3>
-          <span className="badge badge-info">پاسخ معمولاً زیر ۱ ساعت</span>
+          <h3>{tr("ticket.newTitle")}</h3>
+          <span className="badge badge-info">{tr("ticket.newBadge")}</span>
         </div>
         <NewTicketForm
+          locale={locale}
           services={services.map((s) => ({
             id: s.id,
-            label: `${s.panel.flag} ${s.plan?.title ?? (s.isTrial ? "اکانت تست" : s.remark)} — ${s.panel.location}`,
+            label: `${s.panel.flag} ${s.plan?.title ?? (s.isTrial ? tr("service.trial") : s.remark)} — ${s.panel.location}`,
           }))}
         />
       </div>

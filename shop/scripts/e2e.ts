@@ -5,23 +5,104 @@
  *
  *   bash scripts/test.sh
  */
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { rm, utimes, writeFile } from "node:fs/promises";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { db } from "../src/lib/db";
 import { GB } from "../src/lib/format";
 import {
+  createServiceOnPanel,
   createTrialService,
   fulfillOrder,
+  migrateService,
   panelClient,
+  pickPanel,
   removeService,
+  renewServiceOnPanel,
+  resetServiceTraffic,
+  rotateCooldownLeft,
+  rotateService,
   serviceLinks,
   syncService,
 } from "../src/lib/provision";
-import { saveSettings } from "../src/lib/settings";
+import { getSettings, saveSettings } from "../src/lib/settings";
+import { creditWallet, debitWallet } from "../src/lib/wallet";
+import { runMaintenance } from "../src/lib/scheduler";
+import { checkPanel, probePanel, pruneChecks, uptimeStats } from "../src/lib/monitor";
+import { gatewayReady, startPayment, verifyPayment } from "../src/lib/gateway";
+import {
+  activeGateways,
+  availableMethods,
+  gatewayUsable,
+  hooshpaySignature,
+  migrateLegacyGateway,
+  quoteCrypto,
+  startWithGateway,
+  validHooshpaySignature,
+  verifyWithGateway,
+} from "../src/lib/payments";
+import { tomanToUsdt, usdtRate } from "../src/lib/rates";
+import {
+  renameCustomer,
+  resellerCreateService,
+  resellerPlans,
+  resellerPrice,
+  resellerRenewService,
+  resellerServices,
+  resellerStats,
+} from "../src/lib/reseller";
+import { completePaidOrder } from "../src/lib/orders";
+import {
+  broadcastPush,
+  ensureVapidKeys,
+  pushPublicKey,
+  pushReady,
+  removeSubscription,
+  saveSubscription,
+  sendPushToUser,
+} from "../src/lib/push";
+import {
+  autoBackupDue,
+  createBackup,
+  decryptArchive,
+  encryptArchive,
+  isEncryptedArchive,
+  deleteBackup,
+  listBackups,
+  makeTar,
+  pruneBackups,
+  readBackup,
+  readTar,
+  restoreBackup,
+  runAutoBackup,
+  safeBackupName,
+  sendBackupToTelegram,
+} from "../src/lib/backup";
+import {
+  backupCodesLeft,
+  base32Decode,
+  base32Encode,
+  currentTotp,
+  newBackupCodes,
+  newTotpSecret,
+  otpauthUrl,
+  totpCode,
+  useBackupCode,
+  verifyTotp,
+} from "../src/lib/totp";
+import { isStaff, roleLabel } from "../src/lib/roles";
+import { notifyUser } from "../src/lib/notify";
+import { fmt } from "../src/lib/format";
+import { DICT, t, type Locale } from "../src/lib/i18n";
 import { XuiClient, type XuiRawClient } from "../src/lib/xui";
 import { serviceRefs } from "../src/lib/provision";
 
 const MOCK_V2 = process.env.MOCK_PANEL_URL || "http://127.0.0.1:8899";
 const MOCK_V3 = process.env.MOCK_PANEL_V3_URL || "http://127.0.0.1:8898";
 const API_TOKEN = process.env.MOCK_API_TOKEN || "3xui-test-token";
+const MOCK_GATEWAY = process.env.MOCK_GATEWAY_URL || "http://127.0.0.1:8896";
+const GATEWAY_KEY = process.env.MOCK_GATEWAY_KEY || "gw-test-key";
 
 let passed = 0;
 let failed = 0;
@@ -37,6 +118,10 @@ function check(label: string, condition: boolean, extra?: unknown) {
 }
 
 async function reset() {
+  await db.gateway.deleteMany();
+  await db.cryptoWallet.deleteMany();
+  await db.pushSub.deleteMany();
+  await db.panelCheck.deleteMany();
   await db.ticketMessage.deleteMany();
   await db.ticket.deleteMany();
   await db.service.deleteMany();
@@ -240,6 +325,93 @@ async function scenario(opts: ScenarioOptions) {
     [afterRenew?.comment, afterRenew?.tgId],
   );
 
+  console.log("→ بازتولید کانفیگ (باطل‌کردن لینک قبلی)");
+  const beforeRotate = await db.service.findUniqueOrThrow({ where: { id: service.id } });
+  const oldRefs = serviceRefs(beforeRotate);
+  const oldUuids = oldRefs.map((r) => r.uuid ?? beforeRotate.uuid);
+  const oldSub = (await serviceLinks(service.id)).subscription;
+
+  const rotated = (await rotateService(service.id)).service;
+  const rotatedRefs = serviceRefs(rotated);
+
+  check("UUID سرویس عوض شد", rotated.uuid !== beforeRotate.uuid, [beforeRotate.uuid, rotated.uuid]);
+  check("subId (آدرس لینک اشتراک) عوض شد", rotated.subId !== beforeRotate.subId, [
+    beforeRotate.subId,
+    rotated.subId,
+  ]);
+  check("شمارنده بازتولید یک واحد بالا رفت", rotated.rotateCount === beforeRotate.rotateCount + 1);
+  check("زمان بازتولید ثبت شد", Boolean(rotated.rotatedAt));
+
+  const rotatedClients: (XuiRawClient | undefined)[] = [];
+  for (const ref of rotatedRefs) {
+    const clients = await panelClient(panel).listClients(ref.inboundId);
+    rotatedClients.push(clients.find((c) => c.email === ref.email));
+  }
+  check(
+    "UUID روی همهٔ اینباندهای پنل عوض شد",
+    rotatedClients.every((c, i) => c && c.id !== oldUuids[i]),
+    rotatedClients.map((c) => c?.id),
+  );
+  check(
+    "subId تازه روی همهٔ اینباندها ثبت شد",
+    rotatedClients.every((c) => c?.subId === rotated.subId),
+    rotatedClients.map((c) => c?.subId),
+  );
+  check(
+    "هیچ کلاینتی با UUID قدیمی روی پنل نماند",
+    rotatedClients.every((c) => !oldUuids.includes(String(c?.id))),
+    oldUuids,
+  );
+  check(
+    "حجم و انقضای سرویس دست‌نخورده ماند",
+    rotated.totalBytes === renewed.totalBytes &&
+      rotated.expiresAt?.getTime() === renewed.expiresAt?.getTime(),
+    [rotated.totalBytes, rotated.expiresAt],
+  );
+  check(
+    "مصرف کاربر بعد از بازتولید صفر نشد (سوءاستفاده ممکن نیست)",
+    (await syncService(service.id, true)).usedBytes === 3 * GB,
+  );
+  check(
+    "نام کلاینت روی پنل تغییر نکرد",
+    rotatedRefs.every((ref, i) => ref.email === oldRefs[i].email),
+    rotatedRefs.map((r) => r.email),
+  );
+
+  if (opts.expect === "v2") {
+    check(
+      "در نسخه ۲ هر اینباند UUID تازهٔ خودش را گرفت",
+      rotatedRefs[0].uuid !== rotatedRefs[1].uuid,
+      rotatedRefs.map((r) => r.uuid),
+    );
+  } else {
+    check(
+      "در نسخه ۳ یک UUID تازه روی هر دو اینباند نشست",
+      rotatedRefs[0].uuid === rotatedRefs[1].uuid,
+      rotatedRefs.map((r) => r.uuid),
+    );
+  }
+
+  const newLinks = await serviceLinks(service.id);
+  check("لینک اشتراک تازه با قبلی فرق دارد", newLinks.subscription !== oldSub, [
+    oldSub,
+    newLinks.subscription,
+  ]);
+  check(
+    "کانفیگ‌های تازه به UUID جدید اشاره می‌کنند",
+    newLinks.configs.length === 2 && newLinks.configs.every((c) => !oldUuids.some((u) => c.uri.includes(u))),
+    newLinks.configs.map((c) => c.uri.slice(0, 48)),
+  );
+
+  check(
+    "فاصله مجاز بین دو بازتولید رعایت می‌شود",
+    rotateCooldownLeft(rotated, 30 * 60_000) > 0 && rotateCooldownLeft(rotated, 0) === 0,
+  );
+  check(
+    "بعد از پایان فاصله مجاز، بازتولید دوباره آزاد است",
+    rotateCooldownLeft(rotated, 30 * 60_000, Date.now() + 31 * 60_000) === 0,
+  );
+
   console.log("→ اکانت تست رایگان");
   const trialUser = await db.user.create({
     data: { email: `trial-${opts.prefix}@test.local`, passwordHash: "scrypt:x:y" },
@@ -311,6 +483,1346 @@ async function scenario(opts: ScenarioOptions) {
   check("سرویس از دیتابیس حذف شد", (await db.service.findUnique({ where: { id: trial.id } })) === null);
 }
 
+/** پلن محدود به یک سرور مشخص باید فقط روی همان سرور تحویل شود */
+async function planPanelScenario() {
+  console.log("\n══════ تخصیص پلن به سرور ══════");
+  await reset();
+  await saveSettings({ trial_enabled: "0" });
+
+  const panelA = await db.panel.create({
+    data: {
+      name: "A", location: "آلمان", flag: "🇩🇪", url: MOCK_V2,
+      username: "admin", password: "admin", inboundId: 1,
+      templateEmail: "template-vip", multiInbound: false, sortOrder: 1, isActive: true,
+    },
+  });
+  const panelB = await db.panel.create({
+    data: {
+      name: "B", location: "هلند", flag: "🇳🇱", url: MOCK_V2,
+      username: "admin", password: "admin", inboundId: 2,
+      templateEmail: "template-alt", multiInbound: false, sortOrder: 2, isActive: true,
+    },
+  });
+
+  const openPlan = await db.plan.create({
+    data: { title: "آزاد", volumeGb: 5, days: 30, deviceLimit: 1, priceToman: 50_000 },
+  });
+  const boundPlan = await db.plan.create({
+    data: {
+      title: "فقط هلند",
+      volumeGb: 5,
+      days: 30,
+      deviceLimit: 1,
+      priceToman: 60_000,
+      panels: { connect: [{ id: panelB.id }] },
+    },
+  });
+
+  const user = await db.user.create({
+    data: { email: "planpanel@test.local", passwordHash: "scrypt:x:y" },
+  });
+
+  // پلن محدود، بدون انتخاب سرور → باید روی سرور B ساخته شود
+  const boundOrder = await db.order.create({
+    data: {
+      code: "FD-PP-01", userId: user.id, planId: boundPlan.id,
+      amount: boundPlan.priceToman, payable: boundPlan.priceToman, status: "pending_review",
+    },
+  });
+  const boundService = await fulfillOrder(boundOrder.id);
+  check("پلن محدود روی سرور تعیین‌شده ساخته شد", boundService.panelId === panelB.id, boundService.panelId);
+
+  // پلن آزاد → کم‌بارترین سرور (اینجا A چون B یک سرویس دارد)
+  const openOrder = await db.order.create({
+    data: {
+      code: "FD-PP-02", userId: user.id, planId: openPlan.id,
+      amount: openPlan.priceToman, payable: openPlan.priceToman, status: "pending_review",
+    },
+  });
+  const openService = await fulfillOrder(openOrder.id);
+  check("پلن آزاد روی کم‌بارترین سرور ساخته شد", openService.panelId === panelA.id, openService.panelId);
+
+  // انتخاب سرور غیرمجاز باید نادیده گرفته شود و به سرور مجاز برگردد
+  const wrongOrder = await db.order.create({
+    data: {
+      code: "FD-PP-03", userId: user.id, planId: boundPlan.id, panelId: panelA.id,
+      amount: boundPlan.priceToman, payable: boundPlan.priceToman, status: "pending_review",
+    },
+  });
+  const wrongService = await fulfillOrder(wrongOrder.id);
+  check(
+    "سرور غیرمجاز برای پلن نادیده گرفته شد",
+    wrongService.panelId === panelB.id,
+    wrongService.panelId,
+  );
+}
+
+/** کیف پول، پاداش دعوت، یادآوری انقضا و تمدید خودکار */
+async function walletScenario() {
+  console.log("\n══════ کیف پول، اعلان‌ها و تمدید خودکار ══════");
+  await reset();
+  await saveSettings({
+    trial_enabled: "0",
+    wallet_enabled: "1",
+    auto_renew_enabled: "1",
+    referral_percent: "10",
+    expiry_reminder_days: "3",
+    quota_warn_percent: "85",
+  });
+
+  const panel = await db.panel.create({
+    data: {
+      name: "W", location: "آلمان", flag: "🇩🇪", url: MOCK_V2,
+      username: "admin", password: "admin", inboundId: 1,
+      templateEmail: "template-vip", multiInbound: false, isActive: true,
+    },
+  });
+  const plan = await db.plan.create({
+    data: { title: "ماهانه", volumeGb: 10, days: 30, deviceLimit: 1, priceToman: 100_000 },
+  });
+
+  const inviter = await db.user.create({
+    data: { email: "inviter@test.local", passwordHash: "x", referralCode: "INV123" },
+  });
+  const buyer = await db.user.create({
+    data: { email: "buyer-wallet@test.local", passwordHash: "x", referredById: inviter.id },
+  });
+
+  // --- عملیات پایه کیف پول
+  await creditWallet(buyer.id, 300_000, "topup", "شارژ آزمایشی");
+  const afterCredit = await db.user.findUniqueOrThrow({ where: { id: buyer.id } });
+  check("شارژ کیف پول ثبت شد", afterCredit.balance === 300_000, afterCredit.balance);
+
+  await debitWallet(buyer.id, 100_000, "purchase", "خرید آزمایشی");
+  const afterDebit = await db.user.findUniqueOrThrow({ where: { id: buyer.id } });
+  check("برداشت از کیف پول درست بود", afterDebit.balance === 200_000, afterDebit.balance);
+
+  let insufficient = false;
+  try {
+    await debitWallet(buyer.id, 999_000_000, "purchase", "بیش از موجودی");
+  } catch {
+    insufficient = true;
+  }
+  check("برداشت بیش از موجودی جلوگیری شد", insufficient);
+
+  const txCount = await db.walletTx.count({ where: { userId: buyer.id } });
+  check("تراکنش‌ها ثبت شدند", txCount === 2, txCount);
+
+  // --- پاداش دعوت روی اولین خرید
+  const order = await db.order.create({
+    data: {
+      code: "FD-W-01", userId: buyer.id, planId: plan.id, panelId: panel.id,
+      amount: plan.priceToman, payable: plan.priceToman, status: "pending_review",
+    },
+  });
+  const service = await fulfillOrder(order.id);
+  const { payReferralBonus } = await import("../src/lib/referral");
+  await payReferralBonus(buyer.id, plan.priceToman);
+
+  const inviterAfter = await db.user.findUniqueOrThrow({ where: { id: inviter.id } });
+  check("پاداش دعوت ۱۰٪ واریز شد", inviterAfter.balance === 10_000, inviterAfter.balance);
+  const referralNote = await db.notification.findFirst({
+    where: { userId: inviter.id, kind: "referral" },
+  });
+  check("اعلان پاداش دعوت ساخته شد", Boolean(referralNote));
+
+  // --- یادآوری انقضا (۲ روز مانده)
+  await db.service.update({
+    where: { id: service.id },
+    data: {
+      expiresAt: new Date(Date.now() + 2 * 86_400_000),
+      lastSyncAt: new Date(),
+      status: "active",
+    },
+  });
+  await runMaintenance();
+  const reminder = await db.notification.findFirst({
+    where: { userId: buyer.id, kind: "expiry_soon", serviceId: service.id },
+  });
+  check("یادآوری انقضا برای کاربر ساخته شد", Boolean(reminder), reminder?.title);
+
+  // تکرار نباید اعلان دوباره بسازد
+  await runMaintenance();
+  const reminderCount = await db.notification.count({
+    where: { userId: buyer.id, kind: "expiry_soon", serviceId: service.id },
+  });
+  check("یادآوری تکراری ارسال نشد", reminderCount === 1, reminderCount);
+
+  // --- هشدار اتمام حجم
+  await db.service.update({
+    where: { id: service.id },
+    data: { usedBytes: 9.2 * GB, totalBytes: 10 * GB, lastSyncAt: new Date() },
+  });
+  await runMaintenance();
+  const quotaNote = await db.notification.findFirst({
+    where: { userId: buyer.id, kind: "quota_low", serviceId: service.id },
+  });
+  check("هشدار اتمام حجم ساخته شد", Boolean(quotaNote), quotaNote?.title);
+
+  // --- تمدید خودکار از کیف پول
+  const before = await db.service.findUniqueOrThrow({ where: { id: service.id } });
+  const balanceBefore = (await db.user.findUniqueOrThrow({ where: { id: buyer.id } })).balance;
+  await db.service.update({
+    where: { id: service.id },
+    data: {
+      autoRenew: true,
+      expiresAt: new Date(Date.now() + 12 * 3_600_000),
+      lastSyncAt: new Date(),
+      status: "active",
+    },
+  });
+  await runMaintenance();
+
+  const renewed = await db.service.findUniqueOrThrow({ where: { id: service.id } });
+  const balanceAfter = (await db.user.findUniqueOrThrow({ where: { id: buyer.id } })).balance;
+  check(
+    "تمدید خودکار مبلغ پلن را از کیف پول کم کرد",
+    balanceBefore - balanceAfter === plan.priceToman,
+    [balanceBefore, balanceAfter],
+  );
+  check(
+    "تاریخ انقضا بعد از تمدید خودکار جلو رفت",
+    (renewed.expiresAt?.getTime() ?? 0) > (before.expiresAt?.getTime() ?? 0),
+    renewed.expiresAt,
+  );
+  const autoNote = await db.notification.findFirst({
+    where: { userId: buyer.id, kind: "auto_renew" },
+  });
+  check("اعلان تمدید خودکار ساخته شد", Boolean(autoNote));
+
+  // --- موجودی ناکافی: فقط هشدار، بدون تمدید
+  await db.user.update({ where: { id: buyer.id }, data: { balance: 0 } });
+  await db.notification.deleteMany({ where: { userId: buyer.id, kind: "expiry_soon" } });
+  await db.service.update({
+    where: { id: service.id },
+    data: { expiresAt: new Date(Date.now() + 6 * 3_600_000), lastSyncAt: new Date() },
+  });
+  await runMaintenance();
+  const lowBalanceNote = await db.notification.findFirst({
+    where: { userId: buyer.id, kind: "expiry_soon" },
+    orderBy: { createdAt: "desc" },
+  });
+  check(
+    "با موجودی ناکافی، هشدار شارژ داده شد",
+    Boolean(lowBalanceNote && lowBalanceNote.title.includes("موجودی")),
+    lowBalanceNote?.title,
+  );
+}
+
+/** پایش سرورها: تشخیص خرابی، توقف خودکار فروش و بازگشت */
+async function monitorScenario() {
+  console.log("\n══════ پایش سرورها ══════");
+  await reset();
+  await saveSettings({ monitor_enabled: "1", monitor_fail_threshold: "3", trial_enabled: "0" });
+
+  const up = await db.panel.create({
+    data: {
+      name: "سرور سالم",
+      location: "آلمان",
+      url: MOCK_V2,
+      username: "admin",
+      password: "admin",
+      templateEmail: "template-vip",
+      subBase: "https://sub.test.local/sub",
+      sortOrder: 1,
+    },
+  });
+  // پورتی که هیچ سرویسی روی آن نیست ⇒ اتصال رد می‌شود
+  const down = await db.panel.create({
+    data: {
+      name: "سرور خراب",
+      location: "هلند",
+      url: "http://127.0.0.1:9",
+      username: "admin",
+      password: "admin",
+      templateEmail: "template-vip",
+      subBase: "https://sub.test.local/sub",
+      sortOrder: 2,
+    },
+  });
+
+  const healthy = await probePanel(up);
+  check("سرور سالم پاسخ داد", healthy.ok, healthy.message);
+  check("زمان پاسخ اندازه‌گیری شد", healthy.latencyMs >= 0 && healthy.latencyMs < 20_000, healthy.latencyMs);
+
+  const broken = await probePanel(down);
+  check("سرور خراب تشخیص داده شد", !broken.ok, broken.message);
+
+  let downPanel = down;
+  for (let i = 0; i < 2; i += 1) {
+    await checkPanel(downPanel);
+    downPanel = await db.panel.findUniqueOrThrow({ where: { id: down.id } });
+  }
+  check("قبل از رسیدن به حد مجاز، فروش متوقف نشد", !downPanel.autoDisabled, downPanel.failCount);
+
+  await checkPanel(downPanel);
+  downPanel = await db.panel.findUniqueOrThrow({ where: { id: down.id } });
+  check("بعد از ۳ خرابی پیاپی، فروش روی سرور خراب متوقف شد", downPanel.autoDisabled, downPanel.failCount);
+  check("خطای آخرین بررسی ذخیره شد", Boolean(downPanel.lastError), downPanel.lastError?.slice(0, 40));
+
+  await checkPanel(up);
+  const chosen = await pickPanel(down.id);
+  check("سرور خراب حتی وقتی مستقیم انتخاب شده باشد کنار گذاشته می‌شود", chosen.id === up.id, chosen.name);
+
+  const stats = await uptimeStats(24);
+  check("آپتایم سرور سالم ۱۰۰٪ است", stats.get(up.id)?.uptime === 100, stats.get(up.id));
+  check("آپتایم سرور خراب صفر است", stats.get(down.id)?.uptime === 0, stats.get(down.id));
+  check("تاریخچه بررسی‌ها ثبت شد", (await db.panelCheck.count()) >= 4);
+
+  // سرور برمی‌گردد
+  await db.panel.update({ where: { id: down.id }, data: { url: MOCK_V2 } });
+  const recovered = await checkPanel(await db.panel.findUniqueOrThrow({ where: { id: down.id } }));
+  const afterRecover = await db.panel.findUniqueOrThrow({ where: { id: down.id } });
+  check("سرور بعد از بازگشت دوباره سالم شد", recovered.ok && !afterRecover.autoDisabled);
+  check("شمارنده خرابی صفر شد", afterRecover.failCount === 0, afterRecover.failCount);
+
+  const maintenance = await runMaintenance();
+  check("کارهای پس‌زمینه هر دو سرور را بررسی کرد", maintenance.panelsChecked === 2, maintenance.panelsChecked);
+
+  await db.panelCheck.updateMany({ data: { createdAt: new Date(Date.now() - 10 * 86_400_000) } });
+  const pruned = await pruneChecks(7);
+  check("تاریخچه قدیمی پاک شد", pruned > 0 && (await db.panelCheck.count()) === 0, pruned);
+}
+
+/** پرداخت آنلاین: شروع پرداخت، بازگشت از درگاه، تأیید و تحویل خودکار */
+async function gatewayScenario() {
+  console.log("\n══════ درگاه پرداخت آنلاین ══════");
+  await reset();
+
+  const customConfig = {
+    requestUrl: `${MOCK_GATEWAY}/request`,
+    verifyUrl: `${MOCK_GATEWAY}/verify`,
+    startUrl: `${MOCK_GATEWAY}/pay/{ref}`,
+    currency: "rial",
+    auth: "none",
+    keyField: "api_key",
+    amountField: "amount",
+    callbackField: "callback",
+    orderField: "order_id",
+    descriptionField: "description",
+    refPath: "data.token",
+    successPath: "status",
+    successValue: "100",
+    callbackRefParam: "token",
+    verifyRefPath: "data.ref_id",
+  };
+
+  await saveSettings({
+    gateway_enabled: "1",
+    gateway_driver: "custom",
+    gateway_key: GATEWAY_KEY,
+    gateway_min_amount: "10000",
+    gateway_custom: JSON.stringify(customConfig),
+    trial_enabled: "0",
+  });
+
+  const settingsNow = await getSettings();
+  check("درگاه آمادهٔ استفاده تشخیص داده شد", gatewayReady(settingsNow));
+
+  const panel = await db.panel.create({
+    data: {
+      name: "GW-PANEL",
+      location: "آلمان",
+      url: MOCK_V2,
+      username: "admin",
+      password: "admin",
+      templateEmail: "template-vip",
+      subBase: "https://sub.test.local/sub",
+      inboundId: 1,
+    },
+  });
+  const plan = await db.plan.create({
+    data: { title: "پلن درگاه", volumeGb: 10, days: 30, deviceLimit: 2, priceToman: 150_000, sortOrder: 1 },
+  });
+  const user = await db.user.create({
+    data: { email: "gateway@test.local", passwordHash: "scrypt:x:y" },
+  });
+
+  const order = await db.order.create({
+    data: {
+      code: "FD-GW01",
+      userId: user.id,
+      kind: "plan",
+      payMethod: "online",
+      planId: plan.id,
+      panelId: panel.id,
+      amount: plan.priceToman,
+      payable: plan.priceToman,
+      status: "awaiting_payment",
+    },
+  });
+
+  const started = await startPayment({
+    amount: order.payable,
+    orderCode: order.code,
+    description: "تست پرداخت",
+    callbackUrl: "http://127.0.0.1:3000/api/pay/callback/FD-GW01",
+  });
+  check("کد پیگیری از درگاه گرفته شد", Boolean(started.ref), started.ref);
+  check("آدرس پرداخت ساخته شد", started.payUrl.startsWith(`${MOCK_GATEWAY}/pay/`), started.payUrl);
+
+  await db.order.update({
+    where: { id: order.id },
+    data: { gateway: started.driver, gatewayRef: started.ref },
+  });
+
+  // قبل از پرداخت، تأیید باید رد شود
+  const early = await verifyPayment({
+    driver: "custom",
+    ref: started.ref,
+    amount: order.payable,
+    orderCode: order.code,
+    params: {},
+  });
+  check("تراکنش پرداخت‌نشده تأیید نمی‌شود", !early.ok, early.message);
+
+  // کاربر روی صفحهٔ درگاه پرداخت می‌کند
+  await fetch(started.payUrl, { redirect: "manual" });
+
+  const verified = await verifyPayment({
+    driver: "custom",
+    ref: started.ref,
+    amount: order.payable,
+    orderCode: order.code,
+    params: { token: started.ref, status: "1" },
+  });
+  check("تراکنش پرداخت‌شده تأیید شد", verified.ok, verified.message);
+  check("شماره پیگیری بانک برگشت", verified.refId === `BANK-${order.code}`, verified.refId);
+
+  const completed = await completePaidOrder(order.id, {
+    gateway: "custom",
+    ref: started.ref,
+    bankRef: verified.refId,
+  });
+  check("سفارش پرداخت‌شده تکمیل شد", completed.ok && completed.kind === "plan");
+
+  const afterOrder = await db.order.findUniqueOrThrow({ where: { id: order.id } });
+  const service = await db.service.findFirst({ where: { orderId: order.id } });
+  check("وضعیت سفارش approved شد", afterOrder.status === "approved", afterOrder.status);
+  check("زمان پرداخت ثبت شد", Boolean(afterOrder.paidAt));
+  check("شماره پیگیری بانک روی سفارش ذخیره شد", afterOrder.bankRef === verified.refId);
+  check("سرویس بعد از پرداخت آنلاین تحویل شد", Boolean(service), service?.clientEmail);
+
+  const again = await completePaidOrder(order.id);
+  check("تکمیل دوباره، سرویس تکراری نمی‌سازد", again.ok && (await db.service.count()) === 1);
+
+  // مبلغ دستکاری‌شده نباید تأیید شود
+  const tampered = await verifyPayment({
+    driver: "custom",
+    ref: started.ref,
+    amount: 1_000,
+    orderCode: order.code,
+    params: { token: started.ref },
+  });
+  check("مبلغ دستکاری‌شده رد شد", !tampered.ok, tampered.message);
+
+  // شارژ کیف پول با درگاه
+  const topup = await db.order.create({
+    data: {
+      code: "FD-GW02",
+      userId: user.id,
+      kind: "topup",
+      payMethod: "online",
+      amount: 200_000,
+      payable: 200_000,
+      status: "awaiting_payment",
+    },
+  });
+  const topupStart = await startPayment({
+    amount: topup.payable,
+    orderCode: topup.code,
+    description: "شارژ کیف پول",
+    callbackUrl: "http://127.0.0.1:3000/api/pay/callback/FD-GW02",
+  });
+  await fetch(topupStart.payUrl, { redirect: "manual" });
+  const topupVerify = await verifyPayment({
+    driver: "custom",
+    ref: topupStart.ref,
+    amount: topup.payable,
+    orderCode: topup.code,
+    params: { token: topupStart.ref },
+  });
+  await completePaidOrder(topup.id, { gateway: "custom", ref: topupStart.ref, bankRef: topupVerify.refId });
+  const walletUser = await db.user.findUniqueOrThrow({ where: { id: user.id } });
+  check("شارژ آنلاین کیف پول انجام شد", walletUser.balance === 200_000, walletUser.balance);
+
+  // پرداخت ناموفق
+  const failedOrder = await db.order.create({
+    data: {
+      code: "FD-GW03",
+      userId: user.id,
+      kind: "plan",
+      payMethod: "online",
+      planId: plan.id,
+      amount: plan.priceToman,
+      payable: plan.priceToman,
+      status: "awaiting_payment",
+    },
+  });
+  const failStart = await startPayment({
+    amount: failedOrder.payable,
+    orderCode: failedOrder.code,
+    description: "تست ناموفق",
+    callbackUrl: "http://127.0.0.1:3000/api/pay/callback/FD-GW03",
+  });
+  await fetch(`${failStart.payUrl}?fail=1`, { redirect: "manual" });
+  const failVerify = await verifyPayment({
+    driver: "custom",
+    ref: failStart.ref,
+    amount: failedOrder.payable,
+    orderCode: failedOrder.code,
+    params: { token: failStart.ref, status: "0" },
+  });
+  check("پرداخت ناموفق تأیید نمی‌شود", !failVerify.ok, failVerify.message);
+  check("سرویسی برای پرداخت ناموفق ساخته نشد", (await db.service.count()) === 1);
+
+  await saveSettings({ gateway_enabled: "0" });
+  check("با خاموش‌بودن درگاه، پرداخت آنلاین در دسترس نیست", !gatewayReady(await getSettings()));
+}
+
+/** اعلان پوش: کلیدها، اشتراک دستگاه و مقاوم‌بودن در برابر خطا */
+async function pushScenario() {
+  console.log("\n══════ اعلان پوش ══════");
+  await reset();
+  await saveSettings({ push_enabled: "0", vapid_public: "", vapid_private: "" });
+
+  check("وقتی پوش خاموش است، کلید عمومی داده نمی‌شود", (await pushPublicKey()) === null);
+
+  const keys = await ensureVapidKeys();
+  check("کلید VAPID ساخته شد", keys.publicKey.length > 40 && keys.privateKey.length > 20);
+  const again = await ensureVapidKeys();
+  check("کلید دوباره ساخته نمی‌شود", again.publicKey === keys.publicKey);
+  check("تا وقتی پوش روشن نشده، آماده نیست", !(await pushReady()));
+
+  await saveSettings({ push_enabled: "1" });
+  check("بعد از روشن‌کردن، پوش آماده است", await pushReady());
+  check("کلید عمومی به مرورگر داده می‌شود", (await pushPublicKey()) === keys.publicKey);
+
+  const user = await db.user.create({
+    data: { email: "push@test.local", passwordHash: "scrypt:x:y" },
+  });
+
+  const endpoint = "https://push.example.com/endpoint/abc";
+  await saveSubscription(user.id, { endpoint, keys: { p256dh: "key-1", auth: "auth-1" } }, "Test/1.0");
+  await saveSubscription(user.id, { endpoint, keys: { p256dh: "key-2", auth: "auth-2" } }, "Test/1.0");
+  const subs = await db.pushSub.findMany({ where: { userId: user.id } });
+  check("اشتراک تکراری یک ردیف می‌ماند", subs.length === 1, subs.length);
+  check("کلیدهای اشتراک به‌روزرسانی شد", subs[0].p256dh === "key-2", subs[0].p256dh);
+
+  // اشتراک ساختگی: ارسال باید بی‌سروصدا شکست بخورد، نه اینکه خطا بدهد
+  const sent = await sendPushToUser(user.id, { title: "تست", body: "متن" });
+  check("ارسال به اشتراک نامعتبر خطا نمی‌دهد", sent === 0, sent);
+
+  const broadcast = await broadcastPush({ title: "اطلاعیه" });
+  check("اطلاعیه همگانی هم امن است", broadcast.users === 1 && broadcast.sent === 0, broadcast);
+
+  await notifyUser({
+    userId: user.id,
+    kind: "announcement",
+    title: "اعلان با پوش روشن",
+    body: "باید ثبت شود حتی اگر پوش شکست بخورد",
+  });
+  const note = await db.notification.findFirst({ where: { userId: user.id } });
+  check("اعلان درون‌سایتی با وجود شکست پوش ثبت شد", Boolean(note), note?.title);
+
+  await removeSubscription(endpoint);
+  check("اشتراک حذف شد", (await db.pushSub.count()) === 0);
+
+  await saveSettings({ push_enabled: "0" });
+  check("با خاموش‌کردن، ارسال پوش انجام نمی‌شود", (await sendPushToUser(user.id, { title: "x" })) === 0);
+}
+
+/** دو زبانه بودن سایت: دیکشنری کامل و قالب‌بندی وابسته به زبان */
+function i18nScenario() {
+  console.log("\n══════ دو زبانه بودن سایت ══════");
+
+  // هر کلیدی که در فارسی هست باید در انگلیسی هم باشد
+  const flatten = (dict: Record<string, unknown>, prefix = ""): string[] =>
+    Object.entries(dict).flatMap(([key, value]) =>
+      value && typeof value === "object"
+        ? flatten(value as Record<string, unknown>, `${prefix}${key}.`)
+        : [`${prefix}${key}`],
+    );
+
+  const faKeys = flatten(DICT.fa as Record<string, unknown>);
+  const enKeys = new Set(flatten(DICT.en as Record<string, unknown>));
+  const missing = faKeys.filter((key) => !enKeys.has(key));
+  check("همهٔ کلیدهای فارسی ترجمهٔ انگلیسی دارند", missing.length === 0, missing.slice(0, 6));
+
+  check("ترجمه انگلیسی برگردانده می‌شود", t("en", "nav.plans") === "Pricing", t("en", "nav.plans"));
+  check("ترجمه فارسی برگردانده می‌شود", t("fa", "nav.plans") === "تعرفه‌ها", t("fa", "nav.plans"));
+  check(
+    "کلید ناموجود، خود کلید را برمی‌گرداند",
+    t("en", "nope.nothing.here") === "nope.nothing.here",
+  );
+  check(
+    "متغیرها در متن جایگزین می‌شوند",
+    t("en", "status.ofServers", { ok: 2, total: 3 }) === "2 of 3 servers are available.",
+    t("en", "status.ofServers", { ok: 2, total: 3 }),
+  );
+
+  const faFmt = fmt("fa" as Locale);
+  const enFmt = fmt("en" as Locale);
+  check("ارقام فارسی در حالت فارسی", faFmt.num(1250) === "۱۲۵۰", faFmt.num(1250));
+  check("ارقام لاتین در حالت انگلیسی", enFmt.num(1250) === "1250", enFmt.num(1250));
+  check("واحد پول فارسی", faFmt.money(150000).includes("تومان"), faFmt.money(150000));
+  check("واحد پول انگلیسی", enFmt.money(150000) === "150,000 Toman", enFmt.money(150000));
+  check("حجم انگلیسی با واحد لاتین", enFmt.bytes(10 * GB) === "10 GB", enFmt.bytes(10 * GB));
+  check("حجم فارسی با واحد فارسی", faFmt.bytes(10 * GB).includes("گیگابایت"), faFmt.bytes(10 * GB));
+  check("نامحدود در هر دو زبان", enFmt.bytes(0) === "Unlimited" && faFmt.bytes(0) === "نامحدود");
+
+  const sample = new Date("2026-03-21T10:30:00Z");
+  check("تاریخ میلادی در انگلیسی", /2026/.test(enFmt.date(sample)), enFmt.date(sample));
+  check("تاریخ شمسی در فارسی", /۱۴۰/.test(faFmt.date(sample)), faFmt.date(sample));
+  check("مدت انگلیسی", enFmt.days(30) === "30 days", enFmt.days(30));
+  check("تعداد دستگاه انگلیسی", enFmt.devices(1) === "1 device", enFmt.devices(1));
+}
+
+/** هوش‌پی، چند درگاهی، و پرداخت تتری */
+async function hooshpayAndCryptoScenario() {
+  console.log("\n══════ هوش‌پی و پرداخت تتری ══════");
+  await reset();
+  await saveSettings({
+    card_enabled: "1",
+    wallet_enabled: "1",
+    crypto_enabled: "1",
+    crypto_min_amount: "0",
+    usdt_rate_auto: "0",
+    usdt_rate_manual: "60000",
+    usdt_rate_margin: "2",
+    trial_enabled: "0",
+  });
+
+  const secret = "hp-secret-test";
+  const gateway = await db.gateway.create({
+    data: {
+      driver: "hooshpay",
+      label: "هوش‌پی",
+      apiKey: GATEWAY_KEY,
+      apiSecret: secret,
+      isActive: true,
+      minAmount: 10_000,
+      config: JSON.stringify({ feeMode: "buyer" }),
+    },
+  });
+  check("درگاه هوش‌پی قابل استفاده تشخیص داده شد", gatewayUsable(gateway));
+
+  const incomplete = await db.gateway.create({
+    data: { driver: "zarinpal", label: "زرین‌پال بدون کلید", apiKey: "", isActive: true },
+  });
+  check("درگاه بدون کلید در فهرست فعال‌ها نمی‌آید", !gatewayUsable(incomplete));
+  check(
+    "فقط درگاه‌های کامل به مشتری پیشنهاد می‌شوند",
+    (await activeGateways(150_000)).every((g) => g.id === gateway.id),
+  );
+
+  const panel = await db.panel.create({
+    data: {
+      name: "HP-PANEL",
+      location: "آلمان",
+      url: MOCK_V2,
+      username: "admin",
+      password: "admin",
+      templateEmail: "template-vip",
+      subBase: "https://sub.test.local/sub",
+      inboundId: 1,
+    },
+  });
+  const plan = await db.plan.create({
+    data: { title: "پلن هوش‌پی", volumeGb: 10, days: 30, deviceLimit: 2, priceToman: 250_000, sortOrder: 1 },
+  });
+  const user = await db.user.create({
+    data: { email: "hooshpay@test.local", passwordHash: "scrypt:x:y" },
+  });
+
+  const order = await db.order.create({
+    data: {
+      code: "FD-HP01",
+      userId: user.id,
+      kind: "plan",
+      payMethod: "online",
+      gatewayId: gateway.id,
+      planId: plan.id,
+      panelId: panel.id,
+      amount: plan.priceToman,
+      payable: plan.priceToman,
+      status: "awaiting_payment",
+    },
+  });
+
+  const started = await startWithGateway(gateway, {
+    amount: order.payable,
+    orderCode: order.code,
+    description: "تست هوش‌پی",
+    callbackUrl: "http://127.0.0.1:3000/api/pay/callback/FD-HP01",
+  });
+  check("فاکتور هوش‌پی ساخته شد", started.ref.startsWith("inv_"), started.ref);
+  check("آدرس پرداخت هوش‌پی برگشت", started.payUrl.includes("/pay/inv_"), started.payUrl);
+  await db.order.update({ where: { id: order.id }, data: { gatewayRef: started.ref } });
+
+  const early = await verifyWithGateway(gateway, {
+    ref: started.ref,
+    amount: order.payable,
+    orderCode: order.code,
+    params: {},
+  });
+  check("فاکتور پرداخت‌نشده تأیید نمی‌شود", !early.ok, early.message);
+
+  // مشتری روی صفحهٔ هوش‌پی پرداخت می‌کند
+  await fetch(`${MOCK_GATEWAY}/pay/${started.ref}`, { redirect: "manual" });
+  const verified = await verifyWithGateway(gateway, {
+    ref: started.ref,
+    amount: order.payable,
+    orderCode: order.code,
+    params: {},
+  });
+  check("فاکتور پرداخت‌شده تأیید شد", verified.ok, verified.message);
+  check("کد رهگیری هوش‌پی برگشت", verified.refId === `HP-${order.code}`, verified.refId);
+
+  await completePaidOrder(order.id, { gateway: "hooshpay", ref: started.ref, bankRef: verified.refId });
+  const hpService = await db.service.findFirst({ where: { orderId: order.id } });
+  check("سرویس بعد از پرداخت هوش‌پی تحویل شد", Boolean(hpService), hpService?.clientEmail);
+
+  // امضای وب‌هوک
+  const payload = { event: "payment.success", invoice: "inv_x", order_id: "FD-HP01", amount: 250000 };
+  const signature = hooshpaySignature(payload, secret);
+  check("امضای وب‌هوک ساخته شد", signature.length === 64, signature.slice(0, 12));
+  check("امضای درست پذیرفته می‌شود", validHooshpaySignature(payload, signature, secret));
+  check("امضای غلط رد می‌شود", !validHooshpaySignature(payload, signature, "wrong-secret"));
+  check(
+    "دستکاری محتوا امضا را باطل می‌کند",
+    !validHooshpaySignature({ ...payload, amount: 1 }, signature, secret),
+  );
+  check(
+    "ترتیب کلیدها روی امضا اثر ندارد",
+    hooshpaySignature({ amount: 250000, order_id: "FD-HP01", invoice: "inv_x", event: "payment.success" }, secret) ===
+      signature,
+  );
+
+  // انتقال تنظیمات تک‌درگاهی قدیمی
+  await db.gateway.deleteMany();
+  await saveSettings({
+    gateway_enabled: "1",
+    gateway_driver: "zarinpal",
+    gateway_key: "legacy-merchant",
+    gateway_min_amount: "20000",
+  });
+  const moved = await migrateLegacyGateway();
+  const migrated = await db.gateway.findFirst();
+  check("درگاه قدیمی به جدول منتقل شد", moved && migrated?.apiKey === "legacy-merchant", migrated?.driver);
+  check("انتقال دوباره تکرار نمی‌شود", !(await migrateLegacyGateway()));
+
+  /* ------------------------------ پرداخت تتری ------------------------------ */
+  const rate = await usdtRate();
+  check("نرخ دستی با حاشیه اعمال شد", rate.toman === 61_200, rate.toman);
+  check("تبدیل تومان به تتر رو به بالا است", tomanToUsdt(250_000, 61_200) === 4.09, tomanToUsdt(250_000, 61_200));
+
+  const methodsNoWallet = await availableMethods(250_000);
+  check("بدون آدرس کیف پول، پرداخت تتری پیشنهاد نمی‌شود", !methodsNoWallet.crypto);
+
+  await db.cryptoWallet.create({
+    data: { network: "trc20", symbol: "USDT", address: "TTestWalletAddressForE2E0000000000", isActive: true },
+  });
+  const methods = await availableMethods(250_000);
+  check("با آدرس فعال، پرداخت تتری در دسترس است", methods.crypto);
+  check("کارت‌به‌کارت هم فعال است", methods.card);
+
+  const quote = await quoteCrypto(250_000);
+  check("مبلغ تتری سفارش محاسبه شد", quote.amount > 0 && quote.rate === 61_200, quote);
+
+  const cryptoOrder = await db.order.create({
+    data: {
+      code: "FD-CR01",
+      userId: user.id,
+      kind: "plan",
+      payMethod: "crypto",
+      planId: plan.id,
+      panelId: panel.id,
+      amount: plan.priceToman,
+      payable: plan.priceToman,
+      status: "awaiting_receipt",
+      cryptoAmount: quote.amount,
+      cryptoRate: quote.rate,
+      cryptoAddress: "TTestWalletAddressForE2E0000000000",
+      cryptoNetwork: "USDT-TRC20",
+    },
+  });
+  check("مبلغ و نرخ روی سفارش تتری قفل شد", cryptoOrder.cryptoRate === 61_200);
+
+  await db.order.update({
+    where: { id: cryptoOrder.id },
+    data: { cryptoTxHash: "0xtesthash1234567890abcdef", status: "pending_review", paidAt: new Date() },
+  });
+  await completePaidOrder(cryptoOrder.id);
+  const cryptoService = await db.service.findFirst({ where: { orderId: cryptoOrder.id } });
+  const afterCrypto = await db.order.findUniqueOrThrow({ where: { id: cryptoOrder.id } });
+  check("بعد از تأیید مدیر، سرویس تتری تحویل شد", Boolean(cryptoService));
+  check("وضعیت سفارش تتری approved شد", afterCrypto.status === "approved", afterCrypto.status);
+
+  // خاموش‌کردن روش‌ها از پنل مدیریت
+  await saveSettings({ crypto_enabled: "0", card_enabled: "0" });
+  const off = await availableMethods(250_000);
+  check("خاموش‌کردن روش‌ها از تنظیمات اثر می‌کند", !off.crypto && !off.card);
+}
+
+/** نمایندگی: قیمت عمده، کسر از اعتبار، مالکیت سرویس‌ها و کاربر ویژه */
+async function resellerScenario() {
+  console.log("\n══════ پنل نمایندگی و کاربر ویژه ══════");
+  await reset();
+  await saveSettings({ card_enabled: "1", card_vip_only: "1", wallet_enabled: "1", trial_enabled: "0" });
+
+  const panel = await db.panel.create({
+    data: {
+      name: "RS-PANEL",
+      location: "آلمان",
+      url: MOCK_V2,
+      username: "admin",
+      password: "admin",
+      templateEmail: "template-vip",
+      subBase: "https://sub.test.local/sub",
+      inboundId: 1,
+    },
+  });
+  const plan = await db.plan.create({
+    data: { title: "پلن نمایندگی", volumeGb: 20, days: 30, deviceLimit: 2, priceToman: 200_000, sortOrder: 1 },
+  });
+
+  // قیمت عمده
+  check("قیمت با ۲۵٪ تخفیف درست حساب شد", resellerPrice(200_000, 25) === 150_000, resellerPrice(200_000, 25));
+  check("تخفیف صفر یعنی قیمت کامل", resellerPrice(200_000, 0) === 200_000);
+  check("تخفیف بیش از حد محدود می‌شود", resellerPrice(200_000, 200) === resellerPrice(200_000, 90));
+
+  const reseller = await db.user.create({
+    data: {
+      email: "reseller@test.local",
+      passwordHash: "scrypt:x:y",
+      isReseller: true,
+      resellerOff: 25,
+      resellerName: "فروشگاه تست",
+      balance: 400_000,
+    },
+  });
+  const normal = await db.user.create({
+    data: { email: "normal@test.local", passwordHash: "scrypt:x:y", balance: 0 },
+  });
+
+  const priced = await resellerPlans(reseller.resellerOff);
+  check("لیست قیمت نماینده ساخته شد", priced[0]?.price === 150_000 && priced[0]?.saving === 50_000, priced[0]);
+
+  // فروش سرویس
+  const sold = await resellerCreateService({
+    resellerId: reseller.id,
+    planId: plan.id,
+    panelId: panel.id,
+    customerName: "مشتری اول",
+  });
+  const afterSale = await db.user.findUniqueOrThrow({ where: { id: reseller.id } });
+  check("سرویس مشتری ساخته شد", Boolean(sold.clientEmail), sold.clientEmail);
+  check("مبلغ عمده از اعتبار کم شد", afterSale.balance === 250_000, afterSale.balance);
+  check("سرویس به نماینده نسبت داده شد", sold.resellerId === reseller.id);
+  check("نام مشتری ذخیره شد", sold.customerName === "مشتری اول", sold.customerName);
+
+  const saleTx = await db.walletTx.findFirst({
+    where: { userId: reseller.id, kind: "reseller_sale" },
+  });
+  check("تراکنش فروش نمایندگی ثبت شد", saleTx?.amount === -150_000, saleTx?.amount);
+
+  // سرویس نمایندگی نباید در پنل شخصی نماینده بیاید
+  const personal = await db.service.count({ where: { userId: reseller.id, resellerId: null } });
+  const asReseller = await resellerServices(reseller.id);
+  check("سرویس مشتری در پنل شخصی نماینده نمی‌آید", personal === 0, personal);
+  check("سرویس در فهرست نمایندگی هست", asReseller.length === 1, asReseller.length);
+
+  // تمدید
+  const renewed = await resellerRenewService({ resellerId: reseller.id, serviceId: sold.id });
+  const afterRenew = await db.user.findUniqueOrThrow({ where: { id: reseller.id } });
+  check("حجم بعد از تمدید دو برابر شد", renewed.totalBytes === 40 * GB, renewed.totalBytes);
+  check("مبلغ تمدید هم از اعتبار کم شد", afterRenew.balance === 100_000, afterRenew.balance);
+  check("لینک اشتراک مشتری بعد از تمدید عوض نشد", renewed.subId === sold.subId);
+
+  // موجودی ناکافی
+  let blocked = "";
+  try {
+    await resellerCreateService({
+      resellerId: reseller.id,
+      planId: plan.id,
+      panelId: panel.id,
+      customerName: "مشتری دوم",
+    });
+  } catch (err) {
+    blocked = (err as Error).message;
+  }
+  check("با موجودی کم، فروش انجام نمی‌شود", blocked.includes("موجودی"), blocked);
+  check(
+    "بعد از تلاش ناموفق، اعتبار دست‌نخورده ماند",
+    (await db.user.findUniqueOrThrow({ where: { id: reseller.id } })).balance === 100_000,
+  );
+
+  // کاربر عادی نمی‌تواند بفروشد
+  let denied = "";
+  try {
+    await resellerCreateService({ resellerId: normal.id, planId: plan.id, customerName: "x" });
+  } catch (err) {
+    denied = (err as Error).message;
+  }
+  check("کاربر عادی نمی‌تواند از مسیر نمایندگی سرویس بسازد", denied.includes("نمایندگی"), denied);
+
+  // تغییر نام مشتری فقط برای سرویس‌های خود نماینده
+  await renameCustomer(reseller.id, sold.id, "مشتری تغییرنام‌یافته");
+  const renamed = await db.service.findUniqueOrThrow({ where: { id: sold.id } });
+  check("نام مشتری تغییر کرد", renamed.customerName === "مشتری تغییرنام‌یافته");
+
+  let foreign = "";
+  try {
+    await renameCustomer(normal.id, sold.id, "دزدیده‌شده");
+  } catch (err) {
+    foreign = (err as Error).message;
+  }
+  check("نماینده دیگر نمی‌تواند سرویس این نماینده را عوض کند", foreign.includes("فهرست شما"), foreign);
+
+  const stats = await resellerStats(reseller.id);
+  check("گزارش نمایندگی درست است", stats.services === 1 && stats.spent === 300_000, stats);
+
+  /* ------------------------------ کاربر ویژه ------------------------------ */
+  const vip = await db.user.create({
+    data: { email: "vip@test.local", passwordHash: "scrypt:x:y", isVip: true },
+  });
+
+  const forNormal = await availableMethods(200_000, { isVip: false });
+  const forVip = await availableMethods(200_000, { isVip: vip.isVip });
+  check("کاربر عادی شماره کارت را نمی‌بیند", !forNormal.card);
+  check("کاربر ویژه کارت‌به‌کارت را می‌بیند", forVip.card);
+
+  await saveSettings({ card_vip_only: "0" });
+  check("با خاموش‌کردن حالت ویژه، کارت برای همه باز می‌شود", (await availableMethods(200_000)).card);
+
+  await saveSettings({ card_enabled: "0" });
+  check(
+    "اگر کارت‌به‌کارت خاموش باشد، حتی کاربر ویژه هم نمی‌بیند",
+    !(await availableMethods(200_000, { isVip: true })).card,
+  );
+}
+
+/* ------------------------------ پشتیبان‌گیری ------------------------------ */
+
+async function backupScenario() {
+  console.log("\n══════ پشتیبان‌گیری و بازیابی ══════");
+  await reset();
+
+  const dir = path.resolve("data/e2e-backups");
+  process.env.BACKUP_DIR = dir;
+  await rm(dir, { recursive: true, force: true });
+
+  /* ۱) tar دست‌ساز باید بی‌کم‌وکاست باز شود (فایل باینری و نام بلند) */
+  const binary = Buffer.from(Array.from({ length: 1500 }, (_, i) => i % 256));
+  const roundTrip = readTar(
+    makeTar([
+      { name: "manifest.json", data: Buffer.from('{"a":1}', "utf8") },
+      { name: "uploads/receipt-با-نام-فارسی.jpg", data: binary },
+    ]),
+  );
+  check("tar دو فایل را برمی‌گرداند", roundTrip.length === 2, roundTrip.map((e) => e.name));
+  check(
+    "محتوای باینری بعد از tar دست‌نخورده است",
+    Buffer.from(roundTrip[1].data).equals(binary),
+  );
+  check(
+    "نام فایل فارسی در tar سالم می‌ماند",
+    roundTrip[1].name === "uploads/receipt-با-نام-فارسی.jpg",
+    roundTrip[1].name,
+  );
+
+  /* ۲) نام فایل: جلوی path traversal گرفته می‌شود */
+  check("نام معتبر پذیرفته می‌شود", safeBackupName("fandogh-backup-2026-01-01-00-00-00.tar.gz") !== null);
+  check("نام بدون پیشوند رد می‌شود", safeBackupName("hack.tar.gz") === null);
+  check("مسیر بالارونده رد می‌شود", safeBackupName("../../../etc/passwd") === null);
+  check(
+    "مسیر با پیشوند درست ولی پوشهٔ دیگر هم فقط نامش خوانده می‌شود",
+    safeBackupName("/etc/fandogh-backup-x.tar.gz") === "fandogh-backup-x.tar.gz",
+  );
+  check("فایل غیر tar.gz رد می‌شود", safeBackupName("fandogh-backup-x.db") === null);
+
+  /* ۳) ساخت پشتیبان از وضعیت واقعی دیتابیس */
+  await saveSettings({ site_name: "فندق تست" });
+  const owner = await db.user.create({
+    data: { email: "backup@test.local", name: "کاربر پشتیبان", passwordHash: "x", role: "user" },
+  });
+
+  const first = await createBackup("تست");
+  check("فایل پشتیبان ساخته شد", first.file.startsWith("fandogh-backup-") && first.size > 0, first);
+
+  const listed = await listBackups();
+  check("پشتیبان در فهرست دیده می‌شود", listed.some((f) => f.name === first.file), listed);
+
+  const archive = await readBackup(first.file);
+  check("فایل پشتیبان خوانده می‌شود", Boolean(archive));
+
+  const inside = readTar(gunzipSync(archive!));
+  const manifest = JSON.parse(
+    inside.find((e) => e.name === "manifest.json")!.data.toString("utf8"),
+  ) as { site: string; reason: string; counts: Record<string, number> };
+  const dbInside = inside.find((e) => e.name === "database.db")!;
+
+  check("دیتابیس داخل پشتیبان هست", Boolean(dbInside));
+  check(
+    "فایل داخل پشتیبان واقعاً دیتابیس SQLite است",
+    Buffer.from(dbInside.data).subarray(0, 15).toString("utf8") === "SQLite format 3",
+  );
+  check("نام سایت در فهرست پشتیبان ثبت شده", manifest.site === "فندق تست", manifest.site);
+  check("علت ساخت پشتیبان ثبت شده", manifest.reason === "تست", manifest.reason);
+  check("تعداد کاربران در فهرست درست است", manifest.counts.users === 1, manifest.counts);
+
+  /* ۴) خواندن با نام نامعتبر چیزی برنمی‌گرداند */
+  check("خواندن با نام نامعتبر ناموفق است", (await readBackup("../fandogh.db")) === null);
+  check("حذف با نام نامعتبر انجام نمی‌شود", (await deleteBackup("../fandogh.db")) === false);
+
+  /* ۵) نگه‌داشتن N تای آخر */
+  for (let i = 1; i <= 4; i += 1) {
+    const name = `fandogh-backup-2026-01-0${i}-00-00-00.tar.gz`;
+    await writeFile(path.join(dir, name), Buffer.from("x"));
+    const when = new Date(2026, 0, i);
+    await utimes(path.join(dir, name), when, when);
+  }
+  const removed = await pruneBackups(2);
+  const afterPrune = await listBackups();
+  check("پشتیبان‌های قدیمی پاک شدند", removed === 3, removed);
+  check("فقط ۲ پشتیبان تازه ماند", afterPrune.length === 2, afterPrune.map((f) => f.name));
+  check(
+    "تازه‌ترین پشتیبان اول فهرست است",
+    afterPrune[0].createdAt.getTime() >= afterPrune[1].createdAt.getTime(),
+  );
+
+  /* ۶) بازیابی فایل خراب یا نامربوط باید رد شود */
+  const corrupt = await restoreBackup(Buffer.from("this is not a gzip file"));
+  check("فایل خراب رد می‌شود", !corrupt.ok && corrupt.code === "corrupt", corrupt);
+
+  const notBackup = gzipSync(
+    makeTar([{ name: "database.db", data: Buffer.from("just some text, not a database") }]),
+  );
+  const rejected = await restoreBackup(notBackup);
+  check("فایلی که دیتابیس سالم ندارد رد می‌شود", !rejected.ok && rejected.code === "not-a-backup", rejected);
+
+  /* ۷) بازیابی واقعی: تغییرات بعد از پشتیبان باید برگردند */
+  const snapshot = await createBackup("قبل از تغییر");
+  await saveSettings({ site_name: "نام عوض‌شده" });
+  const ghost = await db.user.create({
+    data: { email: "ghost@test.local", name: "کاربر بعد از پشتیبان", passwordHash: "x", role: "user" },
+  });
+  check("تغییر قبل از بازیابی اعمال شده بود", (await getSettings()).site_name === "نام عوض‌شده");
+
+  const restored = await restoreBackup((await readBackup(snapshot.file))!);
+  check("بازیابی موفق بود", restored.ok && restored.code === "restored", restored);
+  check("قبل از بازیابی، پشتیبان ایمنی ساخته شد", Boolean(restored.safetyCopy), restored.safetyCopy);
+  check("فهرست پشتیبان داخل فایل خوانده شد", restored.manifest?.site === "فندق تست", restored.manifest);
+
+  const settingsAfter = await getSettings();
+  check("تنظیمات به حالت پشتیبان برگشت", settingsAfter.site_name === "فندق تست", settingsAfter.site_name);
+  check(
+    "کاربر ساخته‌شده بعد از پشتیبان دیگر نیست",
+    (await db.user.findUnique({ where: { id: ghost.id } })) === null,
+  );
+  check(
+    "کاربر قبل از پشتیبان سر جایش هست",
+    (await db.user.findUnique({ where: { id: owner.id } }))?.email === "backup@test.local",
+  );
+
+  /* ۸) زمان‌بندی خودکار */
+  await saveSettings({ backup_auto: "0", backup_interval_hours: "24", backup_last_at: "0" });
+  check("با خاموش بودن، پشتیبان خودکار گرفته نمی‌شود", (await autoBackupDue()) === false);
+
+  await saveSettings({ backup_auto: "1", backup_last_at: String(Date.now()) });
+  check("درست بعد از پشتیبان، نوبت بعدی نرسیده", (await autoBackupDue()) === false);
+
+  await saveSettings({ backup_last_at: String(Date.now() - 25 * 3_600_000) });
+  check("بعد از گذشتن فاصلهٔ تعیین‌شده، نوبت رسیده", (await autoBackupDue()) === true);
+
+  await saveSettings({ backup_keep: "2", backup_telegram: "0" });
+  const auto = await runAutoBackup();
+  check("پشتیبان خودکار ساخته شد", Boolean(auto?.file), auto);
+  check("پشتیبان خودکار در تلگرام فرستاده نشد (خاموش است)", auto?.sent === false);
+  check("بعد از پشتیبان خودکار، فقط ۲ فایل ماند", (await listBackups()).length === 2);
+  check("زمان آخرین پشتیبان به‌روز شد", (await autoBackupDue()) === false);
+  check("اجرای دوباره پشتیبان تکراری نمی‌سازد", (await runAutoBackup()) === null);
+
+  /* ۹) ارسال به تلگرام بدون ربات نباید خطا بیندازد */
+  await saveSettings({ telegram_bot_token: "", telegram_admin_chat_id: "" });
+  const sendResult = await sendBackupToTelegram(auto!.file);
+  check("بدون ربات، ارسال تلگرام با پیام روشن رد می‌شود", !sendResult.ok && sendResult.code === "no-bot", sendResult);
+
+  /* ۱۰) کارهای پس‌زمینه هم پشتیبان خودکار را اجرا می‌کنند */
+  await saveSettings({ backup_last_at: "0", monitor_enabled: "0" });
+  const tick = await runMaintenance();
+  check("چرخهٔ کارهای پس‌زمینه پشتیبان ساخت", Boolean(tick.backup), tick.backup);
+
+  /* ۱۱) رمزگذاری با گذرواژه */
+  const plain = gzipSync(makeTar([{ name: "database.db", data: Buffer.from("SQLite format 3\u0000rest") }]));
+  const sealed = encryptArchive(plain, "رمز-تست ۱۲۳");
+  check("فایل رمزشده نشانهٔ خودش را دارد", isEncryptedArchive(sealed));
+  check("فایل رمزنشده نشانهٔ رمز ندارد", !isEncryptedArchive(plain));
+  check("رمزشده با اصل فرق دارد", !sealed.equals(plain));
+  check(
+    "با گذرواژهٔ درست دقیقاً همان فایل برمی‌گردد",
+    decryptArchive(sealed, "رمز-تست ۱۲۳")?.equals(plain) === true,
+  );
+  check("با گذرواژهٔ غلط باز نمی‌شود", decryptArchive(sealed, "رمز-غلط") === null);
+  check(
+    "دست‌کاری فایل رمزشده لو می‌رود",
+    decryptArchive(
+      Buffer.concat([sealed.subarray(0, sealed.length - 1), Buffer.from([sealed[sealed.length - 1] ^ 0xff])]),
+      "رمز-تست ۱۲۳",
+    ) === null,
+  );
+  check("هر بار نمک و بردار تازه است", !encryptArchive(plain, "x").equals(encryptArchive(plain, "x")));
+
+  await saveSettings({ backup_password: "گذرواژهٔ فروشگاه ۹۹" });
+  await saveSettings({ site_name: "فندق رمزدار" });
+  const encBackup = await createBackup("تست رمزگذاری");
+  check("نام فایل رمزشده پسوند enc دارد", encBackup.file.endsWith(".tar.gz.enc"), encBackup.file);
+  check(
+    "فایل رمزشده در فهرست با نشان رمز می‌آید",
+    (await listBackups()).find((f) => f.name === encBackup.file)?.encrypted === true,
+  );
+  check("محتوای روی دیسک رمز است", isEncryptedArchive((await readBackup(encBackup.file))!));
+
+  const needsPass = await restoreBackup((await readBackup(encBackup.file))!);
+  check("بازیابی بدون گذرواژه رد می‌شود", needsPass.code === "needs-password", needsPass);
+
+  const wrongPass = await restoreBackup((await readBackup(encBackup.file))!, "یک چیز دیگر");
+  check("بازیابی با گذرواژهٔ غلط رد می‌شود", wrongPass.code === "bad-password", wrongPass);
+
+  await saveSettings({ site_name: "عوض شد دوباره" });
+  const withPass = await restoreBackup((await readBackup(encBackup.file))!, "گذرواژهٔ فروشگاه ۹۹");
+  check("بازیابی با گذرواژهٔ درست انجام می‌شود", withPass.ok && withPass.code === "restored", withPass);
+  check(
+    "دادهٔ داخل پشتیبان رمزشده درست برگشت",
+    (await getSettings()).site_name === "فندق رمزدار",
+    (await getSettings()).site_name,
+  );
+
+  await saveSettings({ backup_password: "" });
+  const backToPlain = await createBackup("بدون رمز");
+  check("با خالی‌کردن گذرواژه، پشتیبان تازه رمز ندارد", !backToPlain.file.endsWith(".enc"), backToPlain.file);
+  check(
+    "پشتیبان رمزنشده بدون گذرواژه بازیابی می‌شود",
+    (await restoreBackup((await readBackup(backToPlain.file))!)).ok,
+  );
+
+  check("نام فایل enc معتبر است", safeBackupName("fandogh-backup-2026-01-01-00-00-00.tar.gz.enc") !== null);
+  check("پسوند ناشناس رد می‌شود", safeBackupName("fandogh-backup-x.tar.gz.exe") === null);
+
+  await rm(dir, { recursive: true, force: true });
+  delete process.env.BACKUP_DIR;
+}
+
+/* ------------------------- انتقال سرویس بین سرورها ------------------------- */
+
+async function migrateScenario() {
+  console.log("\n══════ انتقال سرویس بین سرورها ══════");
+  await reset();
+  await saveSettings({ trial_enabled: "0" });
+
+  const source = await db.panel.create({
+    data: {
+      name: "سرور قدیمی", location: "آلمان", flag: "🇩🇪", url: MOCK_V2,
+      username: "admin", password: "admin", inboundId: 1,
+      templateEmail: "template-vip", multiInbound: false, sortOrder: 1,
+      subBase: "https://old.test.local/sub",
+    },
+  });
+  const target = await db.panel.create({
+    data: {
+      name: "سرور تازه", location: "هلند", flag: "🇳🇱", url: MOCK_V2,
+      username: "admin", password: "admin", inboundId: 2,
+      templateEmail: "template-alt", multiInbound: false, sortOrder: 2,
+      subBase: "https://new.test.local/sub",
+    },
+  });
+
+  const plan = await db.plan.create({
+    data: { title: "۱۰ گیگ", volumeGb: 10, days: 30, deviceLimit: 2, priceToman: 100_000 },
+  });
+  const buyer = await db.user.create({
+    data: { email: "move@test.local", name: "مشتری انتقالی", passwordHash: "x" },
+  });
+
+  const before = await createServiceOnPanel({
+    userId: buyer.id,
+    userEmail: buyer.email,
+    plan: { volumeGb: plan.volumeGb, days: plan.days, deviceLimit: plan.deviceLimit },
+    planId: plan.id,
+    panel: source,
+    code: "MOVE-1",
+    remark: "سرویس انتقالی",
+  });
+
+  // ۳ گیگ مصرف روی سرور قدیمی
+  await fetch(`${MOCK_V2}/_mock/usage?email=${encodeURIComponent(before.clientEmail)}&up=${GB}&down=${2 * GB}`);
+  const synced = await syncService(before.id, true);
+  check("مصرف اولیه روی سرور قدیمی ثبت شد", Math.round(synced.usedBytes / GB) === 3, synced.usedBytes / GB);
+
+  const moved = await migrateService(before.id, target.id);
+  const after = moved.service;
+
+  check("سرویس روی سرور تازه نشست", after.panelId === target.id, after.panelId);
+  check("نام سرور قبلی ثبت شد", after.movedFrom === "سرور قدیمی", after.movedFrom);
+  check("زمان انتقال ثبت شد", Boolean(after.movedAt));
+  check("آمار از پنل قبلی خوانده شد", moved.usageFromPanel);
+  check("کلاینت قدیمی از سرور قبلی پاک شد", moved.oldRemoved);
+  check("فقط باقی‌مانده منتقل شد", Math.round(moved.remainingBytes / GB) === 7, moved.remainingBytes / GB);
+
+  check("حجم کل سرویس عوض نشده", Math.round(after.totalBytes / GB) === 10, after.totalBytes / GB);
+  check("مصرف قبلی حفظ شد", Math.round(after.usedBytes / GB) === 3, after.usedBytes / GB);
+  check("مصرف قبلی در usageOffset نگه داشته شد", Math.round(after.usageOffset / GB) === 3, after.usageOffset / GB);
+  check(
+    "تاریخ انقضا دست‌نخورده ماند",
+    Math.abs((after.expiresAt?.getTime() ?? 0) - (before.expiresAt?.getTime() ?? 0)) < 2000,
+  );
+  check("شناسه اشتراک (subId) همان است", after.subId === before.subId);
+  check("UUID تازه است", after.uuid !== before.uuid);
+  check("نام کلاینت تازه است", after.clientEmail !== before.clientEmail);
+  check("اینباند سرور مقصد گرفته شد", after.inboundId === 2, after.inboundId);
+
+  const targetClient = new XuiClient({
+    url: target.url, username: "admin", password: "admin", insecure: true,
+  });
+  const onTarget = await targetClient.getClientTraffics(after.clientEmail);
+  check("کلاینت روی سرور مقصد ساخته شد", Boolean(onTarget));
+  check("سهمیهٔ کلاینت تازه، باقی‌ماندهٔ سرویس است", Math.round((onTarget?.total ?? 0) / GB) === 7, onTarget?.total);
+
+  const sourceClient = new XuiClient({
+    url: source.url, username: "admin", password: "admin", insecure: true,
+  });
+  const oldClients = await sourceClient.listClients(1);
+  check(
+    "کلاینت قدیمی روی سرور قبلی نمانده",
+    !oldClients.some((c) => c.email === before.clientEmail),
+    oldClients.map((c) => c.email),
+  );
+
+  // مصرف تازه روی سرور مقصد روی مصرف قبلی سوار می‌شود
+  await fetch(`${MOCK_V2}/_mock/usage?email=${encodeURIComponent(after.clientEmail)}&up=${GB}&down=0`);
+  const resynced = await syncService(after.id, true);
+  check("مصرف بعد از انتقال جمع می‌شود", Math.round(resynced.usedBytes / GB) === 4, resynced.usedBytes / GB);
+  check("حجم کل بعد از همگام‌سازی هم درست است", Math.round(resynced.totalBytes / GB) === 10, resynced.totalBytes / GB);
+
+  const links = await serviceLinks(after.id);
+  check("لینک اشتراک از سرور تازه ساخته می‌شود", links.subscription.includes("new.test.local"), links.subscription);
+
+  // تمدید بعد از انتقال هم باید حجم را روی همان مبنا اضافه کند
+  const renewed = await renewServiceOnPanel(resynced, { volumeGb: 5, days: 10, deviceLimit: 2, id: plan.id });
+  check("تمدید بعد از انتقال حجم را درست بالا می‌برد", Math.round(renewed.totalBytes / GB) === 15, renewed.totalBytes / GB);
+  check("مصرف بعد از تمدید هم حفظ شد", Math.round(renewed.usedBytes / GB) === 4, renewed.usedBytes / GB);
+
+  // صفر کردن مصرف، مصرف انتقال‌یافته را هم پاک می‌کند
+  await resetServiceTraffic(renewed.id);
+  const zeroed = await db.service.findUniqueOrThrow({ where: { id: renewed.id } });
+  check("صفرکردن مصرف، مصرف انتقالی را هم صفر می‌کند", zeroed.usedBytes === 0 && zeroed.usageOffset === 0, zeroed.usedBytes);
+
+  /* انتقال از سرور خراب: آمار از دیتابیس و کلاینت قدیمی باقی می‌ماند */
+  const dead = await db.panel.create({
+    data: {
+      name: "سرور خراب", location: "فرانسه", flag: "🇫🇷", url: "http://127.0.0.1:9",
+      username: "admin", password: "admin", inboundId: 1, templateEmail: "template-vip",
+      multiInbound: false, sortOrder: 3,
+    },
+  });
+  const stranded = await db.service.create({
+    data: {
+      userId: buyer.id, planId: plan.id, panelId: dead.id, remark: "روی سرور خراب",
+      clientEmail: "stranded-client", uuid: randomUUID(), subId: "abcdef0123456789",
+      inboundId: 1, clientRefs: JSON.stringify([{ inboundId: 1, email: "stranded-client" }]),
+      totalBytes: 10 * GB, usedBytes: 4 * GB, deviceLimit: 1,
+      expiresAt: new Date(Date.now() + 15 * 86_400_000), status: "active",
+    },
+  });
+
+  const rescued = await migrateService(stranded.id, target.id);
+  check("انتقال از سرور خراب هم انجام می‌شود", rescued.service.panelId === target.id);
+  check("آمار از دیتابیس برداشته شد", rescued.usageFromPanel === false);
+  check("کلاینت روی سرور خراب پاک نشد (و خطا نداد)", rescued.oldRemoved === false);
+  check("باقی‌ماندهٔ درست منتقل شد", Math.round(rescued.remainingBytes / GB) === 6, rescued.remainingBytes / GB);
+  check("مصرف قبلی از دیتابیس حفظ شد", Math.round(rescued.service.usedBytes / GB) === 4);
+
+  /* سرویس نامحدود: باقی‌مانده هم نامحدود می‌ماند */
+  const unlimited = await createServiceOnPanel({
+    userId: buyer.id,
+    userEmail: buyer.email,
+    plan: { volumeGb: 0, days: 0, deviceLimit: 0 },
+    planId: null,
+    panel: source,
+    code: "MOVE-2",
+    remark: "نامحدود",
+  });
+  const movedUnlimited = await migrateService(unlimited.id, target.id);
+  check("سرویس نامحدود بعد از انتقال نامحدود می‌ماند", movedUnlimited.remainingBytes === 0);
+  check("حجم کل نامحدود صفر می‌ماند", movedUnlimited.service.totalBytes === 0);
+
+  /* انتقال به همان سرور باید رد شود */
+  let sameRejected = false;
+  try {
+    await migrateService(movedUnlimited.service.id, target.id);
+  } catch {
+    sameRejected = true;
+  }
+  check("انتقال به سرور فعلی رد می‌شود", sameRejected);
+}
+
+/* --------------------- ورود دومرحله‌ای و نقش پشتیبان --------------------- */
+
+function securityScenario() {
+  console.log("\n══════ ورود دومرحله‌ای و نقش‌ها ══════");
+
+  /* Base32 رفت و برگشت */
+  const raw = Buffer.from("فندق-test-secret", "utf8");
+  check("Base32 رفت و برگشت درست است", base32Decode(base32Encode(raw)).equals(raw));
+  check("کلید تازه ۳۲ کاراکتری Base32 است", /^[A-Z2-7]{32}$/.test(newTotpSecret()), newTotpSecret());
+
+  /* بردار آزمون رسمی RFC 6238 (کلید "12345678901234567890") */
+  const rfcSecret = base32Encode(Buffer.from("12345678901234567890", "utf8"));
+  check("کد RFC 6238 در ثانیهٔ ۵۹ درست است", totpCode(rfcSecret, Math.floor(59 / 30)) === "287082");
+  check("کد RFC 6238 در ثانیهٔ ۱۱۱۱۱۱۱۰۹ درست است", totpCode(rfcSecret, Math.floor(1111111109 / 30)) === "081804");
+  check("کد RFC 6238 در ثانیهٔ ۱۲۳۴۵۶۷۸۹ درست است", totpCode(rfcSecret, Math.floor(1234567890 / 30)) === "005924");
+
+  /* پذیرش کد فعلی و رد کد غلط */
+  const secret = newTotpSecret();
+  const now = Date.now();
+  check("کد لحظهٔ فعلی پذیرفته می‌شود", verifyTotp(secret, currentTotp(secret, now), now));
+  check("کد ۳۰ ثانیه قبل هم پذیرفته می‌شود", verifyTotp(secret, currentTotp(secret, now - 30_000), now));
+  check("کد ۳۰ ثانیه بعد هم پذیرفته می‌شود", verifyTotp(secret, currentTotp(secret, now + 30_000), now));
+  check("کد ۵ دقیقه قبل رد می‌شود", !verifyTotp(secret, currentTotp(secret, now - 300_000), now));
+  check("کد کلید دیگر رد می‌شود", !verifyTotp(secret, currentTotp(newTotpSecret(), now), now));
+  check("کد ناقص رد می‌شود", !verifyTotp(secret, "12345", now));
+  check("متن غیرعددی رد می‌شود", !verifyTotp(secret, "abcdef", now));
+  check(
+    "ارقام فارسی هم پذیرفته می‌شوند",
+    verifyTotp(secret, currentTotp(secret, now).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]), now),
+  );
+
+  /* آدرس otpauth که اپ احرازهویت می‌خواند */
+  const url = otpauthUrl(secret, "admin@test.local", "فندق");
+  check("آدرس otpauth کلید را دارد", url.includes(`secret=${secret}`), url);
+  check("آدرس otpauth شش‌رقمی و ۳۰ ثانیه‌ای است", url.includes("digits=6") && url.includes("period=30"));
+
+  /* کدهای پشتیبان */
+  const backup = newBackupCodes(8);
+  check("۸ کد پشتیبان ساخته شد", backup.codes.length === 8);
+  check("کدها هش‌شده ذخیره می‌شوند", !backup.hashed.includes(backup.codes[0]));
+
+  const used = useBackupCode(backup.hashed, backup.codes[0]);
+  check("کد پشتیبان درست پذیرفته می‌شود", used.ok);
+  check("کد مصرف‌شده از فهرست حذف می‌شود", used.left === 7, used.left);
+  check("همان کد بار دوم کار نمی‌کند", !useBackupCode(used.rest, backup.codes[0]).ok);
+  check("کد دیگر هنوز کار می‌کند", useBackupCode(used.rest, backup.codes[1]).ok);
+  check("کد ساختگی رد می‌شود", !useBackupCode(used.rest, "00000-00000").ok);
+  check("شمارش کدهای باقی‌مانده درست است", backupCodesLeft(used.rest) === 7);
+
+  /* نقش‌ها */
+  check("مدیر جزو کارکنان است", isStaff("admin"));
+  check("پشتیبان جزو کارکنان است", isStaff("support"));
+  check("کاربر عادی جزو کارکنان نیست", !isStaff("user"));
+  check("برچسب نقش‌ها درست است", roleLabel("support") === "پشتیبان" && roleLabel("admin") === "مدیر");
+}
+
 async function main() {
   await scenario({
     label: "پنل نسخه ۲ — ورود با نام کاربری و رمز",
@@ -332,6 +1844,18 @@ async function main() {
     prefix: "FD-V3",
     expect: "v3",
   });
+
+  await planPanelScenario();
+  await walletScenario();
+  await monitorScenario();
+  await gatewayScenario();
+  await hooshpayAndCryptoScenario();
+  await resellerScenario();
+  await pushScenario();
+  await migrateScenario();
+  await backupScenario();
+  securityScenario();
+  i18nScenario();
 
   console.log("\n══════ بررسی توکن نامعتبر ══════");
   const badToken = new XuiClient({

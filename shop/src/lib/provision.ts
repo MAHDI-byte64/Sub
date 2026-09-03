@@ -17,17 +17,37 @@ export function panelClient(panel: Panel): XuiClient {
   });
 }
 
-/** انتخاب پنل: پنل انتخابی کاربر، وگرنه کم‌بارترین پنل فعال */
-export async function pickPanel(preferredPanelId?: string | null): Promise<Panel> {
-  if (preferredPanelId) {
-    const panel = await db.panel.findFirst({ where: { id: preferredPanelId, isActive: true } });
+/**
+ * انتخاب پنل: پنل انتخابی کاربر، وگرنه کم‌بارترین پنل فعال.
+ * اگر پلن به سرورهای مشخصی محدود شده باشد، فقط از همان‌ها انتخاب می‌شود.
+ */
+export async function pickPanel(
+  preferredPanelId?: string | null,
+  allowedPanelIds?: string[] | null,
+): Promise<Panel> {
+  const allowed = allowedPanelIds?.length ? allowedPanelIds : null;
+
+  if (preferredPanelId && (!allowed || allowed.includes(preferredPanelId))) {
+    const panel = await db.panel.findFirst({
+      where: { id: preferredPanelId, isActive: true, autoDisabled: false },
+    });
     if (panel) return panel;
   }
-  const panels = await db.panel.findMany({
-    where: { isActive: true },
+  const all = await db.panel.findMany({
+    where: { isActive: true, ...(allowed ? { id: { in: allowed } } : {}) },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
-  if (!panels.length) throw new XuiError("هیچ سروری فعال نیست. لطفاً با پشتیبانی تماس بگیرید.");
+  // سرورهایی که پایش، خرابشان تشخیص داده کنار گذاشته می‌شوند؛
+  // مگر اینکه هیچ سرور سالمی نمانده باشد (آن وقت شانس را امتحان می‌کنیم).
+  const healthy = all.filter((p) => !p.autoDisabled);
+  const panels = healthy.length ? healthy : all;
+  if (!panels.length) {
+    throw new XuiError(
+      allowed
+        ? "سرورهای این پلن در حال حاضر در دسترس نیستند. لطفاً با پشتیبانی تماس بگیرید."
+        : "هیچ سروری فعال نیست. لطفاً با پشتیبانی تماس بگیرید.",
+    );
+  }
 
   const counts = await db.service.groupBy({
     by: ["panelId"],
@@ -314,8 +334,11 @@ async function fetchClient(
   return findByEmail(clients, ref.email) ?? null;
 }
 
+/** ورودی تمدید: می‌تواند یک پلن واقعی باشد یا مقدار دلخواه مدیر */
+export type RenewInput = PlanShape & { id?: string | null };
+
 /** تمدید سرویس: افزودن حجم و زمان روی همان کلاینت‌ها */
-export async function renewServiceOnPanel(service: Service, plan: Plan): Promise<Service> {
+export async function renewServiceOnPanel(service: Service, plan: RenewInput): Promise<Service> {
   const panel = await db.panel.findUniqueOrThrow({ where: { id: service.panelId } });
   const client = panelClient(panel);
   const refs = serviceRefs(service);
@@ -376,12 +399,12 @@ export async function renewServiceOnPanel(service: Service, plan: Plan): Promise
   return db.service.update({
     where: { id: service.id },
     data: {
-      planId: plan.id,
-      totalBytes: newTotal,
+      ...(plan.id ? { planId: plan.id } : {}),
+      totalBytes: newTotal ? (service.usageOffset || 0) + newTotal : 0,
       expiresAt: newExpiry ? new Date(newExpiry) : null,
       deviceLimit: plan.deviceLimit || service.deviceLimit,
       status: "active",
-      usedBytes: used.used,
+      usedBytes: (service.usageOffset || 0) + used.used,
       lastSyncAt: new Date(),
     },
   });
@@ -418,27 +441,35 @@ async function sumUsage(
 export async function fulfillOrder(orderId: string): Promise<Service> {
   const order = await db.order.findUniqueOrThrow({
     where: { id: orderId },
-    include: { plan: true, user: true },
+    include: { plan: { include: { panels: true } }, user: true },
   });
+
+  if (!order.plan) {
+    throw new XuiError("این سفارش پلن ندارد (سفارش شارژ کیف پول) و سرویسی برای تحویل نیست.");
+  }
+  const orderPlan = order.plan;
 
   if (order.renewServiceId) {
     const service = await db.service.findUniqueOrThrow({ where: { id: order.renewServiceId } });
-    const renewed = await renewServiceOnPanel(service, order.plan);
+    const renewed = await renewServiceOnPanel(service, orderPlan);
     await db.order.update({ where: { id: order.id }, data: { status: "approved", reviewedAt: new Date() } });
     return renewed;
   }
 
-  const panel = await pickPanel(order.panelId);
+  const panel = await pickPanel(
+    order.panelId,
+    orderPlan.panels.map((p) => p.id),
+  );
   const settings = await getSettings();
   const service = await createServiceOnPanel({
     userId: order.userId,
     userEmail: order.user.email,
-    plan: order.plan,
-    planId: order.planId,
+    plan: orderPlan,
+    planId: orderPlan.id,
     panel,
     orderId: order.id,
     code: order.code,
-    remark: `${settings.site_name} | ${order.plan.title}`,
+    remark: `${settings.site_name} | ${orderPlan.title}`,
   });
   await db.order.update({
     where: { id: order.id },
@@ -497,11 +528,14 @@ export async function syncService(serviceId: string, force = false): Promise<Ser
       (usage.total > 0 && usage.used >= usage.total) ||
       !usage.enable;
 
+    // مصرف سرورهای قبلی (اگر سرویس منتقل شده) روی شمارندهٔ پنل تازه سوار می‌شود
+    const offset = service.usageOffset || 0;
+
     return db.service.update({
       where: { id: service.id },
       data: {
-        usedBytes: usage.used,
-        totalBytes: usage.total || 0,
+        usedBytes: offset + usage.used,
+        totalBytes: usage.total ? offset + usage.total : 0,
         expiresAt,
         status: expired ? "expired" : "active",
         lastSyncAt: new Date(),
@@ -593,6 +627,274 @@ export async function setServiceEnabled(serviceId: string, enabled: boolean): Pr
   await db.service.update({
     where: { id: service.id },
     data: { status: enabled ? "active" : "disabled" },
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/*                     بازتولید کانفیگ (باطل‌کردن لینک قدیمی)                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * چند میلی‌ثانیه تا مجاز شدن بازتولید بعدی باقی مانده است (صفر یعنی همین حالا مجاز است).
+ */
+export function rotateCooldownLeft(
+  service: Pick<Service, "rotatedAt">,
+  cooldownMs: number,
+  now = Date.now(),
+): number {
+  if (!service.rotatedAt || cooldownMs <= 0) return 0;
+  return Math.max(0, service.rotatedAt.getTime() + cooldownMs - now);
+}
+
+export type RotateResult = {
+  service: Service;
+  /** اینباندهایی که به‌روزرسانی آن‌ها روی پنل انجام نشد */
+  failed: { inboundId: number; message: string }[];
+};
+
+/**
+ * UUID و subId سرویس را عوض می‌کند تا هر کسی که کانفیگ یا لینک اشتراک قدیمی
+ * را دارد دیگر نتواند وصل شود.
+ *
+ * نام کلاینت (email) عمداً دست‌نخورده می‌ماند: آمار مصرف در پنل به نام کلاینت
+ * گره خورده است، پس با ثابت‌ماندن نام، حجم مصرف‌شده و سهمیه سر جای خود می‌مانند
+ * و کاربر نمی‌تواند با بازتولید پیاپی، مصرفش را صفر کند.
+ */
+export async function rotateService(serviceId: string): Promise<RotateResult> {
+  const service = await db.service.findUniqueOrThrow({
+    where: { id: serviceId },
+    include: { panel: true },
+  });
+  const client = panelClient(service.panel);
+  const refs = serviceRefs(service);
+  const isV3 = (await client.apiGeneration()) === "v3";
+
+  const newSubId = randomBytes(8).toString("hex");
+
+  // سهمیه و انقضای فعلی از پنل خوانده می‌شود تا بازتولید چیزی را جابه‌جا نکند
+  const stat = await client.getClientTraffics(refs[0].email).catch(() => null);
+  const currentTotal = stat?.total ?? service.totalBytes;
+  const currentExpiry = stat?.expiryTime ?? (service.expiresAt?.getTime() ?? 0);
+  const enable = service.status !== "disabled";
+
+  const nextRefs: ClientRef[] = [];
+  const failed: { inboundId: number; message: string }[] = [];
+
+  // نسخه ۳: یک کلاینت روی همهٔ اینباندها؛ یک UUID تازه برای همه
+  const sharedUuid = randomUUID();
+
+  for (const [index, ref] of refs.entries()) {
+    if (isV3 && index > 0) {
+      // همان کلاینت است؛ فقط رفرنس را با UUID تازه نگه می‌داریم
+      nextRefs.push({ ...ref, uuid: sharedUuid });
+      continue;
+    }
+
+    const nextUuid = isV3 ? sharedUuid : randomUUID();
+    const existing = await fetchClient(client, ref);
+    const spec = buildClientFromTemplate(existing, {
+      uuid: nextUuid,
+      email: ref.email,
+      subId: newSubId,
+      totalBytes: currentTotal,
+      expiryTime: currentExpiry,
+      deviceLimit: service.deviceLimit,
+      flow: service.panel.flow,
+      enable,
+    });
+
+    try {
+      await client.updateClient(ref.inboundId, ref.uuid ?? service.uuid, spec);
+      nextRefs.push({ ...ref, uuid: nextUuid });
+    } catch (err) {
+      failed.push({ inboundId: ref.inboundId, message: (err as Error).message });
+      nextRefs.push({ ...ref, uuid: ref.uuid ?? service.uuid });
+    }
+  }
+
+  const rotatedAny = nextRefs.some((ref, i) => ref.uuid !== (refs[i].uuid ?? service.uuid));
+  if (!rotatedAny) {
+    throw new XuiError(
+      `بازتولید کانفیگ روی پنل انجام نشد${failed[0] ? `: ${failed[0].message}` : "."}`,
+    );
+  }
+
+  const updated = await db.service.update({
+    where: { id: service.id },
+    data: {
+      uuid: nextRefs[0].uuid ?? sharedUuid,
+      subId: newSubId,
+      clientRefs: JSON.stringify(nextRefs),
+      rotatedAt: new Date(),
+      rotateCount: { increment: 1 },
+      lastSyncAt: new Date(),
+    },
+  });
+
+  return { service: updated, failed };
+}
+
+/* -------------------------------------------------------------------------- */
+/*                          انتقال سرویس بین سرورها                           */
+/* -------------------------------------------------------------------------- */
+
+export type MigrateResult = {
+  service: Service;
+  fromPanel: string;
+  toPanel: string;
+  /** حجم باقی‌ماندهٔ منتقل‌شده (۰ یعنی نامحدود) */
+  remainingBytes: number;
+  /** آمار از پنل قبلی خوانده شد یا از دیتابیس (پنل خراب بود) */
+  usageFromPanel: boolean;
+  /** کلاینت قبلی از سرور مبدأ پاک شد یا نه */
+  oldRemoved: boolean;
+};
+
+/**
+ * انتقال یک سرویس به سرور دیگر.
+ *
+ * حجم باقی‌مانده و تاریخ انقضا حفظ می‌شوند: شمارندهٔ مصرف روی پنل تازه از صفر
+ * شروع می‌شود، پس سهمیهٔ کلاینت جدید «باقی‌ماندهٔ» سرویس است و مصرف قبلی در
+ * `usageOffset` می‌ماند تا کاربر همان حجم کل و همان مصرف را ببیند.
+ *
+ * اگر سرور مبدأ خراب یا خاموش باشد هم انتقال انجام می‌شود؛ در این حالت آمار از
+ * دیتابیس برداشته می‌شود و کلاینت قدیمی روی همان سرور باقی می‌ماند.
+ */
+export async function migrateService(
+  serviceId: string,
+  targetPanelId: string,
+): Promise<MigrateResult> {
+  const service = await db.service.findUniqueOrThrow({
+    where: { id: serviceId },
+    include: { panel: true, user: true },
+  });
+  if (service.panelId === targetPanelId) {
+    throw new XuiError("این سرویس همین حالا روی همان سرور است.");
+  }
+
+  const target = await db.panel.findUniqueOrThrow({ where: { id: targetPanelId } });
+  const source = service.panel;
+
+  // ۱) وضعیت فعلی: اول از پنل مبدأ، و اگر جواب نداد از دیتابیس
+  const sourceClient = panelClient(source);
+  const refs = serviceRefs(service);
+  const stat = await sumUsage(sourceClient, refs).catch(() => null);
+
+  const usageFromPanel = Boolean(stat?.found);
+  const offset = service.usageOffset || 0;
+  const used = usageFromPanel ? offset + stat!.used : service.usedBytes;
+  const total = usageFromPanel ? (stat!.total ? offset + stat!.total : 0) : service.totalBytes;
+  const expiryTime = usageFromPanel && stat!.expiryTime
+    ? stat!.expiryTime
+    : (service.expiresAt?.getTime() ?? 0);
+  const enable = usageFromPanel ? stat!.enable : service.status !== "disabled";
+
+  // ۰ یعنی نامحدود؛ در غیر این صورت فقط باقی‌مانده منتقل می‌شود
+  const remainingBytes = total === 0 ? 0 : Math.max(0, total - used);
+
+  // ۲) ساخت کلاینت روی سرور مقصد (با الگوی خودِ آن سرور)
+  const targetClient = panelClient(target);
+  const { template, taken, inboundIds } = await loadTemplate(targetClient, target);
+
+  if (!inboundIds.includes(target.inboundId)) {
+    await db.panel.update({ where: { id: target.id }, data: { inboundId: inboundIds[0] } });
+  }
+
+  const baseName = uniqueName(
+    renderClientName(target.namePattern, {
+      template: slug(target.templateEmail?.trim() || target.name, 24),
+      code: slug(service.remark, 24),
+      user: slug(service.user.email.split("@")[0] ?? "user", 24),
+      rand: randomBytes(3).toString("hex"),
+    }),
+    taken,
+  );
+
+  const uuid = randomUUID();
+  const spec = buildClientFromTemplate(template, {
+    uuid,
+    email: baseName,
+    // لینک اشتراک همان مسیر قبلی را نگه می‌دارد (میزبانش عوض می‌شود)
+    subId: service.subId,
+    totalBytes: remainingBytes,
+    expiryTime,
+    deviceLimit: service.deviceLimit,
+    flow: target.flow,
+    enable,
+  });
+
+  const nextRefs: ClientRef[] = [];
+
+  if ((await targetClient.apiGeneration()) === "v3") {
+    await targetClient.addClientToInbounds(inboundIds, spec);
+    for (const inboundId of inboundIds) nextRefs.push({ inboundId, email: baseName, uuid });
+  } else {
+    for (const [index, inboundId] of inboundIds.entries()) {
+      const email = index === 0 ? baseName : uniqueName(`${baseName}-${index + 1}`, taken);
+      const clientUuid = index === 0 ? uuid : randomUUID();
+      taken.add(email.toLowerCase());
+      await targetClient.addClient(inboundId, { ...spec, email, id: clientUuid });
+      nextRefs.push({ inboundId, email, uuid: clientUuid });
+    }
+  }
+
+  // ۳) پاک‌کردن کلاینت قدیمی (اگر سرور مبدأ در دسترس نباشد، همان‌جا می‌ماند)
+  let oldRemoved = false;
+  try {
+    const isV3 = (await sourceClient.apiGeneration()) === "v3";
+    const targets = isV3 ? refs.slice(0, 1) : refs;
+    for (const ref of targets) {
+      await sourceClient.deleteClient(ref.inboundId, ref.uuid ?? service.uuid, ref.email);
+    }
+    oldRemoved = true;
+  } catch {
+    oldRemoved = false;
+  }
+
+  const updated = await db.service.update({
+    where: { id: service.id },
+    data: {
+      panelId: target.id,
+      clientEmail: baseName,
+      clientRefs: JSON.stringify(nextRefs),
+      uuid: nextRefs[0].uuid ?? uuid,
+      inboundId: nextRefs[0].inboundId,
+      usageOffset: used,
+      usedBytes: used,
+      totalBytes: total,
+      expiresAt: expiryTime ? new Date(expiryTime) : null,
+      status: enable ? "active" : "disabled",
+      movedAt: new Date(),
+      movedFrom: source.name,
+      lastSyncAt: new Date(),
+    },
+  });
+
+  return {
+    service: updated,
+    fromPanel: source.name,
+    toPanel: target.name,
+    remainingBytes,
+    usageFromPanel,
+    oldRemoved,
+  };
+}
+
+/** صفر کردن مصرف سرویس روی پنل و در دیتابیس */
+export async function resetServiceTraffic(serviceId: string): Promise<void> {
+  const service = await db.service.findUniqueOrThrow({
+    where: { id: serviceId },
+    include: { panel: true },
+  });
+  const client = panelClient(service.panel);
+
+  for (const ref of serviceRefs(service)) {
+    await client.resetClientTraffic(ref.inboundId, ref.email);
+  }
+  await db.service.update({
+    where: { id: service.id },
+    // مصرف انتقال‌یافته از سرور قبلی هم پاک می‌شود، وگرنه دوباره شمرده می‌شود
+    data: { usedBytes: 0, usageOffset: 0, status: "active", lastSyncAt: new Date() },
   });
 }
 

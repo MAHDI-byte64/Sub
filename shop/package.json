@@ -15,23 +15,26 @@
     "test": "bash scripts/test.sh",
     "test:ui": "bash scripts/ui-test.sh",
     "lint": "next lint",
-    "shots": "bash scripts/shots.sh"
+    "shots": "bash scripts/shots.sh",
+    "icons": "node scripts/make-icons.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "next": "^16.3.4",
+    "prisma": "^6.19.3",
     "qrcode": "1.5.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "server-only": "^0.0.1",
-    "prisma": "^6.19.3",
-    "tsx": "4.19.2"
+    "tsx": "4.19.2",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
     "@types/qrcode": "1.5.5",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
+    "@types/web-push": "^3.6.4",
     "playwright-core": "^1.62.1",
     "typescript": "^5.9.3"
   },

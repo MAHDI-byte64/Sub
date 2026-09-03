@@ -8,11 +8,15 @@ MOCK_PORT="${SHOT_MOCK_PORT:-8897}"
 export DATABASE_URL="file:../data/shots.db"
 export MOCK_PANEL_URL="http://127.0.0.1:${MOCK_PORT}"
 export BASE_URL="http://127.0.0.1:${PORT}"
+# درگاه پرداخت باید به همین سرور تست برگردد، نه به APP_URL فایل .env
+export APP_URL="http://127.0.0.1:${PORT}"
+export BACKUP_DIR="$PWD/data/test-backups"
 export ADMIN_EMAIL="admin@example.com"
 export ADMIN_PASSWORD="admin12345"
 export SHOTS_DIR="${SHOTS_DIR:-/tmp/shots}"
 
 rm -f data/shots.db
+rm -rf "$BACKUP_DIR"
 npx prisma db push --skip-generate >/dev/null 2>&1
 npx prisma db seed >/dev/null 2>&1
 
@@ -37,4 +41,5 @@ rm -rf "$SHOTS_DIR"
 node scripts/shots.mjs
 STATUS=$?
 rm -f data/shots.db
+rm -rf "$BACKUP_DIR"
 exit $STATUS

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { requireStaff } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { faDate, faNum, relativeTime, toman } from "@/lib/format";
 import { ORDER_STATUS } from "@/lib/status";
@@ -11,6 +12,9 @@ export const dynamic = "force-dynamic";
 const WEEKDAY = ["ی", "د", "س", "چ", "پ", "ج", "ش"];
 
 export default async function AdminHome() {
+  const staff = await requireStaff();
+  const isAdmin = staff.role === "admin";
+
   const since = new Date();
   since.setHours(0, 0, 0, 0);
   since.setDate(since.getDate() - 29);
@@ -30,15 +34,24 @@ export default async function AdminHome() {
     statusGroups,
     topPlans,
   ] = await Promise.all([
-    db.order.aggregate({ where: { status: "approved" }, _sum: { payable: true } }),
+    db.order.aggregate({
+      where: { status: "approved" },
+      _sum: { payable: true },
+    }),
     db.order.count({ where: { status: "approved" } }),
     db.order.count({ where: { status: "pending_review" } }),
     db.user.count(),
     db.service.count({ where: { status: "active" } }),
-    db.panel.findMany({ orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
+    db.panel.findMany({
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    }),
     db.plan.count({ where: { isActive: true } }),
     getSettings(),
-    db.order.findMany({ take: 8, orderBy: { createdAt: "desc" }, include: { user: true, plan: true } }),
+    db.order.findMany({
+      take: 8,
+      orderBy: { createdAt: "desc" },
+      include: { user: true, plan: true },
+    }),
     db.ticket.count({ where: { status: "open" } }),
     db.order.findMany({
       where: { status: "approved", reviewedAt: { gte: since } },
@@ -94,7 +107,9 @@ export default async function AdminHome() {
   const totalOrders = segments.reduce((sum, s) => sum + s.value, 0);
 
   // پرفروش‌ترین پلن‌ها
-  const planIds = topPlans.map((p) => p.planId);
+  const planIds = topPlans
+    .map((p) => p.planId)
+    .filter((id): id is string => Boolean(id));
   const planRows = planIds.length
     ? await db.plan.findMany({ where: { id: { in: planIds } } })
     : [];
@@ -108,13 +123,23 @@ export default async function AdminHome() {
     .slice(0, 4);
 
   const todo = [
-    panels.length === 0 ? { text: "هنوز هیچ سرور 3x-ui اضافه نکرده‌اید.", href: "/admin/panels" } : null,
-    plans === 0 ? { text: "هیچ پلن فعالی وجود ندارد.", href: "/admin/plans" } : null,
+    panels.length === 0
+      ? { text: "هنوز هیچ سرور 3x-ui اضافه نکرده‌اید.", href: "/admin/panels" }
+      : null,
+    plans === 0
+      ? { text: "هیچ پلن فعالی وجود ندارد.", href: "/admin/plans" }
+      : null,
     settings.card_number.includes("0000")
-      ? { text: "شماره کارت پیش‌فرض را با شماره واقعی جایگزین کنید.", href: "/admin/settings" }
+      ? {
+          text: "شماره کارت پیش‌فرض را با شماره واقعی جایگزین کنید.",
+          href: "/admin/settings",
+        }
       : null,
     !settings.telegram_bot_token
-      ? { text: "برای اطلاع‌رسانی سفارش‌ها، توکن ربات تلگرام را وارد کنید.", href: "/admin/settings" }
+      ? {
+          text: "برای اطلاع‌رسانی سفارش‌ها، توکن ربات تلگرام را وارد کنید.",
+          href: "/admin/settings",
+        }
       : null,
   ].filter(Boolean) as { text: string; href: string }[];
 
@@ -137,27 +162,43 @@ export default async function AdminHome() {
         </Link>
         <Link className="admin-link" href="/admin/tickets">
           <i>🎫</i>
-          <span>تیکت‌ها{openTickets > 0 ? ` (${faNum(openTickets)})` : ""}</span>
+          <span>
+            تیکت‌ها{openTickets > 0 ? ` (${faNum(openTickets)})` : ""}
+          </span>
         </Link>
-        <Link className="admin-link" href="/admin/panels">
-          <i>🖥️</i>
-          <span>سرورهای 3x-ui</span>
-        </Link>
-        <Link className="admin-link" href="/admin/settings">
-          <i>⚙️</i>
-          <span>تنظیمات سایت</span>
-        </Link>
+        {isAdmin ? (
+          <Link className="admin-link" href="/admin/panels">
+            <i>🖥️</i>
+            <span>سرورهای 3x-ui</span>
+          </Link>
+        ) : null}
+        {isAdmin ? (
+          <>
+            <Link className="admin-link" href="/admin/backup">
+              <i>🗄️</i>
+              <span>پشتیبان‌گیری</span>
+            </Link>
+            <Link className="admin-link" href="/admin/settings">
+              <i>⚙️</i>
+              <span>تنظیمات سایت</span>
+            </Link>
+          </>
+        ) : null}
       </div>
 
       <div className="summary-strip">
-        <div className="summary-tile">
-          <span>💰 درآمد کل</span>
-          <b>{toman(revenue._sum.payable ?? 0, false)}</b>
-        </div>
-        <div className="summary-tile">
-          <span>📅 درآمد ۳۰ روز</span>
-          <b>{toman(monthTotal, false)}</b>
-        </div>
+        {isAdmin ? (
+          <>
+            <div className="summary-tile">
+              <span>💰 درآمد کل</span>
+              <b>{toman(revenue._sum.payable ?? 0, false)}</b>
+            </div>
+            <div className="summary-tile">
+              <span>📅 درآمد ۳۰ روز</span>
+              <b>{toman(monthTotal, false)}</b>
+            </div>
+          </>
+        ) : null}
         <div className="summary-tile">
           <span>🛒 سفارش موفق</span>
           <b>{faNum(approvedCount)}</b>
@@ -169,20 +210,32 @@ export default async function AdminHome() {
       </div>
 
       <div className="grid grid-2" style={{ alignItems: "start" }}>
-        <div className="card">
-          <div className="card-title">
-            <h3>📈 درآمد ۳۰ روز گذشته</h3>
-            <span className="badge badge-info">هفتهٔ اخیر: {toman(weekTotal)}</span>
+        {isAdmin ? (
+          <div className="card">
+            <div className="card-title">
+              <h3>📈 درآمد ۳۰ روز گذشته</h3>
+              <span className="badge badge-info">
+                هفتهٔ اخیر: {toman(weekTotal)}
+              </span>
+            </div>
+            <AreaChart
+              id="revenue"
+              points={chartPoints}
+              formatValue={(v) => toman(v)}
+            />
           </div>
-          <AreaChart id="revenue" points={chartPoints} formatValue={(v) => toman(v)} />
-        </div>
+        ) : null}
 
         <div className="card">
           <div className="card-title">
             <h3>🧭 وضعیت سفارش‌ها</h3>
           </div>
           {totalOrders ? (
-            <Donut segments={segments} centerValue={faNum(totalOrders)} centerLabel="کل سفارش‌ها" />
+            <Donut
+              segments={segments}
+              centerValue={faNum(totalOrders)}
+              centerLabel="کل سفارش‌ها"
+            />
           ) : (
             <p className="dim">هنوز سفارشی ثبت نشده است.</p>
           )}
@@ -192,14 +245,18 @@ export default async function AdminHome() {
       <div className="card">
         <div className="card-title">
           <h3>🖥️ سلامت سرورها</h3>
-          <Link className="btn btn-sm" href="/admin/panels">
-            مدیریت سرورها
+          <Link className="btn btn-sm" href="/admin/monitor">
+            پایش زنده
           </Link>
         </div>
         {panels.length ? (
           <div className="health-grid">
             {panels.map((panel) => {
-              const state = !panel.lastCheckAt ? "is-unknown" : panel.lastError ? "is-down" : "";
+              const state = !panel.lastCheckAt
+                ? "is-unknown"
+                : panel.healthOk
+                  ? ""
+                  : "is-down";
               return (
                 <div className={`health-tile ${state}`} key={panel.id}>
                   <span className="health-dot" />
@@ -210,12 +267,17 @@ export default async function AdminHome() {
                     <small>
                       {!panel.lastCheckAt
                         ? "هنوز تست نشده"
-                        : panel.lastError
-                          ? panel.lastError.slice(0, 60)
-                          : `سالم · آخرین بررسی ${relativeTime(panel.lastCheckAt)}`}
+                        : !panel.healthOk
+                          ? (panel.lastError ?? "پاسخ نداد").slice(0, 60)
+                          : `${faNum(panel.latencyMs)} ms · آخرین بررسی ${relativeTime(panel.lastCheckAt)}`}
                     </small>
                   </span>
-                  {!panel.isActive ? <span className="badge badge-warn">غیرفعال</span> : null}
+                  {panel.autoDisabled ? (
+                    <span className="badge badge-warn">فروش متوقف</span>
+                  ) : null}
+                  {!panel.isActive ? (
+                    <span className="badge badge-warn">غیرفعال</span>
+                  ) : null}
                 </div>
               );
             })}
@@ -269,7 +331,10 @@ export default async function AdminHome() {
               همه‌چیز تنظیم شده است.
             </div>
           )}
-          <div className="summary-strip" style={{ marginTop: 16, marginBottom: 0 }}>
+          <div
+            className="summary-strip"
+            style={{ marginTop: 16, marginBottom: 0 }}
+          >
             <div className="summary-tile">
               <span>👥 کاربر</span>
               <b>{faNum(users)}</b>
@@ -304,17 +369,22 @@ export default async function AdminHome() {
               </thead>
               <tbody>
                 {recent.map((order) => {
-                  const status = ORDER_STATUS[order.status] ?? ORDER_STATUS.awaiting_receipt;
+                  const status =
+                    ORDER_STATUS[order.status] ?? ORDER_STATUS.awaiting_receipt;
                   return (
                     <tr key={order.id}>
                       <td className="mono">{order.code}</td>
                       <td className="ltr">{order.user.email}</td>
-                      <td>{order.plan.title}</td>
+                      <td>{order.plan?.title ?? "شارژ کیف پول"}</td>
                       <td className="nowrap">{toman(order.payable)}</td>
                       <td>
-                        <span className={`badge ${status.badge}`}>{status.label}</span>
+                        <span className={`badge ${status.badge}`}>
+                          {status.label}
+                        </span>
                       </td>
-                      <td className="nowrap">{relativeTime(order.createdAt)}</td>
+                      <td className="nowrap">
+                        {relativeTime(order.createdAt)}
+                      </td>
                     </tr>
                   );
                 })}

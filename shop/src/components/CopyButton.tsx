@@ -1,15 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { t, type Locale } from "@/lib/i18n";
 
 export default function CopyButton({
   value,
-  label = "کپی",
+  label,
   className = "btn btn-sm",
+  locale = "fa",
 }: {
   value: string;
   label?: string;
   className?: string;
+  locale?: Locale;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -30,7 +33,7 @@ export default function CopyButton({
 
   return (
     <button type="button" className={className} onClick={copy}>
-      {copied ? "✓ کپی شد" : label}
+      {copied ? t(locale, "card.copied") : (label ?? t(locale, "card.copy"))}
     </button>
   );
 }
