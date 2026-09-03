@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getSettings, SETTING_DEFS } from "@/lib/settings";
 import {
   broadcastPushAction,
@@ -41,9 +42,9 @@ export default async function AdminSettingsPage() {
             buttonClass="btn btn-sm"
             inline
           />
-          <a className="btn btn-sm" href="/api/admin/backup">
-            💾 دانلود پشتیبان دیتابیس
-          </a>
+          <Link className="btn btn-sm" href="/admin/backup">
+            🗄️ پشتیبان‌گیری و بازیابی
+          </Link>
           <a className="btn btn-sm" href="/api/admin/export/orders">
             ⬇ خروجی سفارش‌ها
           </a>
@@ -68,7 +69,8 @@ export default async function AdminSettingsPage() {
           ثبت می‌شود (نیازمند دامنه و HTTPS). دستور <code>/stats</code> هم خلاصهٔ فروش را می‌دهد.
         </p>
         <p className="field-hint">
-          فایل پشتیبان شامل کل دیتابیس (کاربران، سفارش‌ها، سرویس‌ها و تنظیمات) است؛ جای امنی نگه دارید.
+          پشتیبان کامل (دیتابیس + رسیدها)، پشتیبان‌گیری خودکار و بازیابی در صفحهٔ{" "}
+          <Link href="/admin/backup">پشتیبان‌گیری</Link> است.
         </p>
       </div>
 

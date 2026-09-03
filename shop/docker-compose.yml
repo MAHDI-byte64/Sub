@@ -9,6 +9,7 @@ services:
     environment:
       DATABASE_URL: "file:../data/fandogh.db"
       UPLOAD_DIR: "/app/data/uploads"
+      BACKUP_DIR: "/app/data/backups"
       PORT: "3000"
     ports:
       # پیش‌فرض روی همه اینترفیس‌ها باز است تا با IP سرور در دسترس باشد.

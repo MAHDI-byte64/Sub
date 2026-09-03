@@ -5,6 +5,9 @@
  *
  *   bash scripts/test.sh
  */
+import path from "node:path";
+import { rm, utimes, writeFile } from "node:fs/promises";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { db } from "../src/lib/db";
 import { GB } from "../src/lib/format";
 import { pickPanel } from "../src/lib/provision";
@@ -54,6 +57,20 @@ import {
   saveSubscription,
   sendPushToUser,
 } from "../src/lib/push";
+import {
+  autoBackupDue,
+  createBackup,
+  deleteBackup,
+  listBackups,
+  makeTar,
+  pruneBackups,
+  readBackup,
+  readTar,
+  restoreBackup,
+  runAutoBackup,
+  safeBackupName,
+  sendBackupToTelegram,
+} from "../src/lib/backup";
 import { notifyUser } from "../src/lib/notify";
 import { fmt } from "../src/lib/format";
 import { DICT, t, type Locale } from "../src/lib/i18n";
@@ -1365,6 +1382,161 @@ async function resellerScenario() {
   );
 }
 
+/* ------------------------------ پشتیبان‌گیری ------------------------------ */
+
+async function backupScenario() {
+  console.log("\n══════ پشتیبان‌گیری و بازیابی ══════");
+  await reset();
+
+  const dir = path.resolve("data/e2e-backups");
+  process.env.BACKUP_DIR = dir;
+  await rm(dir, { recursive: true, force: true });
+
+  /* ۱) tar دست‌ساز باید بی‌کم‌وکاست باز شود (فایل باینری و نام بلند) */
+  const binary = Buffer.from(Array.from({ length: 1500 }, (_, i) => i % 256));
+  const roundTrip = readTar(
+    makeTar([
+      { name: "manifest.json", data: Buffer.from('{"a":1}', "utf8") },
+      { name: "uploads/receipt-با-نام-فارسی.jpg", data: binary },
+    ]),
+  );
+  check("tar دو فایل را برمی‌گرداند", roundTrip.length === 2, roundTrip.map((e) => e.name));
+  check(
+    "محتوای باینری بعد از tar دست‌نخورده است",
+    Buffer.from(roundTrip[1].data).equals(binary),
+  );
+  check(
+    "نام فایل فارسی در tar سالم می‌ماند",
+    roundTrip[1].name === "uploads/receipt-با-نام-فارسی.jpg",
+    roundTrip[1].name,
+  );
+
+  /* ۲) نام فایل: جلوی path traversal گرفته می‌شود */
+  check("نام معتبر پذیرفته می‌شود", safeBackupName("fandogh-backup-2026-01-01-00-00-00.tar.gz") !== null);
+  check("نام بدون پیشوند رد می‌شود", safeBackupName("hack.tar.gz") === null);
+  check("مسیر بالارونده رد می‌شود", safeBackupName("../../../etc/passwd") === null);
+  check(
+    "مسیر با پیشوند درست ولی پوشهٔ دیگر هم فقط نامش خوانده می‌شود",
+    safeBackupName("/etc/fandogh-backup-x.tar.gz") === "fandogh-backup-x.tar.gz",
+  );
+  check("فایل غیر tar.gz رد می‌شود", safeBackupName("fandogh-backup-x.db") === null);
+
+  /* ۳) ساخت پشتیبان از وضعیت واقعی دیتابیس */
+  await saveSettings({ site_name: "فندق تست" });
+  const owner = await db.user.create({
+    data: { email: "backup@test.local", name: "کاربر پشتیبان", passwordHash: "x", role: "user" },
+  });
+
+  const first = await createBackup("تست");
+  check("فایل پشتیبان ساخته شد", first.file.startsWith("fandogh-backup-") && first.size > 0, first);
+
+  const listed = await listBackups();
+  check("پشتیبان در فهرست دیده می‌شود", listed.some((f) => f.name === first.file), listed);
+
+  const archive = await readBackup(first.file);
+  check("فایل پشتیبان خوانده می‌شود", Boolean(archive));
+
+  const inside = readTar(gunzipSync(archive!));
+  const manifest = JSON.parse(
+    inside.find((e) => e.name === "manifest.json")!.data.toString("utf8"),
+  ) as { site: string; reason: string; counts: Record<string, number> };
+  const dbInside = inside.find((e) => e.name === "database.db")!;
+
+  check("دیتابیس داخل پشتیبان هست", Boolean(dbInside));
+  check(
+    "فایل داخل پشتیبان واقعاً دیتابیس SQLite است",
+    Buffer.from(dbInside.data).subarray(0, 15).toString("utf8") === "SQLite format 3",
+  );
+  check("نام سایت در فهرست پشتیبان ثبت شده", manifest.site === "فندق تست", manifest.site);
+  check("علت ساخت پشتیبان ثبت شده", manifest.reason === "تست", manifest.reason);
+  check("تعداد کاربران در فهرست درست است", manifest.counts.users === 1, manifest.counts);
+
+  /* ۴) خواندن با نام نامعتبر چیزی برنمی‌گرداند */
+  check("خواندن با نام نامعتبر ناموفق است", (await readBackup("../fandogh.db")) === null);
+  check("حذف با نام نامعتبر انجام نمی‌شود", (await deleteBackup("../fandogh.db")) === false);
+
+  /* ۵) نگه‌داشتن N تای آخر */
+  for (let i = 1; i <= 4; i += 1) {
+    const name = `fandogh-backup-2026-01-0${i}-00-00-00.tar.gz`;
+    await writeFile(path.join(dir, name), Buffer.from("x"));
+    const when = new Date(2026, 0, i);
+    await utimes(path.join(dir, name), when, when);
+  }
+  const removed = await pruneBackups(2);
+  const afterPrune = await listBackups();
+  check("پشتیبان‌های قدیمی پاک شدند", removed === 3, removed);
+  check("فقط ۲ پشتیبان تازه ماند", afterPrune.length === 2, afterPrune.map((f) => f.name));
+  check(
+    "تازه‌ترین پشتیبان اول فهرست است",
+    afterPrune[0].createdAt.getTime() >= afterPrune[1].createdAt.getTime(),
+  );
+
+  /* ۶) بازیابی فایل خراب یا نامربوط باید رد شود */
+  const corrupt = await restoreBackup(Buffer.from("this is not a gzip file"));
+  check("فایل خراب رد می‌شود", !corrupt.ok && corrupt.code === "corrupt", corrupt);
+
+  const notBackup = gzipSync(
+    makeTar([{ name: "database.db", data: Buffer.from("just some text, not a database") }]),
+  );
+  const rejected = await restoreBackup(notBackup);
+  check("فایلی که دیتابیس سالم ندارد رد می‌شود", !rejected.ok && rejected.code === "not-a-backup", rejected);
+
+  /* ۷) بازیابی واقعی: تغییرات بعد از پشتیبان باید برگردند */
+  const snapshot = await createBackup("قبل از تغییر");
+  await saveSettings({ site_name: "نام عوض‌شده" });
+  const ghost = await db.user.create({
+    data: { email: "ghost@test.local", name: "کاربر بعد از پشتیبان", passwordHash: "x", role: "user" },
+  });
+  check("تغییر قبل از بازیابی اعمال شده بود", (await getSettings()).site_name === "نام عوض‌شده");
+
+  const restored = await restoreBackup((await readBackup(snapshot.file))!);
+  check("بازیابی موفق بود", restored.ok && restored.code === "restored", restored);
+  check("قبل از بازیابی، پشتیبان ایمنی ساخته شد", Boolean(restored.safetyCopy), restored.safetyCopy);
+  check("فهرست پشتیبان داخل فایل خوانده شد", restored.manifest?.site === "فندق تست", restored.manifest);
+
+  const settingsAfter = await getSettings();
+  check("تنظیمات به حالت پشتیبان برگشت", settingsAfter.site_name === "فندق تست", settingsAfter.site_name);
+  check(
+    "کاربر ساخته‌شده بعد از پشتیبان دیگر نیست",
+    (await db.user.findUnique({ where: { id: ghost.id } })) === null,
+  );
+  check(
+    "کاربر قبل از پشتیبان سر جایش هست",
+    (await db.user.findUnique({ where: { id: owner.id } }))?.email === "backup@test.local",
+  );
+
+  /* ۸) زمان‌بندی خودکار */
+  await saveSettings({ backup_auto: "0", backup_interval_hours: "24", backup_last_at: "0" });
+  check("با خاموش بودن، پشتیبان خودکار گرفته نمی‌شود", (await autoBackupDue()) === false);
+
+  await saveSettings({ backup_auto: "1", backup_last_at: String(Date.now()) });
+  check("درست بعد از پشتیبان، نوبت بعدی نرسیده", (await autoBackupDue()) === false);
+
+  await saveSettings({ backup_last_at: String(Date.now() - 25 * 3_600_000) });
+  check("بعد از گذشتن فاصلهٔ تعیین‌شده، نوبت رسیده", (await autoBackupDue()) === true);
+
+  await saveSettings({ backup_keep: "2", backup_telegram: "0" });
+  const auto = await runAutoBackup();
+  check("پشتیبان خودکار ساخته شد", Boolean(auto?.file), auto);
+  check("پشتیبان خودکار در تلگرام فرستاده نشد (خاموش است)", auto?.sent === false);
+  check("بعد از پشتیبان خودکار، فقط ۲ فایل ماند", (await listBackups()).length === 2);
+  check("زمان آخرین پشتیبان به‌روز شد", (await autoBackupDue()) === false);
+  check("اجرای دوباره پشتیبان تکراری نمی‌سازد", (await runAutoBackup()) === null);
+
+  /* ۹) ارسال به تلگرام بدون ربات نباید خطا بیندازد */
+  await saveSettings({ telegram_bot_token: "", telegram_admin_chat_id: "" });
+  const sendResult = await sendBackupToTelegram(auto!.file);
+  check("بدون ربات، ارسال تلگرام با پیام روشن رد می‌شود", !sendResult.ok && sendResult.code === "no-bot", sendResult);
+
+  /* ۱۰) کارهای پس‌زمینه هم پشتیبان خودکار را اجرا می‌کنند */
+  await saveSettings({ backup_last_at: "0", monitor_enabled: "0" });
+  const tick = await runMaintenance();
+  check("چرخهٔ کارهای پس‌زمینه پشتیبان ساخت", Boolean(tick.backup), tick.backup);
+
+  await rm(dir, { recursive: true, force: true });
+  delete process.env.BACKUP_DIR;
+}
+
 async function main() {
   await scenario({
     label: "پنل نسخه ۲ — ورود با نام کاربری و رمز",
@@ -1394,6 +1566,7 @@ async function main() {
   await hooshpayAndCryptoScenario();
   await resellerScenario();
   await pushScenario();
+  await backupScenario();
   i18nScenario();
 
   console.log("\n══════ بررسی توکن نامعتبر ══════");

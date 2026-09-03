@@ -42,6 +42,10 @@ export const ACTION_LABELS: Record<string, { label: string; icon: string }> = {
   telegram_webhook_set: { label: "فعال‌سازی ربات تلگرام", icon: "🤖" },
   ticket_replied: { label: "پاسخ به تیکت", icon: "💬" },
   backup_downloaded: { label: "دانلود پشتیبان", icon: "💾" },
+  backup_created: { label: "ساخت پشتیبان", icon: "🗄️" },
+  backup_sent: { label: "ارسال پشتیبان به تلگرام", icon: "📤" },
+  backup_deleted: { label: "حذف پشتیبان", icon: "🗑️" },
+  backup_restored: { label: "بازیابی از پشتیبان", icon: "♻️" },
 };
 
 /** ثبت یک اقدام مدیریتی (خطا هرگز جریان اصلی را متوقف نمی‌کند) */

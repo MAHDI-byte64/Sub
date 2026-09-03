@@ -584,6 +584,94 @@ try {
   await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
   check("بازگشت به فارسی کار می‌کند", (await user.textContent("body")).includes("سرویس‌های من"));
 
+  console.log("→ پشتیبان‌گیری از پنل مدیر");
+  await admin.goto(`${BASE}/admin/backup`, { waitUntil: "domcontentloaded" });
+  const backupEmpty = await admin.textContent("body");
+  check("صفحه پشتیبان‌گیری باز شد", backupEmpty.includes("پشتیبان‌گیری"));
+  check("وقتی پشتیبانی نیست هشدار داده می‌شود", backupEmpty.includes("هنوز هیچ پشتیبانی ندارید"));
+
+  await admin.click("button:has-text('ساخت پشتیبان تازه')");
+  await admin.waitForSelector(".alert-success", { timeout: 60000 });
+  const created = await admin.textContent(".alert-success");
+  check("پشتیبان ساخته شد", created.includes("پشتیبان ساخته شد"), created);
+
+  await admin.reload({ waitUntil: "domcontentloaded" });
+  const rows = await admin.$$eval("table tbody tr", (list) => list.length);
+  check("پشتیبان در جدول دیده می‌شود", rows === 1, rows);
+
+  const fileName = (await admin.textContent("table tbody tr .cell-main")).trim();
+  check("نام فایل درست است", /^fandogh-backup-.+\.tar\.gz$/.test(fileName), fileName);
+
+  const download = await adminCtx.request.get(`${BASE}/api/admin/backup/${fileName}`);
+  const downloaded = await download.body();
+  check("دانلود پشتیبان کار می‌کند", download.status() === 200, download.status());
+  check(
+    "فایل دانلودشده واقعاً gzip است",
+    downloaded[0] === 0x1f && downloaded[1] === 0x8b,
+    downloaded.subarray(0, 4),
+  );
+  check(
+    "هدر دانلود نام فایل را دارد",
+    (download.headers()["content-disposition"] || "").includes(fileName),
+    download.headers()["content-disposition"],
+  );
+
+  const badName = await adminCtx.request.get(`${BASE}/api/admin/backup/hack.tar.gz`);
+  check("نام فایل بیرون از پشتیبان‌ها رد می‌شود", badName.status() === 400, badName.status());
+
+  const userTry = await userCtx.request.get(`${BASE}/api/admin/backup/${fileName}`);
+  check("کاربر عادی به فایل پشتیبان دسترسی ندارد", userTry.status() === 403, userTry.status());
+
+  // تنظیمات خودکار: ذخیرهٔ این بخش نباید بقیهٔ تنظیمات سایت را پاک کند
+  await admin.check("#backup_auto");
+  await admin.fill("#backup_interval_hours", "6");
+  await admin.fill("#backup_keep", "3");
+  await admin.click("button:has-text('ذخیره تنظیمات پشتیبان‌گیری')");
+  await admin.waitForSelector(".alert-success", { timeout: 20000 });
+  await admin.reload({ waitUntil: "domcontentloaded" });
+  check("پشتیبان‌گیری خودکار روشن ماند", await admin.isChecked("#backup_auto"));
+  check("فاصلهٔ پشتیبان‌گیری ذخیره شد", (await admin.inputValue("#backup_interval_hours")) === "6");
+  check("تعداد نگه‌داری ذخیره شد", (await admin.inputValue("#backup_keep")) === "3");
+
+  await admin.goto(`${BASE}/admin/settings`, { waitUntil: "domcontentloaded" });
+  check(
+    "ذخیرهٔ تنظیمات پشتیبان، بقیه تنظیمات را پاک نکرد",
+    (await admin.inputValue("#site_name")).length > 0,
+    await admin.inputValue("#site_name"),
+  );
+
+  // بازیابی: بدون نوشتن کلمهٔ تأیید نباید انجام شود
+  await admin.goto(`${BASE}/admin/backup`, { waitUntil: "domcontentloaded" });
+  await admin.selectOption("#name", fileName);
+  await admin.fill("#confirm", "بله");
+  await admin.click("button:has-text('بازیابی')");
+  await admin.waitForSelector(".alert-error", { timeout: 20000 });
+  check(
+    "بدون کلمهٔ تأیید، بازیابی انجام نمی‌شود",
+    (await admin.textContent(".alert-error")).includes("بازیابی"),
+  );
+
+  await admin.selectOption("#name", fileName);
+  await admin.fill("#confirm", "بازیابی");
+  await admin.click("button:has-text('بازیابی')");
+  await admin.waitForSelector(".alert-success", { timeout: 60000 });
+  const restored = await admin.textContent(".alert-success");
+  check("بازیابی انجام شد", restored.includes("بازیابی انجام شد"), restored);
+  check("پشتیبان ایمنی هم ساخته شد", restored.includes("پشتیبان ایمنی"), restored);
+
+  await admin.goto(`${BASE}/admin/backup`, { waitUntil: "domcontentloaded" });
+  check(
+    "تنظیماتِ بعد از پشتیبان با بازیابی برگشتند",
+    (await admin.isChecked("#backup_auto")) === false,
+  );
+  const afterRestoreRows = await admin.$$eval("table tbody tr", (list) => list.length);
+  check("پشتیبان ایمنی هم در فهرست هست", afterRestoreRows >= 2, afterRestoreRows);
+
+  await admin.click("table tbody tr:first-child button:has-text('حذف')");
+  await admin.waitForURL(/msg=/, { timeout: 20000 });
+  const afterDelete = await admin.$$eval("table tbody tr", (list) => list.length);
+  check("پشتیبان حذف شد", afterDelete === afterRestoreRows - 1, afterDelete);
+
   console.log("→ تیکت پشتیبانی");
   await user.goto(`${BASE}/dashboard/tickets`, { waitUntil: "domcontentloaded" });
   await user.fill("#subject", "تست پشتیبانی");

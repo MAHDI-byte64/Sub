@@ -155,6 +155,11 @@ try {
     await admin.waitForSelector(".alert-success, .alert-error", { timeout: 40000 });
   }
 
+  // یک پشتیبان بساز تا جدول صفحهٔ پشتیبان‌گیری خالی نباشد
+  await admin.goto(`${BASE}/admin/backup`, { waitUntil: "domcontentloaded" });
+  await admin.click("button:has-text('ساخت پشتیبان تازه')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 60000 });
+
   const publicPages = [
     ["home", "/"],
     ["plans", "/plans"],
@@ -196,6 +201,7 @@ try {
     ["admin-users", "/admin/users"],
     ["admin-discounts", "/admin/discounts"],
     ["admin-logs", "/admin/logs"],
+    ["admin-backup", "/admin/backup"],
   ];
 
   // پروندهٔ یک کاربر واقعی

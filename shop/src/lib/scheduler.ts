@@ -6,6 +6,7 @@ import { alreadyNotified, notifyUser } from "./notify";
 import { debitWallet } from "./wallet";
 import { notifyAdmin } from "./telegram";
 import { pruneChecks, runPanelChecks } from "./monitor";
+import { runAutoBackup } from "./backup";
 import { toman, faNum } from "./format";
 
 const TICK_MS = 15 * 60_000;
@@ -23,6 +24,7 @@ export async function runMaintenance(): Promise<{
   expired: number;
   panelsChecked: number;
   panelsDown: number;
+  backup?: string;
 }> {
   const settings = await getSettings();
   const reminderDays = Math.max(0, asNum(settings.expiry_reminder_days, 3));
@@ -37,9 +39,18 @@ export async function runMaintenance(): Promise<{
     expired: 0,
     panelsChecked: 0,
     panelsDown: 0,
+    backup: undefined as string | undefined,
   };
 
-  // ۰) بررسی سلامت سرورها (قبل از بقیه؛ سرور خراب از چرخهٔ فروش کنار می‌رود)
+  // ۰) پشتیبان خودکار (اگر وقتش رسیده باشد)
+  try {
+    const backup = await runAutoBackup();
+    if (backup) result.backup = backup.file;
+  } catch {
+    /* پشتیبان‌گیری نباید بقیهٔ کارها را متوقف کند */
+  }
+
+  // ۰٫۵) بررسی سلامت سرورها (قبل از بقیه؛ سرور خراب از چرخهٔ فروش کنار می‌رود)
   if (asBool(settings.monitor_enabled)) {
     try {
       const health = await runPanelChecks();

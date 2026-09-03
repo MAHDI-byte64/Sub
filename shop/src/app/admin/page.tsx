@@ -143,6 +143,10 @@ export default async function AdminHome() {
           <i>🖥️</i>
           <span>سرورهای 3x-ui</span>
         </Link>
+        <Link className="admin-link" href="/admin/backup">
+          <i>🗄️</i>
+          <span>پشتیبان‌گیری</span>
+        </Link>
         <Link className="admin-link" href="/admin/settings">
           <i>⚙️</i>
           <span>تنظیمات سایت</span>

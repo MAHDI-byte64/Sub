@@ -33,6 +33,7 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh && mkdir -p /app/data/uploads
 ENV PORT=3000
 ENV DATABASE_URL="file:../data/fandogh.db"
 ENV UPLOAD_DIR="/app/data/uploads"
+ENV BACKUP_DIR="/app/data/backups"
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS "http://127.0.0.1:${PORT}/" > /dev/null || exit 1

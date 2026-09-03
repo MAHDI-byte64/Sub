@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { saveSettings } from "@/lib/settings";
+import { asNum, getSettings, saveSettings } from "@/lib/settings";
 import { notifyAdmin } from "@/lib/telegram";
 import {
   createServiceOnPanel,
@@ -24,6 +24,17 @@ import { broadcastPush, ensureVapidKeys, sendPushToUser } from "@/lib/push";
 import { findDriver } from "@/lib/gateway";
 import { gatewayUsable, migrateLegacyGateway } from "@/lib/payments";
 import { usdtRate } from "@/lib/rates";
+import {
+  createBackup,
+  deleteBackup,
+  listBackups,
+  pruneBackups,
+  readBackup,
+  restoreBackup,
+  sendBackupToTelegram,
+  type RestoreCode,
+  type SendCode,
+} from "@/lib/backup";
 import { creditWallet, debitWallet } from "@/lib/wallet";
 import { notifyUser } from "@/lib/notify";
 import { payReferralBonus } from "@/lib/referral";
@@ -665,6 +676,124 @@ export async function broadcastPushAction(_prev: AdminState, formData: FormData)
   return sent
     ? { success: `اطلاعیه به ${faNum(sent)} دستگاه از ${faNum(users)} کاربر فرستاده شد.` }
     : { error: "هیچ کاربری اعلان پوش را روشن نکرده است." };
+}
+
+/* ------------------------------ پشتیبان‌گیری ------------------------------ */
+
+function sizeLabel(bytes: number): string {
+  const mb = bytes / (1024 * 1024);
+  return mb >= 1 ? `${faNum(mb.toFixed(1))} مگابایت` : `${faNum(Math.max(1, Math.round(bytes / 1024)))} کیلوبایت`;
+}
+
+const SEND_MESSAGE: Record<SendCode, string> = {
+  sent: "پشتیبان در تلگرام فرستاده شد.",
+  "no-bot": "توکن ربات یا شناسهٔ چت مدیر در تنظیمات پر نشده است.",
+  missing: "این فایل پشتیبان پیدا نشد.",
+  "too-big": "فایل برای ارسال با ربات تلگرام بزرگ است (بیشتر از ۴۵ مگابایت).",
+  failed: "ارسال به تلگرام انجام نشد.",
+};
+
+const RESTORE_MESSAGE: Record<RestoreCode, string> = {
+  restored: "بازیابی انجام شد.",
+  corrupt: "فایل خراب است یا فرمتش پشتیبان این سایت نیست.",
+  "not-a-backup": "داخل این فایل دیتابیس سالمی پیدا نشد.",
+  failed: "نوشتن فایل‌ها انجام نشد",
+};
+
+/** ساخت پشتیبان تازه (دیتابیس + رسیدها) */
+export async function createBackupAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  try {
+    const { file, size } = await createBackup("دستی");
+    const settings = await getSettings();
+    await pruneBackups(Math.max(1, asNum(settings.backup_keep, 7)));
+    await logAdmin("backup_created", file, sizeLabel(size));
+
+    let extra = "";
+    if (checked(formData, "toTelegram")) {
+      const sent = await sendBackupToTelegram(file);
+      extra = sent.ok
+        ? " و در تلگرام فرستاده شد"
+        : ` (ارسال تلگرام انجام نشد: ${SEND_MESSAGE[sent.code]})`;
+    }
+
+    revalidatePath("/admin/backup");
+    return { success: `پشتیبان ساخته شد: ${file} — ${sizeLabel(size)}${extra}` };
+  } catch (err) {
+    return { error: `ساخت پشتیبان ناموفق بود: ${(err as Error).message}` };
+  }
+}
+
+/** فرستادن یک پشتیبان موجود به تلگرام */
+export async function sendBackupAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const name = str(formData, "name");
+  const result = await sendBackupToTelegram(name);
+  if (result.ok) await logAdmin("backup_sent", name);
+
+  const message = SEND_MESSAGE[result.code];
+  return result.ok
+    ? { success: message }
+    : { error: result.detail ? `${message} (${result.detail})` : message };
+}
+
+export async function deleteBackupAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const name = str(formData, "name");
+  const done = await deleteBackup(name);
+  if (!done) return { error: "نام فایل پشتیبان معتبر نیست." };
+
+  await logAdmin("backup_deleted", name);
+  revalidatePath("/admin/backup");
+  flash("/admin/backup", `پشتیبان ${name} حذف شد.`);
+}
+
+/** بازگرداندن سایت از روی یک پشتیبان (از فهرست یا فایل آپلودی) */
+export async function restoreBackupAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  if (str(formData, "confirm") !== "بازیابی") {
+    return { error: "برای تأیید، کلمهٔ «بازیابی» را دقیقاً در کادر بنویسید." };
+  }
+
+  let archive: Buffer | null = null;
+  const name = str(formData, "name");
+  const upload = formData.get("file");
+
+  if (upload instanceof File && upload.size > 0) {
+    if (upload.size > 200 * 1024 * 1024) return { error: "فایل پشتیبان بیش از حد بزرگ است." };
+    archive = Buffer.from(await upload.arrayBuffer());
+  } else if (name) {
+    archive = await readBackup(name);
+  }
+  if (!archive) return { error: "فایل پشتیبان را انتخاب یا آپلود کنید." };
+
+  const result = await restoreBackup(archive);
+  if (!result.ok) {
+    const message = RESTORE_MESSAGE[result.code];
+    return { error: result.detail ? `${message}: ${result.detail}` : message };
+  }
+
+  await logAdmin("backup_restored", name || "فایل آپلودی", result.manifest?.createdAt ?? "");
+  revalidatePath("/", "layout");
+  return {
+    success:
+      `${RESTORE_MESSAGE.restored} از وضعیت قبلی هم یک پشتیبان ایمنی ساخته شد` +
+      (result.safetyCopy ? ` (${result.safetyCopy}).` : ".") +
+      " اگر چیزی درست نمایش داده نشد، یک بار صفحه را تازه کنید.",
+  };
+}
+
+/** فهرست پشتیبان‌ها برای نمایش در پنل */
+export async function backupList() {
+  return listBackups();
 }
 
 /* ------------------------ کاربر ویژه و نمایندگی ------------------------ */

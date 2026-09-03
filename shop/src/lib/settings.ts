@@ -252,6 +252,45 @@ export const SETTING_DEFS: SettingDef[] = [
   },
 
   {
+    key: "backup_auto",
+    label: "پشتیبان‌گیری خودکار",
+    type: "bool",
+    group: "پشتیبان‌گیری",
+    default: "0",
+    hint: "در کارهای پس‌زمینه، طبق فاصلهٔ زیر یک پشتیبان کامل ساخته می‌شود.",
+  },
+  {
+    key: "backup_interval_hours",
+    label: "فاصلهٔ پشتیبان‌گیری (ساعت)",
+    type: "number",
+    group: "پشتیبان‌گیری",
+    default: "24",
+  },
+  {
+    key: "backup_keep",
+    label: "چند پشتیبان نگه داشته شود",
+    type: "number",
+    group: "پشتیبان‌گیری",
+    default: "7",
+    hint: "قدیمی‌ترها خودکار پاک می‌شوند تا فضای سرور پر نشود.",
+  },
+  {
+    key: "backup_telegram",
+    label: "ارسال پشتیبان به تلگرام",
+    type: "bool",
+    group: "پشتیبان‌گیری",
+    default: "0",
+    hint: "فایل پشتیبان بعد از ساخت، برای چت مدیر فرستاده می‌شود (حداکثر ۴۵ مگابایت).",
+  },
+  {
+    key: "backup_last_at",
+    label: "آخرین پشتیبان خودکار (خودکار)",
+    type: "text",
+    group: "پشتیبان‌گیری",
+    default: "0",
+  },
+
+  {
     key: "maintenance_mode",
     label: "حالت تعمیر و نگهداری",
     type: "bool",
