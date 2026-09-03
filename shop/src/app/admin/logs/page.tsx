@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { ACTION_LABELS } from "@/lib/adminlog";
 import { faDate, faNum, relativeTime } from "@/lib/format";
+import { requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,8 @@ export default async function AdminLogsPage({
 }: {
   searchParams: Promise<{ action?: string }>;
 }) {
+  await requireAdmin();
+
   const { action } = await searchParams;
   const [logs, total, actions] = await Promise.all([
     db.adminLog.findMany({

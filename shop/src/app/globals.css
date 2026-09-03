@@ -2570,6 +2570,32 @@ tbody tr:hover {
   justify-content: flex-end;
 }
 
+/* کدهای پشتیبان دومرحله‌ای و فهرست نکته‌ها */
+.backup-codes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin: 10px 0;
+}
+.backup-codes span {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  text-align: center;
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+}
+.check-list {
+  margin: 0;
+  padding-inline-start: 20px;
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.93rem;
+  line-height: 1.9;
+}
+
 /* انتقال سرویس: سلکت کوچک و دکمه در یک خط، پیام در خط بعد */
 .row-form {
   display: flex;

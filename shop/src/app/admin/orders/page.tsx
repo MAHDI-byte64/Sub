@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { approveOrderAction, rejectOrderAction } from "@/app/actions/admin";
+import { requireStaff } from "@/lib/auth";
 import { faDate, faNum, toman } from "@/lib/format";
 import { ORDER_STATUS } from "@/lib/status";
 import ActionForm from "@/components/ActionForm";
@@ -21,6 +22,8 @@ export default async function AdminOrdersPage({
 }: {
   searchParams: Promise<{ status?: string; q?: string; msg?: string; type?: string }>;
 }) {
+  const isAdmin = (await requireStaff()).role === "admin";
+
   const { status: statusParam, q, msg, type } = await searchParams;
   const status = statusParam || "pending_review";
   const search = (q ?? "").trim();
@@ -244,6 +247,10 @@ export default async function AdminOrdersPage({
                       سفارش تمدید با موفقیت اعمال شد.
                     </div>
                   )
+                ) : !isAdmin ? (
+                  <div className="alert alert-warn" style={{ marginTop: 12 }}>
+                    تأیید یا رد سفارش کار مدیر است؛ این حساب دسترسی مالی ندارد.
+                  </div>
                 ) : (
                   <div className="grid grid-2" style={{ marginTop: 12 }}>
                     <ActionForm

@@ -4,6 +4,7 @@ import { deletePanelAction, savePanelAction, testAllPanelsAction, testPanelActio
 import { faDate, faNum } from "@/lib/format";
 import ActionForm from "@/components/ActionForm";
 import Flash from "@/components/Flash";
+import { requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,8 @@ export default async function AdminPanelsPage({
 }: {
   searchParams: Promise<{ edit?: string; msg?: string; type?: string }>;
 }) {
+  await requireAdmin();
+
   const { edit, msg, type } = await searchParams;
   const [panels, editing, counts] = await Promise.all([
     db.panel.findMany({ orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),

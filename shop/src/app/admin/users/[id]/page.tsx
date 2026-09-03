@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
+import { requireStaff, roleLabel } from "@/lib/auth";
 import { describeDevice } from "@/lib/auth";
 import { faDate, faNum, formatBytes, relativeTime, toman } from "@/lib/format";
 import { ORDER_STATUS, TICKET_STATUS } from "@/lib/status";
@@ -13,6 +14,7 @@ import {
   resetTrialFlagAction,
   saveResellerAction,
   toggleUserBlockAction,
+  toggleSupportAction,
   toggleVipAction,
   toggleServiceAction,
 } from "@/app/actions/admin";
@@ -28,33 +30,59 @@ export default async function AdminUserDetail({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ msg?: string; type?: string }>;
 }) {
+  const isAdmin = (await requireStaff()).role === "admin";
+
   const { id } = await params;
   const { msg, type } = await searchParams;
 
   const user = await db.user.findUnique({
     where: { id },
     include: {
-      services: { include: { panel: true, plan: true }, orderBy: { createdAt: "desc" } },
-      orders: { include: { plan: true }, orderBy: { createdAt: "desc" }, take: 20 },
+      services: {
+        include: { panel: true, plan: true },
+        orderBy: { createdAt: "desc" },
+      },
+      orders: {
+        include: { plan: true },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      },
       tickets: { orderBy: { updatedAt: "desc" }, take: 10 },
-      sessions: { where: { expiresAt: { gt: new Date() } }, orderBy: { createdAt: "desc" }, take: 5 },
+      sessions: {
+        where: { expiresAt: { gt: new Date() } },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      },
     },
   });
   if (!user) notFound();
 
   const [plans, panels, spent, walletTxs] = await Promise.all([
-    db.plan.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" }, include: { panels: true } }),
-    db.panel.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
+    db.plan.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: "asc" },
+      include: { panels: true },
+    }),
+    db.panel.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: "asc" },
+    }),
     db.order.aggregate({
       where: { userId: user.id, status: "approved" },
       _sum: { payable: true },
       _count: { _all: true },
     }),
-    db.walletTx.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 8 }),
+    db.walletTx.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+    }),
   ]);
 
   const initial = (user.name || user.email).charAt(0).toUpperCase();
-  const activeServices = user.services.filter((s) => s.status === "active").length;
+  const activeServices = user.services.filter(
+    (s) => s.status === "active",
+  ).length;
   const totalUsed = user.services.reduce((sum, s) => sum + s.usedBytes, 0);
 
   return (
@@ -65,8 +93,12 @@ export default async function AdminUserDetail({
           <p className="ltr mono">{user.email}</p>
         </div>
         <div className="btn-row">
-          {user.isBlocked ? <span className="badge badge-danger">مسدود</span> : null}
-          {user.role === "admin" ? <span className="badge badge-info">مدیر</span> : null}
+          {user.isBlocked ? (
+            <span className="badge badge-danger">مسدود</span>
+          ) : null}
+          {user.role === "admin" ? (
+            <span className="badge badge-info">مدیر</span>
+          ) : null}
           <Link className="btn btn-sm" href="/admin/users">
             ← همه کاربران
           </Link>
@@ -88,7 +120,9 @@ export default async function AdminUserDetail({
             {user.role !== "admin" ? (
               <ActionForm
                 action={toggleUserBlockAction}
-                submitLabel={user.isBlocked ? "آزادسازی حساب" : "مسدود کردن حساب"}
+                submitLabel={
+                  user.isBlocked ? "آزادسازی حساب" : "مسدود کردن حساب"
+                }
                 buttonClass={`btn btn-sm ${user.isBlocked ? "" : "btn-danger"}`}
                 inline
               >
@@ -96,18 +130,46 @@ export default async function AdminUserDetail({
               </ActionForm>
             ) : null}
             {user.trialUsedAt ? (
-              <ActionForm action={resetTrialFlagAction} submitLabel="آزادسازی تست رایگان" buttonClass="btn btn-sm" inline>
+              <ActionForm
+                action={resetTrialFlagAction}
+                submitLabel="آزادسازی تست رایگان"
+                buttonClass="btn btn-sm"
+                inline
+              >
                 <input type="hidden" name="id" value={user.id} />
               </ActionForm>
             ) : null}
-            <ActionForm
-              action={toggleVipAction}
-              submitLabel={user.isVip ? "لغو کاربر ویژه" : "⭐ کاربر ویژه"}
-              buttonClass={`btn btn-sm${user.isVip ? "" : " btn-primary"}`}
-              inline
-            >
-              <input type="hidden" name="id" value={user.id} />
-            </ActionForm>
+            {isAdmin ? (
+              <>
+                <ActionForm
+                  action={toggleVipAction}
+                  submitLabel={user.isVip ? "لغو کاربر ویژه" : "⭐ کاربر ویژه"}
+                  buttonClass={`btn btn-sm${user.isVip ? "" : " btn-primary"}`}
+                  inline
+                >
+                  <input type="hidden" name="id" value={user.id} />
+                </ActionForm>
+                {user.role !== "admin" ? (
+                  <ActionForm
+                    action={toggleSupportAction}
+                    submitLabel={
+                      user.role === "support"
+                        ? "لغو نقش پشتیبان"
+                        : "🎧 پشتیبان کن"
+                    }
+                    buttonClass="btn btn-sm"
+                    confirm={
+                      user.role === "support"
+                        ? "دسترسی این حساب به پنل پشتیبانی برداشته شود؟"
+                        : "این حساب به پنل پشتیبانی دسترسی پیدا کند؟ (بدون دسترسی به سرورها، پرداخت‌ها و تنظیمات)"
+                    }
+                    inline
+                  >
+                    <input type="hidden" name="id" value={user.id} />
+                  </ActionForm>
+                ) : null}
+              </>
+            ) : null}
           </div>
         </div>
       </div>
@@ -121,8 +183,8 @@ export default async function AdminUserDetail({
             </span>
           </div>
           <p className="field-hint">
-            روش‌های پرداختی که «فقط برای کاربران ویژه» علامت زده‌اید — مثل کارت‌به‌کارت — فقط به این
-            کاربران نشان داده می‌شود. کلید مربوطه در{" "}
+            روش‌های پرداختی که «فقط برای کاربران ویژه» علامت زده‌اید — مثل
+            کارت‌به‌کارت — فقط به این کاربران نشان داده می‌شود. کلید مربوطه در{" "}
             <Link href="/admin/payments">روش‌های پرداخت</Link> است.
           </p>
           {user.vipNote ? <p className="dim">یادداشت: {user.vipNote}</p> : null}
@@ -130,14 +192,37 @@ export default async function AdminUserDetail({
 
         <div className="card">
           <div className="card-title">
-            <h3>🤝 نمایندگی</h3>
-            <span className={`badge ${user.isReseller ? "badge-success" : "badge"}`}>
-              {user.isReseller ? `${faNum(user.resellerOff)}٪ تخفیف` : "غیرفعال"}
+            <h3>🎧 نقش پشتیبانی</h3>
+            <span
+              className={`badge ${user.role === "support" ? "badge-success" : user.role === "admin" ? "badge-info" : "badge"}`}
+            >
+              {roleLabel(user.role)}
             </span>
           </div>
           <p className="field-hint">
-            با فعال‌کردن نمایندگی، این کاربر علاوه بر پنل کاربری خودش یک «پنل نمایندگی» جدا می‌گیرد و
-            می‌تواند با قیمت عمده از اعتبارش برای مشتری‌هایش سرویس بسازد.
+            حساب پشتیبان وارد پنل می‌شود ولی فقط{" "}
+            <b>تیکت‌ها، سرویس‌ها، سفارش‌ها و کاربران</b> را می‌بیند؛ سرورها و
+            رمزشان، روش‌های پرداخت، کد تخفیف، نمایندگان، گزارش فعالیت،
+            پشتیبان‌گیری و تنظیمات برایش باز نمی‌شود. کارهای مالی (تأیید سفارش،
+            شارژ کیف پول) هم دست مدیر می‌ماند.
+          </p>
+        </div>
+
+        <div className="card">
+          <div className="card-title">
+            <h3>🤝 نمایندگی</h3>
+            <span
+              className={`badge ${user.isReseller ? "badge-success" : "badge"}`}
+            >
+              {user.isReseller
+                ? `${faNum(user.resellerOff)}٪ تخفیف`
+                : "غیرفعال"}
+            </span>
+          </div>
+          <p className="field-hint">
+            با فعال‌کردن نمایندگی، این کاربر علاوه بر پنل کاربری خودش یک «پنل
+            نمایندگی» جدا می‌گیرد و می‌تواند با قیمت عمده از اعتبارش برای
+            مشتری‌هایش سرویس بسازد.
           </p>
           <ActionForm action={saveResellerAction} submitLabel="ذخیره نمایندگی">
             <input type="hidden" name="id" value={user.id} />
@@ -156,11 +241,20 @@ export default async function AdminUserDetail({
               </div>
               <div className="field">
                 <label htmlFor="resellerName">نام فروشگاه نماینده</label>
-                <input id="resellerName" name="resellerName" defaultValue={user.resellerName ?? ""} />
+                <input
+                  id="resellerName"
+                  name="resellerName"
+                  defaultValue={user.resellerName ?? ""}
+                />
               </div>
             </div>
             <div className="checkbox">
-              <input id="isReseller" name="isReseller" type="checkbox" defaultChecked={user.isReseller} />
+              <input
+                id="isReseller"
+                name="isReseller"
+                type="checkbox"
+                defaultChecked={user.isReseller}
+              />
               <label htmlFor="isReseller">نمایندگی فعال باشد</label>
             </div>
           </ActionForm>
@@ -201,13 +295,20 @@ export default async function AdminUserDetail({
             user.services.map((service) => {
               const percent =
                 service.totalBytes > 0
-                  ? Math.min(100, Math.round((service.usedBytes / service.totalBytes) * 100))
+                  ? Math.min(
+                      100,
+                      Math.round(
+                        (service.usedBytes / service.totalBytes) * 100,
+                      ),
+                    )
                   : 0;
               return (
                 <div className="cc-service" key={service.id}>
                   <div className="cc-service-head">
                     <b>
-                      {service.panel.flag} {service.plan?.title ?? (service.isTrial ? "تست رایگان" : "سرویس")}
+                      {service.panel.flag}{" "}
+                      {service.plan?.title ??
+                        (service.isTrial ? "تست رایگان" : "سرویس")}
                     </b>
                     <span
                       className={`badge ${
@@ -218,21 +319,30 @@ export default async function AdminUserDetail({
                             : "badge-warn"
                       }`}
                     >
-                      {service.status === "active" ? "فعال" : service.status === "expired" ? "منقضی" : "غیرفعال"}
+                      {service.status === "active"
+                        ? "فعال"
+                        : service.status === "expired"
+                          ? "منقضی"
+                          : "غیرفعال"}
                     </span>
                   </div>
                   {service.totalBytes > 0 ? (
                     <>
-                      <div className={`progress ${percent >= 90 ? "danger" : percent >= 70 ? "warn" : ""}`}>
+                      <div
+                        className={`progress ${percent >= 90 ? "danger" : percent >= 70 ? "warn" : ""}`}
+                      >
                         <span style={{ width: `${percent}%` }} />
                       </div>
                       <small>
-                        {formatBytes(service.usedBytes, "۰")} از {formatBytes(service.totalBytes)} · انقضا{" "}
+                        {formatBytes(service.usedBytes, "۰")} از{" "}
+                        {formatBytes(service.totalBytes)} · انقضا{" "}
                         {faDate(service.expiresAt)}
                       </small>
                     </>
                   ) : (
-                    <small>حجم نامحدود · انقضا {faDate(service.expiresAt)}</small>
+                    <small>
+                      حجم نامحدود · انقضا {faDate(service.expiresAt)}
+                    </small>
                   )}
                   <small className="mono">{service.clientEmail}</small>
 
@@ -245,8 +355,18 @@ export default async function AdminUserDetail({
                     >
                       <input type="hidden" name="id" value={service.id} />
                       <div className="grid grid-2" style={{ gap: 8 }}>
-                        <input name="gb" type="number" min={0} placeholder="حجم (گیگ)" />
-                        <input name="days" type="number" min={0} placeholder="روز" />
+                        <input
+                          name="gb"
+                          type="number"
+                          min={0}
+                          placeholder="حجم (گیگ)"
+                        />
+                        <input
+                          name="days"
+                          type="number"
+                          min={0}
+                          placeholder="روز"
+                        />
                       </div>
                     </ActionForm>
                     <ActionForm
@@ -260,7 +380,9 @@ export default async function AdminUserDetail({
                     </ActionForm>
                     <ActionForm
                       action={toggleServiceAction}
-                      submitLabel={service.status === "active" ? "غیرفعال" : "فعال"}
+                      submitLabel={
+                        service.status === "active" ? "غیرفعال" : "فعال"
+                      }
                       buttonClass="btn btn-sm"
                       inline
                     >
@@ -283,14 +405,20 @@ export default async function AdminUserDetail({
             <p className="dim">این کاربر سرویسی ندارد.</p>
           )}
 
+          {isAdmin ? (
+          <>
           <hr />
           <div className="card-title">
             <h3>ساخت سرویس دستی</h3>
           </div>
           <p className="field-hint">
-            برای هدیه، جبران خسارت یا فروش آفلاین؛ سرویس بدون نیاز به سفارش ساخته و روی پنل تحویل می‌شود.
+            برای هدیه، جبران خسارت یا فروش آفلاین؛ سرویس بدون نیاز به سفارش
+            ساخته و روی پنل تحویل می‌شود.
           </p>
-          <ActionForm action={createServiceForUserAction} submitLabel="ساخت سرویس">
+          <ActionForm
+            action={createServiceForUserAction}
+            submitLabel="ساخت سرویس"
+          >
             <input type="hidden" name="userId" value={user.id} />
             <div className="grid grid-2">
               <div className="field">
@@ -299,7 +427,9 @@ export default async function AdminUserDetail({
                   {plans.map((plan) => (
                     <option key={plan.id} value={plan.id}>
                       {plan.title}
-                      {plan.panels.length ? ` (${plan.panels.map((p) => p.location).join("، ")})` : ""}
+                      {plan.panels.length
+                        ? ` (${plan.panels.map((p) => p.location).join("، ")})`
+                        : ""}
                     </option>
                   ))}
                 </select>
@@ -318,9 +448,15 @@ export default async function AdminUserDetail({
             </div>
             <div className="field">
               <label htmlFor="note">یادداشت (در گزارش ثبت می‌شود)</label>
-              <input id="note" name="note" placeholder="مثلاً جبران قطعی سرور" />
+              <input
+                id="note"
+                name="note"
+                placeholder="مثلاً جبران قطعی سرور"
+              />
             </div>
           </ActionForm>
+          </>
+          ) : null}
         </div>
 
         {/* سفارش‌ها، تیکت‌ها و دستگاه‌ها */}
@@ -334,16 +470,22 @@ export default async function AdminUserDetail({
                 <table>
                   <tbody>
                     {user.orders.map((order) => {
-                      const status = ORDER_STATUS[order.status] ?? ORDER_STATUS.awaiting_receipt;
+                      const status =
+                        ORDER_STATUS[order.status] ??
+                        ORDER_STATUS.awaiting_receipt;
                       return (
                         <tr key={order.id}>
                           <td className="mono nowrap">{order.code}</td>
                           <td>{order.plan?.title ?? "شارژ کیف پول"}</td>
                           <td className="nowrap">{toman(order.payable)}</td>
                           <td>
-                            <span className={`badge ${status.badge}`}>{status.label}</span>
+                            <span className={`badge ${status.badge}`}>
+                              {status.label}
+                            </span>
                           </td>
-                          <td className="nowrap">{relativeTime(order.createdAt)}</td>
+                          <td className="nowrap">
+                            {relativeTime(order.createdAt)}
+                          </td>
                         </tr>
                       );
                     })}
@@ -360,25 +502,48 @@ export default async function AdminUserDetail({
               <h3>💰 کیف پول</h3>
               <span className="badge badge-info">{toman(user.balance)}</span>
             </div>
-            <ActionForm action={adjustWalletAction} submitLabel="اعمال" buttonClass="btn btn-sm btn-primary">
+            {!isAdmin ? (
+              <p className="field-hint">کم و زیادکردن اعتبار فقط از حساب مدیر انجام می‌شود.</p>
+            ) : null}
+            {isAdmin ? (
+            <ActionForm
+              action={adjustWalletAction}
+              submitLabel="اعمال"
+              buttonClass="btn btn-sm btn-primary"
+            >
               <input type="hidden" name="userId" value={user.id} />
               <div className="grid grid-2">
                 <div className="field">
                   <label htmlFor="wallet-amount">مبلغ (منفی = کسر)</label>
-                  <input id="wallet-amount" name="amount" type="number" step={10000} placeholder="مثلاً 100000" />
+                  <input
+                    id="wallet-amount"
+                    name="amount"
+                    type="number"
+                    step={10000}
+                    placeholder="مثلاً 100000"
+                  />
                 </div>
                 <div className="field">
                   <label htmlFor="wallet-note">علت</label>
-                  <input id="wallet-note" name="note" placeholder="مثلاً هدیه تولد" />
+                  <input
+                    id="wallet-note"
+                    name="note"
+                    placeholder="مثلاً هدیه تولد"
+                  />
                 </div>
               </div>
             </ActionForm>
+            ) : null}
             {walletTxs.length ? (
               <div className="svc-meta" style={{ marginTop: 12 }}>
                 {walletTxs.map((tx) => (
                   <div className="meta-row" key={tx.id}>
                     <span>{tx.note ?? tx.kind}</span>
-                    <b style={{ color: tx.amount > 0 ? "var(--green)" : "var(--red)" }}>
+                    <b
+                      style={{
+                        color: tx.amount > 0 ? "var(--green)" : "var(--red)",
+                      }}
+                    >
                       {tx.amount > 0 ? "+" : "−"} {toman(Math.abs(tx.amount))}
                     </b>
                   </div>
@@ -394,12 +559,19 @@ export default async function AdminUserDetail({
             {user.tickets.length ? (
               <div className="grid" style={{ gap: 8 }}>
                 {user.tickets.map((ticket) => {
-                  const status = TICKET_STATUS[ticket.status] ?? TICKET_STATUS.open;
+                  const status =
+                    TICKET_STATUS[ticket.status] ?? TICKET_STATUS.open;
                   return (
-                    <Link className="meta-row" key={ticket.id} href={`/admin/tickets/${ticket.id}`}>
+                    <Link
+                      className="meta-row"
+                      key={ticket.id}
+                      href={`/admin/tickets/${ticket.id}`}
+                    >
                       <span>💬 {ticket.subject}</span>
                       <b>
-                        <span className={`badge ${status.badge}`}>{status.label}</span>
+                        <span className={`badge ${status.badge}`}>
+                          {status.label}
+                        </span>
                       </b>
                     </Link>
                   );

@@ -12,6 +12,7 @@ import { faDate, faNum } from "@/lib/format";
 import ActionForm from "@/components/ActionForm";
 import AreaChart, { type ChartPoint } from "@/components/AreaChart";
 import Flash from "@/components/Flash";
+import { requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "پایش سرورها" };
@@ -28,6 +29,8 @@ export default async function AdminMonitorPage({
 }: {
   searchParams: Promise<{ msg?: string; type?: string }>;
 }) {
+  await requireAdmin();
+
   const { msg, type } = await searchParams;
 
   const [panels, settings, day, week, serviceCounts] = await Promise.all([

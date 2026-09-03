@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { requireStaff } from "@/lib/auth";
 import Link from "next/link";
 import {
   deleteServiceAction,
@@ -19,8 +20,16 @@ export const dynamic = "force-dynamic";
 export default async function AdminServicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ msg?: string; type?: string; q?: string; status?: string; panel?: string }>;
+  searchParams: Promise<{
+    msg?: string;
+    type?: string;
+    q?: string;
+    status?: string;
+    panel?: string;
+  }>;
 }) {
+  const isAdmin = (await requireStaff()).role === "admin";
+
   const { msg, type, q, status, panel } = await searchParams;
   const search = (q ?? "").trim();
 
@@ -84,20 +93,35 @@ export default async function AdminServicesPage({
       </div>
 
       <div className="card">
-        <form style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <form
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
           <input
             name="q"
             defaultValue={search}
             placeholder="جستجوی ایمیل کاربر، نام کلاینت یا subId…"
             style={{ flex: 1, minWidth: 200 }}
           />
-          <select name="status" defaultValue={status ?? "all"} style={{ width: "auto" }}>
+          <select
+            name="status"
+            defaultValue={status ?? "all"}
+            style={{ width: "auto" }}
+          >
             <option value="all">همه وضعیت‌ها</option>
             <option value="active">فعال</option>
             <option value="expired">منقضی</option>
             <option value="disabled">غیرفعال</option>
           </select>
-          <select name="panel" defaultValue={panel ?? ""} style={{ width: "auto" }}>
+          <select
+            name="panel"
+            defaultValue={panel ?? ""}
+            style={{ width: "auto" }}
+          >
             <option value="">همه سرورها</option>
             {panels.map((p) => (
               <option key={p.id} value={p.id}>
@@ -122,13 +146,15 @@ export default async function AdminServicesPage({
             buttonClass="btn btn-sm"
             inline
           />
-          <ActionForm
-            action={pruneExpiredServicesAction}
-            submitLabel="🧹 حذف سرویس‌های منقضی (بیش از ۷ روز)"
-            buttonClass="btn btn-sm btn-danger"
-            confirm="سرویس‌های منقضی‌شده از پنل و سایت حذف شوند؟"
-            inline
-          />
+          {isAdmin ? (
+            <ActionForm
+              action={pruneExpiredServicesAction}
+              submitLabel="🧹 حذف سرویس‌های منقضی (بیش از ۷ روز)"
+              buttonClass="btn btn-sm btn-danger"
+              confirm="سرویس‌های منقضی‌شده از پنل و سایت حذف شوند؟"
+              inline
+            />
+          ) : null}
         </div>
       </div>
 
@@ -156,25 +182,37 @@ export default async function AdminServicesPage({
                 return (
                   <tr key={service.id}>
                     <td>
-                      <Link className="cell-main ltr gold" href={`/admin/users/${service.userId}`}>
+                      <Link
+                        className="cell-main ltr gold"
+                        href={`/admin/users/${service.userId}`}
+                      >
                         {service.user.email}
                       </Link>
-                      <span className="cell-sub mono">{service.clientEmail}</span>
+                      <span className="cell-sub mono">
+                        {service.clientEmail}
+                      </span>
                     </td>
                     <td className="nowrap">
                       {service.panel.flag} {service.panel.location}
                     </td>
                     <td className="nowrap">
-                      {service.plan?.title ?? (service.isTrial ? "تست رایگان" : "—")}
+                      {service.plan?.title ??
+                        (service.isTrial ? "تست رایگان" : "—")}
                     </td>
                     <td className="nowrap">
-                      <span className="cell-main">{formatBytes(service.usedBytes, "۰")}</span>
+                      <span className="cell-main">
+                        {formatBytes(service.usedBytes, "۰")}
+                      </span>
                       <span className="cell-sub">
-                        {service.totalBytes > 0 ? `از ${formatBytes(service.totalBytes)}` : "نامحدود"}
+                        {service.totalBytes > 0
+                          ? `از ${formatBytes(service.totalBytes)}`
+                          : "نامحدود"}
                       </span>
                     </td>
                     <td className="nowrap">
-                      <span className="cell-main">{faDate(service.expiresAt)}</span>
+                      <span className="cell-main">
+                        {faDate(service.expiresAt)}
+                      </span>
                       {days !== null ? (
                         <span className="cell-sub">
                           {days > 0 ? `${faNum(days)} روز مانده` : "منقضی"}
@@ -200,26 +238,35 @@ export default async function AdminServicesPage({
                     </td>
                     <td>
                       <div className="cell-actions">
-                        <ActionForm action={syncServiceAction} submitLabel="↻" buttonClass="btn btn-sm" inline>
+                        <ActionForm
+                          action={syncServiceAction}
+                          submitLabel="↻"
+                          buttonClass="btn btn-sm"
+                          inline
+                        >
                           <input type="hidden" name="id" value={service.id} />
                         </ActionForm>
                         <ActionForm
                           action={toggleServiceAction}
-                          submitLabel={service.status === "active" ? "غیرفعال" : "فعال"}
+                          submitLabel={
+                            service.status === "active" ? "غیرفعال" : "فعال"
+                          }
                           buttonClass="btn btn-sm"
                           inline
                         >
                           <input type="hidden" name="id" value={service.id} />
                         </ActionForm>
-                        <ActionForm
-                          action={resetServiceTrafficAction}
-                          submitLabel="صفر"
-                          buttonClass="btn btn-sm"
-                          confirm="مصرف این سرویس صفر شود؟"
-                          inline
-                        >
-                          <input type="hidden" name="id" value={service.id} />
-                        </ActionForm>
+                        {isAdmin ? (
+                          <ActionForm
+                            action={resetServiceTrafficAction}
+                            submitLabel="صفر"
+                            buttonClass="btn btn-sm"
+                            confirm="مصرف این سرویس صفر شود؟"
+                            inline
+                          >
+                            <input type="hidden" name="id" value={service.id} />
+                          </ActionForm>
+                        ) : null}
                         <ActionForm
                           action={rotateServiceAdminAction}
                           submitLabel="کانفیگ تازه"
@@ -229,7 +276,7 @@ export default async function AdminServicesPage({
                         >
                           <input type="hidden" name="id" value={service.id} />
                         </ActionForm>
-                        {panels.length > 1 ? (
+                        {isAdmin && panels.length > 1 ? (
                           <ActionForm
                             action={migrateServiceAction}
                             submitLabel="🚚 انتقال"
@@ -238,7 +285,12 @@ export default async function AdminServicesPage({
                             confirm="این سرویس به سرور انتخاب‌شده منتقل شود؟ حجم باقی‌مانده و انقضا حفظ می‌شود ولی لینک اشتراک کاربر عوض می‌شود."
                           >
                             <input type="hidden" name="id" value={service.id} />
-                            <select name="panelId" defaultValue="" className="select-sm" aria-label="سرور مقصد">
+                            <select
+                              name="panelId"
+                              defaultValue=""
+                              className="select-sm"
+                              aria-label="سرور مقصد"
+                            >
                               <option value="">سرور مقصد…</option>
                               {panels
                                 .filter((row) => row.id !== service.panelId)
@@ -250,15 +302,17 @@ export default async function AdminServicesPage({
                             </select>
                           </ActionForm>
                         ) : null}
-                        <ActionForm
-                          action={deleteServiceAction}
-                          submitLabel="حذف"
-                          buttonClass="btn btn-sm btn-danger"
-                          confirm="سرویس از پنل و سایت حذف شود؟"
-                          inline
-                        >
-                          <input type="hidden" name="id" value={service.id} />
-                        </ActionForm>
+                        {isAdmin ? (
+                          <ActionForm
+                            action={deleteServiceAction}
+                            submitLabel="حذف"
+                            buttonClass="btn btn-sm btn-danger"
+                            confirm="سرویس از پنل و سایت حذف شود؟"
+                            inline
+                          >
+                            <input type="hidden" name="id" value={service.id} />
+                          </ActionForm>
+                        ) : null}
                       </div>
                     </td>
                   </tr>

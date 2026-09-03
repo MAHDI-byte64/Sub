@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, isStaff } from "@/lib/auth";
 import { asNum, getSettings, saveSettings } from "@/lib/settings";
 import { notifyAdmin } from "@/lib/telegram";
 import {
@@ -47,7 +47,15 @@ export type AdminState = { error?: string; success?: string };
 async function guard(): Promise<AdminState | null> {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=%2Fadmin");
-  if (user.role !== "admin") return { error: "دسترسی مدیریتی ندارید." };
+  if (user.role !== "admin") return { error: "این کار فقط از حساب مدیر انجام می‌شود." };
+  return null;
+}
+
+/** کارهایی که پشتیبان هم اجازه دارد (تیکت و نگه‌داری سرویس‌ها) */
+async function guardStaff(): Promise<AdminState | null> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login?next=%2Fadmin");
+  if (!isStaff(user.role)) return { error: "دسترسی مدیریتی ندارید." };
   return null;
 }
 
@@ -465,7 +473,7 @@ export async function resetTrialFlagAction(_prev: AdminState, formData: FormData
 /* --------------------------------- سرویس‌ها ---------------------------------- */
 
 export async function syncServiceAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
-  const denied = await guard();
+  const denied = await guardStaff();
   if (denied) return denied;
   const id = str(formData, "id");
   await syncService(id, true);
@@ -474,7 +482,7 @@ export async function syncServiceAction(_prev: AdminState, formData: FormData): 
 }
 
 export async function toggleServiceAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
-  const denied = await guard();
+  const denied = await guardStaff();
   if (denied) return denied;
   const id = str(formData, "id");
   const service = await db.service.findUnique({ where: { id } });
@@ -594,7 +602,7 @@ export async function resetServiceTrafficAction(_prev: AdminState, formData: For
 
 /** بازتولید کانفیگ سرویس توسط مدیر (بدون محدودیت زمانی) */
 export async function rotateServiceAdminAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
-  const denied = await guard();
+  const denied = await guardStaff();
   if (denied) return denied;
 
   const id = str(formData, "id");
@@ -928,6 +936,29 @@ export async function toggleVipAction(_prev: AdminState, formData: FormData): Pr
   };
 }
 
+/** نقش پشتیبانی: دسترسی محدود به تیکت‌ها، سرویس‌ها و کاربران */
+export async function toggleSupportAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const id = str(formData, "id");
+  const user = await db.user.findUnique({ where: { id } });
+  if (!user) return { error: "کاربر پیدا نشد." };
+  if (user.role === "admin") return { error: "این حساب مدیر است؛ نقشش از اینجا عوض نمی‌شود." };
+
+  const nowSupport = user.role !== "support";
+  await db.user.update({ where: { id }, data: { role: nowSupport ? "support" : "user" } });
+  await logAdmin(nowSupport ? "user_support_on" : "user_support_off", user.email);
+  revalidatePath("/admin/users");
+  revalidatePath(`/admin/users/${id}`);
+
+  return {
+    success: nowSupport
+      ? `${user.email} پشتیبان شد: تیکت‌ها، سرویس‌ها، سفارش‌ها و کاربران را می‌بیند، ولی به سرورها، پرداخت‌ها، پشتیبان‌گیری و تنظیمات دسترسی ندارد.`
+      : `${user.email} دیگر پشتیبان نیست و به پنل مدیریت دسترسی ندارد.`,
+  };
+}
+
 /** فعال/غیرفعال کردن نمایندگی و تنظیم درصد تخفیف */
 export async function saveResellerAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
   const denied = await guard();
@@ -1187,7 +1218,7 @@ export async function resumePanelSalesAction(_prev: AdminState, formData: FormDa
 
 /** همگام‌سازی مصرف همه سرویس‌ها با پنل */
 export async function syncAllServicesAction(_prev: AdminState, _formData: FormData): Promise<AdminState> {
-  const denied = await guard();
+  const denied = await guardStaff();
   if (denied) return denied;
 
   const services = await db.service.findMany({ select: { id: true } });

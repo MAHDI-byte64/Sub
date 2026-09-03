@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, isStaff } from "@/lib/auth";
 import { notifyAdmin } from "@/lib/telegram";
 import { notifyUser } from "@/lib/notify";
 
@@ -52,7 +52,7 @@ export async function replyTicketAction(_prev: TicketState, formData: FormData):
   const body = String(formData.get("body") || "").trim();
   if (body.length < 2) return { error: "متن پیام خالی است." };
 
-  const isAdmin = user.role === "admin";
+  const isAdmin = isStaff(user.role);
   const ticket = await db.ticket.findFirst({
     where: isAdmin ? { id: ticketId } : { id: ticketId, userId: user.id },
     include: { user: true },
@@ -95,7 +95,7 @@ export async function closeTicketAction(_prev: TicketState, formData: FormData):
   const ticketId = String(formData.get("ticketId") || "");
 
   const ticket = await db.ticket.findFirst({
-    where: user.role === "admin" ? { id: ticketId } : { id: ticketId, userId: user.id },
+    where: isStaff(user.role) ? { id: ticketId } : { id: ticketId, userId: user.id },
   });
   if (!ticket) return { error: "تیکت پیدا نشد." };
 

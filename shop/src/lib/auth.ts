@@ -2,25 +2,14 @@ import "server-only";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { db } from "./db";
+import { isStaff, roleLabel } from "./roles";
+
+export { hashPassword, isStaff, roleLabel, verifyPassword } from "./roles";
 
 export const SESSION_COOKIE = "fandogh_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-
-export function hashPassword(password: string): string {
-  const salt = randomBytes(16).toString("hex");
-  const key = scryptSync(password, salt, 64).toString("hex");
-  return `scrypt:${salt}:${key}`;
-}
-
-export function verifyPassword(password: string, stored: string): boolean {
-  const [scheme, salt, key] = stored.split(":");
-  if (scheme !== "scrypt" || !salt || !key) return false;
-  const expected = Buffer.from(key, "hex");
-  const actual = scryptSync(password, salt, expected.length);
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
-}
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -54,7 +43,13 @@ async function isSecureRequest(): Promise<boolean> {
   return (process.env.APP_URL ?? "").startsWith("https://");
 }
 
-export async function createSession(userId: string): Promise<void> {
+/**
+ * ساخت نشست.
+ *
+ * `pending` یعنی رمز درست بوده ولی هنوز نوبت کد دومرحله‌ای است؛ چنین نشستی
+ * هیچ دسترسی‌ای نمی‌دهد و فقط صفحهٔ تأیید کد آن را می‌شناسد.
+ */
+export async function createSession(userId: string, pending = false): Promise<void> {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
   let userAgent: string | null = null;
@@ -63,7 +58,7 @@ export async function createSession(userId: string): Promise<void> {
   } catch {
     /* خارج از چرخه درخواست */
   }
-  await db.session.create({ data: { id: token, userId, userAgent, expiresAt } });
+  await db.session.create({ data: { id: token, userId, userAgent, expiresAt, pending } });
   const jar = await cookies();
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,
@@ -141,6 +136,8 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   if (!token) return null;
   const session = await db.session.findUnique({ where: { id: token }, include: { user: true } });
   if (!session || session.expiresAt.getTime() < Date.now()) return null;
+  // نشست نیمه‌کاره (منتظر کد دومرحله‌ای) هنوز کاربر واردشده حساب نمی‌شود
+  if (session.pending) return null;
   const { user } = session;
   if (user.isBlocked) return null;
   return {
@@ -156,6 +153,25 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   };
 });
 
+/**
+ * نشستی که رمزش درست بوده و منتظر کد دومرحله‌ای است.
+ * فقط صفحهٔ تأیید کد از این استفاده می‌کند.
+ */
+export async function pendingSession(): Promise<{ id: string; userId: string; email: string } | null> {
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE)?.value;
+  if (!token) return null;
+
+  const session = await db.session.findUnique({ where: { id: token }, include: { user: true } });
+  if (!session || !session.pending || session.expiresAt.getTime() < Date.now()) return null;
+  return { id: session.id, userId: session.userId, email: session.user.email };
+}
+
+/** نشست نیمه‌کاره را کامل می‌کند (بعد از تأیید کد دومرحله‌ای) */
+export async function promoteSession(sessionId: string): Promise<void> {
+  await db.session.update({ where: { id: sessionId }, data: { pending: false } });
+}
+
 export async function requireUser(returnTo = "/dashboard"): Promise<SessionUser> {
   const user = await getCurrentUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(returnTo)}`);
@@ -165,7 +181,15 @@ export async function requireUser(returnTo = "/dashboard"): Promise<SessionUser>
 export async function requireAdmin(): Promise<SessionUser> {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=%2Fadmin");
-  if (user.role !== "admin") redirect("/dashboard");
+  if (user.role !== "admin") redirect("/admin");
+  return user;
+}
+
+/** ورود به پنل مدیریت: مدیر یا پشتیبان (پشتیبان بخش‌های حساس را نمی‌بیند) */
+export async function requireStaff(): Promise<SessionUser> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login?next=%2Fadmin");
+  if (!isStaff(user.role)) redirect("/dashboard");
   return user;
 }
 

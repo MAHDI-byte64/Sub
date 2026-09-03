@@ -202,6 +202,7 @@ try {
     ["admin-discounts", "/admin/discounts"],
     ["admin-logs", "/admin/logs"],
     ["admin-backup", "/admin/backup"],
+    ["admin-security", "/admin/security"],
   ];
 
   // پروندهٔ یک کاربر واقعی

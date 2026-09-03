@@ -9,10 +9,13 @@ import {
   testTelegramAction,
 } from "@/app/actions/admin";
 import ActionForm from "@/components/ActionForm";
+import { requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminSettingsPage() {
+  await requireAdmin();
+
   const values = await getSettings();
   const groups = [...new Set(SETTING_DEFS.map((d) => d.group))];
 

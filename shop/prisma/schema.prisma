@@ -11,30 +11,35 @@ datasource db {
 
 /// کاربران سایت (نقش user یا admin)
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  passwordHash String
-  name         String?
-  role         String    @default("user")
-  telegramId   String?
-  isBlocked    Boolean   @default(false)
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String
+  name            String?
+  /// user | support (پشتیبان با دسترسی محدود) | admin
+  role            String    @default("user")
+  /// ورود دومرحله‌ای: کلید TOTP، زمان فعال‌سازی و کدهای پشتیبانِ هش‌شده
+  totpSecret      String?
+  totpEnabledAt   DateTime?
+  totpBackupCodes String?
+  telegramId      String?
+  isBlocked       Boolean   @default(false)
   /// کاربر ویژه: روش‌های پرداختِ «فقط ویژه» (مثل کارت‌به‌کارت) برای او باز است
-  isVip        Boolean   @default(false)
-  vipNote      String?
+  isVip           Boolean   @default(false)
+  vipNote         String?
   /// نمایندگی: پنل جدا + خرید با قیمت عمده از کیف پول
-  isReseller   Boolean   @default(false)
+  isReseller      Boolean   @default(false)
   /// درصد تخفیف نماینده روی قیمت پلن‌ها
-  resellerOff  Int       @default(0)
+  resellerOff     Int       @default(0)
   /// نام فروشگاه/برند نماینده (فقط برای نمایش در پنل خودش و گزارش‌ها)
-  resellerName String?
-  trialUsedAt  DateTime?
+  resellerName    String?
+  trialUsedAt     DateTime?
   /// موجودی کیف پول به تومان
-  balance      Int       @default(0)
+  balance         Int       @default(0)
   /// کد دعوت این کاربر (برای معرفی به دیگران)
-  referralCode String?   @unique
+  referralCode    String?   @unique
   /// کاربری که این حساب را دعوت کرده است
-  referredById String?
-  createdAt    DateTime  @default(now())
+  referredById    String?
+  createdAt       DateTime  @default(now())
 
   sessions      Session[]
   orders        Order[]
@@ -83,6 +88,8 @@ model Notification {
 model Session {
   id        String   @id
   userId    String
+  /// نشست نیمه‌کاره: رمز درست بوده ولی کد دومرحله‌ای هنوز تأیید نشده
+  pending   Boolean  @default(false)
   /// مرورگر/دستگاهی که با آن وارد شده (برای فهرست دستگاه‌های فعال)
   userAgent String?
   expiresAt DateTime

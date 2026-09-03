@@ -5,6 +5,7 @@ import { resellerPrice } from "@/lib/reseller";
 import { faDate, faNum, toman } from "@/lib/format";
 import ActionForm from "@/components/ActionForm";
 import Flash from "@/components/Flash";
+import { requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "نمایندگان" };
@@ -14,6 +15,8 @@ export default async function AdminResellersPage({
 }: {
   searchParams: Promise<{ msg?: string; type?: string; q?: string }>;
 }) {
+  await requireAdmin();
+
   const { msg, type, q } = await searchParams;
   const search = (q ?? "").trim();
 

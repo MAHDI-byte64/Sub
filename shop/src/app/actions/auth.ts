@@ -2,12 +2,17 @@
 
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
+import { notifyUser } from "@/lib/notify";
+import { useBackupCode, verifyTotp } from "@/lib/totp";
 import { rateLimit, resetLimit } from "@/lib/ratelimit";
 import {
   createSession,
   destroySession,
   hashPassword,
+  isStaff,
   normalizeEmail,
+  pendingSession,
+  promoteSession,
   validateCredentials,
   verifyPassword,
 } from "@/lib/auth";
@@ -83,8 +88,63 @@ export async function loginAction(_prev: AuthState, formData: FormData): Promise
   if (user.isBlocked) return { error: "حساب شما مسدود شده است. با پشتیبانی تماس بگیرید." };
 
   resetLimit(`login:${email}`);
+
+  // ورود دومرحله‌ای: نشست نیمه‌کاره تا وقتی کد تأیید شود
+  if (user.totpEnabledAt) {
+    await createSession(user.id, true);
+    redirect(`/login/verify?next=${encodeURIComponent(next)}`);
+  }
+
   await createSession(user.id);
-  redirect(user.role === "admin" && next === "/dashboard" ? "/admin" : next);
+  redirect(isStaff(user.role) && next === "/dashboard" ? "/admin" : next);
+}
+
+/** مرحلهٔ دوم ورود: کد اپ احرازهویت یا یکی از کدهای پشتیبان */
+export async function verifyTotpAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
+  const pending = await pendingSession();
+  if (!pending) return { error: "زمان تأیید تمام شد؛ دوباره وارد شوید." };
+
+  const next = safeNext(formData.get("next"));
+  const code = String(formData.get("code") || "").trim();
+  if (!code) return { error: "کد را وارد کنید." };
+
+  // ۶ تلاش در هر ۵ دقیقه برای هر نشست
+  const limit = rateLimit(`totp:${pending.id}`, 6, 5 * 60_000);
+  if (!limit.ok) {
+    await db.session.deleteMany({ where: { id: pending.id } });
+    return { error: "تلاش‌های ناموفق زیاد بود؛ دوباره وارد شوید." };
+  }
+
+  const user = await db.user.findUnique({ where: { id: pending.userId } });
+  if (!user?.totpSecret) return { error: "ورود دومرحله‌ای برای این حساب تنظیم نشده است." };
+
+  let ok = verifyTotp(user.totpSecret, code);
+  let usedBackup = false;
+
+  if (!ok) {
+    const backup = useBackupCode(user.totpBackupCodes, code);
+    if (backup.ok) {
+      ok = true;
+      usedBackup = true;
+      await db.user.update({ where: { id: user.id }, data: { totpBackupCodes: backup.rest } });
+    }
+  }
+  if (!ok) return { error: "کد درست نیست. کد تازه را از اپ بخوانید و دوباره امتحان کنید." };
+
+  resetLimit(`totp:${pending.id}`);
+  await promoteSession(pending.id);
+
+  if (usedBackup) {
+    await notifyUser({
+      userId: user.id,
+      kind: "security",
+      title: "ورود با کد پشتیبان",
+      body: "یکی از کدهای پشتیبان دومرحله‌ای شما مصرف شد. اگر خودتان نبودید، همین حالا رمز عبور را عوض کنید.",
+      href: "/dashboard/profile",
+    });
+  }
+
+  redirect(isStaff(user.role) && next === "/dashboard" ? "/admin" : next);
 }
 
 export async function logoutAction(): Promise<void> {

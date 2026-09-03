@@ -44,6 +44,39 @@ function makeReceipt() {
   return file;
 }
 
+/** TOTP مستقل از کد سایت، تا تست واقعاً چیزی را بسنجد (RFC 6238) */
+function totpFromSecret(secret, now = Date.now()) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  const clean = secret.replace(/[\s=-]/g, "").toUpperCase();
+  let bits = 0;
+  let value = 0;
+  const bytes = [];
+  for (const char of clean) {
+    const index = alphabet.indexOf(char);
+    if (index < 0) continue;
+    value = (value << 5) | index;
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 0xff);
+      bits -= 8;
+    }
+  }
+
+  const counter = Math.floor(now / 1000 / 30);
+  const message = Buffer.alloc(8);
+  message.writeUInt32BE(Math.floor(counter / 2 ** 32), 0);
+  message.writeUInt32BE(counter >>> 0, 4);
+
+  const digest = createHmac("sha1", Buffer.from(bytes)).update(message).digest();
+  const offset = digest[digest.length - 1] & 0x0f;
+  const binary =
+    ((digest[offset] & 0x7f) << 24) |
+    (digest[offset + 1] << 16) |
+    (digest[offset + 2] << 8) |
+    digest[offset + 3];
+  return String(binary % 1_000_000).padStart(6, "0");
+}
+
 async function login(page, email, password) {
   await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
   await page.fill("#email", email);
@@ -795,6 +828,155 @@ try {
     user.click("button:has-text('ارسال تیکت')"),
   ]);
   check("تیکت ثبت شد", user.url().includes("/dashboard/tickets/"));
+
+  console.log("→ نقش پشتیبان");
+  // کاربر فعلی را پشتیبان می‌کنیم و با یک مرورگر جدا واردش می‌شویم
+  await admin.goto(adminUserUrl, { waitUntil: "domcontentloaded" });
+  await admin.click("button:has-text('پشتیبان کن')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 20000 });
+  const supportMsg = (await admin.textContent(".alert-success, .alert-error")) ?? "";
+  check("نقش پشتیبان داده شد", supportMsg.includes("پشتیبان شد"), supportMsg);
+
+  const supportCtx = await browser.newContext({ locale: "fa-IR" });
+  const support = await supportCtx.newPage();
+  support.on("dialog", (d) => d.accept());
+  await login(support, email, "test12345");
+  await support.goto(`${BASE}/admin`, { waitUntil: "domcontentloaded" });
+  const supportHome = (await support.textContent("body")) ?? "";
+  check("پشتیبان وارد پنل می‌شود", support.url().includes("/admin"), support.url());
+  check("منوی پشتیبان «سرورها» ندارد", !supportHome.includes("سرورها (3x-ui)"));
+  check("منوی پشتیبان «تنظیمات» ندارد", !(await support.isVisible("aside.side a[href='/admin/settings']")));
+  check("منوی پشتیبان «پشتیبان‌گیری» ندارد", !(await support.isVisible("aside.side a[href='/admin/backup']")));
+  check("تیکت‌ها برای پشتیبان باز است", await support.isVisible("aside.side a[href='/admin/tickets']"));
+  check("درآمد به پشتیبان نشان داده نمی‌شود", !supportHome.includes("درآمد کل"), supportHome.slice(0, 120));
+
+  await support.goto(`${BASE}/admin/settings`, { waitUntil: "domcontentloaded" });
+  check("صفحهٔ تنظیمات برای پشتیبان باز نمی‌شود", !support.url().includes("/admin/settings"), support.url());
+
+  await support.goto(`${BASE}/admin/backup`, { waitUntil: "domcontentloaded" });
+  check("صفحهٔ پشتیبان‌گیری برای پشتیبان باز نمی‌شود", !support.url().includes("/backup"), support.url());
+
+  await support.goto(`${BASE}/admin/panels`, { waitUntil: "domcontentloaded" });
+  check("صفحهٔ سرورها برای پشتیبان باز نمی‌شود", !support.url().includes("/panels"), support.url());
+
+  await support.goto(`${BASE}/admin/services`, { waitUntil: "domcontentloaded" });
+  const supportServices = (await support.textContent("body")) ?? "";
+  check("سرویس‌ها برای پشتیبان باز است", supportServices.includes("سرویس‌ها"));
+  check("دکمهٔ حذف سرویس برای پشتیبان نیست", !(await support.isVisible("button:has-text('حذف')")));
+  check("دکمهٔ همگام‌سازی برای پشتیبان هست", await support.isVisible("button:has-text('↻')"));
+
+  await support.goto(`${BASE}/admin/tickets`, { waitUntil: "domcontentloaded" });
+  const openTicket = support.locator("a[href^='/admin/tickets/']").first();
+  if ((await openTicket.count()) > 0) {
+    await openTicket.click();
+    await support.waitForURL("**/admin/tickets/**", { timeout: 20000 });
+    const replyText = "سلام، پشتیبانی هستم و پیگیر تیکت شما.";
+    await support.fill("textarea[name=body]", replyText);
+    await support.click("button:has-text('ارسال پاسخ')");
+    await support.waitForSelector(`text=${replyText}`, { timeout: 20000 });
+    check("پشتیبان می‌تواند به تیکت پاسخ دهد", (await support.textContent("body")).includes(replyText));
+  }
+
+  // نقش را برمی‌گردانیم تا بقیهٔ تست‌ها دست‌نخورده بمانند
+  await admin.goto(adminUserUrl, { waitUntil: "domcontentloaded" });
+  await admin.click("button:has-text('لغو نقش پشتیبان')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 20000 });
+  await support.goto(`${BASE}/admin`, { waitUntil: "domcontentloaded" });
+  check("بعد از لغو نقش، پنل بسته می‌شود", !support.url().includes("/admin"), support.url());
+  await supportCtx.close();
+
+  console.log("→ ورود دومرحله‌ای مدیر");
+  await admin.goto(`${BASE}/admin/security`, { waitUntil: "domcontentloaded" });
+  check("صفحهٔ امنیت حساب باز شد", (await admin.textContent("body")).includes("ورود دومرحله‌ای"));
+
+  await admin.click("button:has-text('شروع فعال‌سازی')");
+  await admin.waitForSelector(".copy-box code", { timeout: 20000 });
+  const shownKey = ((await admin.textContent(".copy-box code")) ?? "").replace(/\s/g, "");
+  check("کلید دومرحله‌ای ساخته شد", /^[A-Z2-7]{32}$/.test(shownKey), shownKey);
+  check("QR کلید نمایش داده شد", await admin.isVisible("img[alt*='QR']"));
+
+  await admin.fill("#totp-code", "000000");
+  await admin.click("button:has-text('تأیید و روشن‌کردن')");
+  await admin.waitForSelector(".alert-error", { timeout: 20000 });
+  check("کد غلط پذیرفته نمی‌شود", (await admin.textContent(".alert-error")).includes("درست نیست"));
+
+  await admin.fill("#totp-code", totpFromSecret(shownKey));
+  await admin.click("button:has-text('تأیید و روشن‌کردن')");
+  await admin.waitForSelector(".backup-codes", { timeout: 20000 });
+  const backupCodes = await admin.$$eval(".backup-codes span", (list) =>
+    list.map((el) => el.textContent.trim()),
+  );
+  check("ورود دومرحله‌ای روشن شد", (await admin.textContent("body")).includes("روشن شد"));
+  check("۸ کد پشتیبان نمایش داده شد", backupCodes.length === 8, backupCodes.length);
+
+  // خروج و ورود دوباره: حالا باید کد بخواهد
+  await admin.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
+  await Promise.all([
+    admin.waitForURL(`${BASE}/`, { timeout: 20000 }),
+    admin.click("button:has-text('خروج')"),
+  ]);
+
+  await admin.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
+  await admin.fill("#email", ADMIN_EMAIL);
+  await admin.fill("#password", ADMIN_PASSWORD);
+  await Promise.all([
+    admin.waitForURL(/login\/verify/, { timeout: 20000 }),
+    admin.click("button[type=submit]"),
+  ]);
+  check("بعد از رمز، مرحلهٔ دوم خواسته شد", admin.url().includes("/login/verify"), admin.url());
+
+  await admin.goto(`${BASE}/admin`, { waitUntil: "domcontentloaded" });
+  check("با نشست نیمه‌کاره پنل باز نمی‌شود", !admin.url().includes("/admin"), admin.url());
+
+  await admin.goto(`${BASE}/login/verify`, { waitUntil: "domcontentloaded" });
+  await admin.fill("#code", "111111");
+  await admin.click("button:has-text('تأیید و ورود')");
+  await admin.waitForSelector(".alert-error", { timeout: 20000 });
+  check("کد غلط در ورود رد می‌شود", (await admin.textContent(".alert-error")).includes("کد درست نیست"));
+
+  await admin.fill("#code", totpFromSecret(shownKey));
+  await Promise.all([
+    admin.waitForURL(/\/admin/, { timeout: 20000 }),
+    admin.click("button:has-text('تأیید و ورود')"),
+  ]);
+  check("با کد درست وارد پنل شد", admin.url().includes("/admin"), admin.url());
+
+  // ورود با کد پشتیبان
+  await admin.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
+  await Promise.all([
+    admin.waitForURL(`${BASE}/`, { timeout: 20000 }),
+    admin.click("button:has-text('خروج')"),
+  ]);
+  await admin.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
+  await admin.fill("#email", ADMIN_EMAIL);
+  await admin.fill("#password", ADMIN_PASSWORD);
+  await Promise.all([
+    admin.waitForURL(/login\/verify/, { timeout: 20000 }),
+    admin.click("button[type=submit]"),
+  ]);
+  await admin.fill("#code", backupCodes[0]);
+  await Promise.all([
+    admin.waitForURL(/\/admin/, { timeout: 20000 }),
+    admin.click("button:has-text('تأیید و ورود')"),
+  ]);
+  check("ورود با کد پشتیبان کار می‌کند", admin.url().includes("/admin"), admin.url());
+
+  await admin.goto(`${BASE}/admin/security`, { waitUntil: "domcontentloaded" });
+  check(
+    "کد پشتیبان مصرف‌شده کم شد",
+    ((await admin.textContent("body")) ?? "").includes("۷ کد پشتیبان"),
+  );
+
+  // خاموش‌کردن دومرحله‌ای
+  await admin.fill("#off-password", "wrong-password");
+  await admin.click("button:has-text('خاموش کن')");
+  await admin.waitForSelector(".alert-error", { timeout: 20000 });
+  check("خاموش‌کردن با رمز غلط انجام نمی‌شود", (await admin.textContent(".alert-error")).includes("رمز عبور"));
+
+  await admin.fill("#off-password", ADMIN_PASSWORD);
+  await admin.click("button:has-text('خاموش کن')");
+  await admin.waitForSelector("button:has-text('شروع فعال‌سازی')", { timeout: 20000 });
+  check("ورود دومرحله‌ای خاموش شد", await admin.isVisible("button:has-text('شروع فعال‌سازی')"));
 } catch (err) {
   failed += 1;
   console.error("✗ خطای اجرای تست:", err.message);

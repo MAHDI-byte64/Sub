@@ -11,6 +11,7 @@ import { asBool, asNum, getSettings, SETTING_DEFS } from "@/lib/settings";
 import { faDate, faNum, relativeTime } from "@/lib/format";
 import ActionForm from "@/components/ActionForm";
 import Flash from "@/components/Flash";
+import { requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "پشتیبان‌گیری" };
@@ -35,6 +36,8 @@ export default async function AdminBackupPage({
 }: {
   searchParams: Promise<{ msg?: string; type?: string }>;
 }) {
+  await requireAdmin();
+
   const { msg, type } = await searchParams;
   const [backups, settings] = await Promise.all([backupList(), getSettings()]);
 

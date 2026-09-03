@@ -17,6 +17,7 @@ import { asBool, asNum, getSettings, SETTING_DEFS } from "@/lib/settings";
 import { faDate, faNum, toman } from "@/lib/format";
 import ActionForm from "@/components/ActionForm";
 import Flash from "@/components/Flash";
+import { requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "روش‌های پرداخت" };
@@ -94,6 +95,8 @@ export default async function AdminPaymentsPage({
 }: {
   searchParams: Promise<{ msg?: string; type?: string; gateway?: string; wallet?: string }>;
 }) {
+  await requireAdmin();
+
   const { msg, type, gateway: editGateway, wallet: editWallet } = await searchParams;
 
   const [settings, gateways, wallets, rate, legacyPending] = await Promise.all([

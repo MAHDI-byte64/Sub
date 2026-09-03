@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { roleLabel } from "@/lib/auth";
 import { resetTrialFlagAction, toggleUserBlockAction } from "@/app/actions/admin";
 import { faDate, faNum } from "@/lib/format";
 import Link from "next/link";
@@ -76,7 +77,7 @@ export default async function AdminUsersPage({
                           {user.email}
                         </Link>
                         <span className="cell-sub">
-                          {user.role === "admin" ? "مدیر · " : ""}
+                          {user.role !== "user" ? `${roleLabel(user.role)} · ` : ""}
                           {user.isReseller ? `نماینده (${faNum(user.resellerOff)}٪) · ` : ""}
                           {user.isVip ? "⭐ ویژه · " : ""}
                           عضویت {faDate(user.createdAt)}

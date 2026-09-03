@@ -4,6 +4,7 @@ import { deletePlanAction, savePlanAction } from "@/app/actions/admin";
 import { deviceLabel, faNum, planDaysLabel, planVolumeLabel, toman } from "@/lib/format";
 import ActionForm from "@/components/ActionForm";
 import Flash from "@/components/Flash";
+import { requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,8 @@ export default async function AdminPlansPage({
 }: {
   searchParams: Promise<{ edit?: string; msg?: string; type?: string }>;
 }) {
+  await requireAdmin();
+
   const { edit, msg, type } = await searchParams;
   const [plans, editing, panels] = await Promise.all([
     db.plan.findMany({ orderBy: { sortOrder: "asc" }, include: { panels: true } }),

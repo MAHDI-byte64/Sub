@@ -79,6 +79,19 @@ import {
   safeBackupName,
   sendBackupToTelegram,
 } from "../src/lib/backup";
+import {
+  backupCodesLeft,
+  base32Decode,
+  base32Encode,
+  currentTotp,
+  newBackupCodes,
+  newTotpSecret,
+  otpauthUrl,
+  totpCode,
+  useBackupCode,
+  verifyTotp,
+} from "../src/lib/totp";
+import { isStaff, roleLabel } from "../src/lib/roles";
 import { notifyUser } from "../src/lib/notify";
 import { fmt } from "../src/lib/format";
 import { DICT, t, type Locale } from "../src/lib/i18n";
@@ -1754,6 +1767,62 @@ async function migrateScenario() {
   check("انتقال به سرور فعلی رد می‌شود", sameRejected);
 }
 
+/* --------------------- ورود دومرحله‌ای و نقش پشتیبان --------------------- */
+
+function securityScenario() {
+  console.log("\n══════ ورود دومرحله‌ای و نقش‌ها ══════");
+
+  /* Base32 رفت و برگشت */
+  const raw = Buffer.from("فندق-test-secret", "utf8");
+  check("Base32 رفت و برگشت درست است", base32Decode(base32Encode(raw)).equals(raw));
+  check("کلید تازه ۳۲ کاراکتری Base32 است", /^[A-Z2-7]{32}$/.test(newTotpSecret()), newTotpSecret());
+
+  /* بردار آزمون رسمی RFC 6238 (کلید "12345678901234567890") */
+  const rfcSecret = base32Encode(Buffer.from("12345678901234567890", "utf8"));
+  check("کد RFC 6238 در ثانیهٔ ۵۹ درست است", totpCode(rfcSecret, Math.floor(59 / 30)) === "287082");
+  check("کد RFC 6238 در ثانیهٔ ۱۱۱۱۱۱۱۰۹ درست است", totpCode(rfcSecret, Math.floor(1111111109 / 30)) === "081804");
+  check("کد RFC 6238 در ثانیهٔ ۱۲۳۴۵۶۷۸۹ درست است", totpCode(rfcSecret, Math.floor(1234567890 / 30)) === "005924");
+
+  /* پذیرش کد فعلی و رد کد غلط */
+  const secret = newTotpSecret();
+  const now = Date.now();
+  check("کد لحظهٔ فعلی پذیرفته می‌شود", verifyTotp(secret, currentTotp(secret, now), now));
+  check("کد ۳۰ ثانیه قبل هم پذیرفته می‌شود", verifyTotp(secret, currentTotp(secret, now - 30_000), now));
+  check("کد ۳۰ ثانیه بعد هم پذیرفته می‌شود", verifyTotp(secret, currentTotp(secret, now + 30_000), now));
+  check("کد ۵ دقیقه قبل رد می‌شود", !verifyTotp(secret, currentTotp(secret, now - 300_000), now));
+  check("کد کلید دیگر رد می‌شود", !verifyTotp(secret, currentTotp(newTotpSecret(), now), now));
+  check("کد ناقص رد می‌شود", !verifyTotp(secret, "12345", now));
+  check("متن غیرعددی رد می‌شود", !verifyTotp(secret, "abcdef", now));
+  check(
+    "ارقام فارسی هم پذیرفته می‌شوند",
+    verifyTotp(secret, currentTotp(secret, now).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]), now),
+  );
+
+  /* آدرس otpauth که اپ احرازهویت می‌خواند */
+  const url = otpauthUrl(secret, "admin@test.local", "فندق");
+  check("آدرس otpauth کلید را دارد", url.includes(`secret=${secret}`), url);
+  check("آدرس otpauth شش‌رقمی و ۳۰ ثانیه‌ای است", url.includes("digits=6") && url.includes("period=30"));
+
+  /* کدهای پشتیبان */
+  const backup = newBackupCodes(8);
+  check("۸ کد پشتیبان ساخته شد", backup.codes.length === 8);
+  check("کدها هش‌شده ذخیره می‌شوند", !backup.hashed.includes(backup.codes[0]));
+
+  const used = useBackupCode(backup.hashed, backup.codes[0]);
+  check("کد پشتیبان درست پذیرفته می‌شود", used.ok);
+  check("کد مصرف‌شده از فهرست حذف می‌شود", used.left === 7, used.left);
+  check("همان کد بار دوم کار نمی‌کند", !useBackupCode(used.rest, backup.codes[0]).ok);
+  check("کد دیگر هنوز کار می‌کند", useBackupCode(used.rest, backup.codes[1]).ok);
+  check("کد ساختگی رد می‌شود", !useBackupCode(used.rest, "00000-00000").ok);
+  check("شمارش کدهای باقی‌مانده درست است", backupCodesLeft(used.rest) === 7);
+
+  /* نقش‌ها */
+  check("مدیر جزو کارکنان است", isStaff("admin"));
+  check("پشتیبان جزو کارکنان است", isStaff("support"));
+  check("کاربر عادی جزو کارکنان نیست", !isStaff("user"));
+  check("برچسب نقش‌ها درست است", roleLabel("support") === "پشتیبان" && roleLabel("admin") === "مدیر");
+}
+
 async function main() {
   await scenario({
     label: "پنل نسخه ۲ — ورود با نام کاربری و رمز",
@@ -1785,6 +1854,7 @@ async function main() {
   await pushScenario();
   await migrateScenario();
   await backupScenario();
+  securityScenario();
   i18nScenario();
 
   console.log("\n══════ بررسی توکن نامعتبر ══════");
