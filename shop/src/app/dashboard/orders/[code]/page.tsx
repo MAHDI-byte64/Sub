@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { asNum, getSettings } from "@/lib/settings";
-import { activeGateways } from "@/lib/payments";
+import { activeGateways, availableMethods } from "@/lib/payments";
 import { fmt } from "@/lib/format";
 import { orderStatus } from "@/lib/status";
 import { getLocale } from "@/lib/locale";
@@ -44,11 +44,13 @@ export default async function OrderDetailPage({
   const isOnline = order.payMethod === "online";
   const isCrypto = order.payMethod === "crypto";
   const onlineReady = (await activeGateways(order.payable)).length > 0;
+  const methods = await availableMethods(order.payable, user);
   const awaitingOnline =
     order.status === "awaiting_payment" || (order.status === "failed" && order.payMethod === "online");
   const canPay =
     !awaitingOnline &&
     !isCrypto &&
+    methods.card &&
     (order.status === "awaiting_receipt" || order.status === "rejected");
   const cardNumber = settings.card_number.replace(/\s|-/g, "");
   const expireMinutes = asNum(settings.order_expire_minutes, 0);

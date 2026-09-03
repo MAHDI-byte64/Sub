@@ -22,7 +22,8 @@ export default async function DashboardPage() {
 
   const [services, settings, panels, pendingOrders, wallet, unread] = await Promise.all([
     db.service.findMany({
-      where: { userId: user.id },
+      // سرویس‌هایی که از پنل نمایندگی برای مشتری‌ها ساخته شده در پنل شخصی نمی‌آید
+      where: { userId: user.id, resellerId: null },
       include: { panel: true, plan: true },
       orderBy: { createdAt: "desc" },
     }),

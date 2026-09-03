@@ -77,6 +77,8 @@ export default async function AdminUsersPage({
                         </Link>
                         <span className="cell-sub">
                           {user.role === "admin" ? "مدیر · " : ""}
+                          {user.isReseller ? `نماینده (${faNum(user.resellerOff)}٪) · ` : ""}
+                          {user.isVip ? "⭐ ویژه · " : ""}
                           عضویت {faDate(user.createdAt)}
                         </span>
                       </span>

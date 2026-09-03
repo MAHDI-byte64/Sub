@@ -380,6 +380,93 @@ try {
     (await guest.textContent("body")).includes("تعرفه"),
   );
 
+  console.log("→ کاربر ویژه و شماره کارت");
+  await admin.goto(`${BASE}/admin/payments`, { waitUntil: "domcontentloaded" });
+  await admin.check("#card_enabled");
+  await admin.check("#card_vip_only");
+  await admin.click("button:has-text('ذخیره کارت‌به‌کارت')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 20000 });
+
+  await user.goto(`${BASE}/plans`, { waitUntil: "domcontentloaded" });
+  await Promise.all([user.waitForURL("**/checkout**"), user.click("a:has-text('خرید این پلن')")]);
+  const beforeVip = (await user.textContent("body")) ?? "";
+  check("کاربر عادی گزینه کارت‌به‌کارت را نمی‌بیند", !beforeVip.includes("💳 کارت‌به‌کارت"), {
+    hasWord: beforeVip.includes("کارت‌به‌کارت"),
+    around: beforeVip.slice(Math.max(0, beforeVip.indexOf("کارت‌به‌کارت") - 60), beforeVip.indexOf("کارت‌به‌کارت") + 60),
+  });
+
+  await admin.goto(`${BASE}/admin/users`, { waitUntil: "domcontentloaded" });
+  await admin.click("a.cell-main:has-text('buyer')");
+  await admin.waitForSelector("text=کاربر ویژه", { timeout: 20000 });
+  await admin.click("button:has-text('⭐ کاربر ویژه')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 20000 });
+  const vipMsg = (await admin.textContent(".alert-success, .alert-error")) ?? "";
+  check("کاربر ویژه شد", vipMsg.includes("ویژه"), vipMsg);
+
+  await user.goto(`${BASE}/plans`, { waitUntil: "domcontentloaded" });
+  await Promise.all([user.waitForURL("**/checkout**"), user.click("a:has-text('خرید این پلن')")]);
+  check(
+    "کاربر ویژه گزینه کارت‌به‌کارت را می‌بیند",
+    (await user.textContent("body")).includes("💳 کارت‌به‌کارت"),
+  );
+
+  console.log("→ پنل نمایندگی");
+  const adminUserUrl = admin.url();
+  await admin.goto(adminUserUrl, { waitUntil: "domcontentloaded" });
+  await admin.fill("#resellerOff", "25");
+  await admin.fill("#resellerName", "فروشگاه تست");
+  await admin.check("#isReseller");
+  await admin.click("button:has-text('ذخیره نمایندگی')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 20000 });
+  const rsMsg = (await admin.textContent(".alert-success, .alert-error")) ?? "";
+  check("نمایندگی از پنل مدیریت فعال شد", rsMsg.includes("نمایندگی"), rsMsg);
+
+  await admin.goto(`${BASE}/admin/resellers`, { waitUntil: "domcontentloaded" });
+  check("نماینده در فهرست نمایندگان آمد", (await admin.textContent("body")).includes("فروشگاه تست"));
+
+  // نماینده باید هم پنل نمایندگی داشته باشد هم پنل کاربری
+  await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
+  check("لینک پنل نمایندگی در هدر ظاهر شد", await user.isVisible("a:has-text('پنل نمایندگی')"));
+  check("پنل کاربری عادی هم سر جایش است", (await user.textContent("body")).includes("سرویس‌های من"));
+
+  await user.goto(`${BASE}/reseller`, { waitUntil: "domcontentloaded" });
+  const rsBody = (await user.textContent("body")) ?? "";
+  check("پنل نمایندگی باز شد", rsBody.includes("فروشگاه تست"), rsBody.slice(0, 80));
+  check("درصد تخفیف نماینده نمایش داده شد", rsBody.includes("۲۵٪ تخفیف نمایندگی"));
+
+  await user.goto(`${BASE}/reseller/prices`, { waitUntil: "domcontentloaded" });
+  check("لیست قیمت عمده نمایش داده شد", (await user.textContent("body")).includes("قیمت شما"));
+
+  // شارژ اعتبار نماینده توسط مدیر تا بتواند بفروشد
+  await admin.goto(adminUserUrl, { waitUntil: "domcontentloaded" });
+  await admin.fill("#wallet-amount", "500000");
+  await admin.fill("#wallet-note", "شارژ تست نمایندگی");
+  await admin.click("button:has-text('اعمال')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 20000 });
+
+  await user.goto(`${BASE}/reseller/sell`, { waitUntil: "domcontentloaded" });
+  await user.fill("#customerName", "مشتری تست نماینده");
+  await Promise.all([
+    user.waitForURL(/reseller\/services\//, { timeout: 40000 }),
+    user.click("button:has-text('ساخت و تحویل سرویس')"),
+  ]);
+  const soldBody = (await user.textContent("body")) ?? "";
+  check("سرویس مشتری ساخته و تحویل شد", soldBody.includes("سرویس ساخته شد"), soldBody.slice(0, 100));
+  check("لینک اشتراک مشتری نمایش داده شد", soldBody.includes("https://sub.test.local/sub/"));
+  check("نام مشتری روی صفحه آمد", soldBody.includes("مشتری تست نماینده"));
+
+  await user.goto(`${BASE}/reseller/services`, { waitUntil: "domcontentloaded" });
+  check("مشتری در فهرست نمایندگی هست", (await user.textContent("body")).includes("مشتری تست نماینده"));
+
+  await user.goto(`${BASE}/reseller/wallet`, { waitUntil: "domcontentloaded" });
+  check("تراکنش فروش نمایندگی ثبت شد", (await user.textContent("body")).includes("فروش نمایندگی"));
+
+  await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
+  check(
+    "سرویس مشتری در پنل شخصی نماینده دیده نمی‌شود",
+    !(await user.textContent("body")).includes("مشتری تست نماینده"),
+  );
+
   console.log("→ نسخه انگلیسی سایت");
   await guest.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
   check("سایت به‌صورت پیش‌فرض فارسی و راست‌چین است", (await guest.getAttribute("html", "dir")) === "rtl");

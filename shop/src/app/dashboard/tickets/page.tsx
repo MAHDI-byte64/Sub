@@ -28,7 +28,7 @@ export default async function TicketsPage() {
       },
     }),
     db.service.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, resellerId: null },
       include: { panel: true, plan: true },
       orderBy: { createdAt: "desc" },
     }),

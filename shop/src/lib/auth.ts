@@ -127,6 +127,12 @@ export type SessionUser = {
   role: string;
   isBlocked: boolean;
   trialUsedAt: Date | null;
+  /** کاربر ویژه: روش‌های پرداختِ «فقط ویژه» برای او باز است */
+  isVip: boolean;
+  /** نماینده: پنل نمایندگی هم دارد (پنل کاربری عادی سر جای خودش می‌ماند) */
+  isReseller: boolean;
+  /** درصد تخفیف نمایندگی */
+  resellerOff: number;
 };
 
 export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
@@ -144,6 +150,9 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
     role: user.role,
     isBlocked: user.isBlocked,
     trialUsedAt: user.trialUsedAt,
+    isVip: user.isVip,
+    isReseller: user.isReseller,
+    resellerOff: user.resellerOff,
   };
 });
 
@@ -157,5 +166,16 @@ export async function requireAdmin(): Promise<SessionUser> {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=%2Fadmin");
   if (user.role !== "admin") redirect("/dashboard");
+  return user;
+}
+
+/**
+ * ورود به پنل نمایندگی.
+ * مدیر هم می‌تواند وارد شود (برای بررسی)، ولی کاربر عادی به پنل خودش برمی‌گردد.
+ */
+export async function requireReseller(returnTo = "/reseller"): Promise<SessionUser> {
+  const user = await getCurrentUser();
+  if (!user) redirect(`/login?next=${encodeURIComponent(returnTo)}`);
+  if (!user.isReseller && user.role !== "admin") redirect("/dashboard");
   return user;
 }

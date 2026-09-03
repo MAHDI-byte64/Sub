@@ -27,7 +27,7 @@ export default async function WalletPage() {
   ]);
 
   const enabled = asBool(settings.wallet_enabled);
-  const methods = await availableMethods(asNum(settings.min_topup, 50_000));
+  const methods = await availableMethods(asNum(settings.min_topup, 50_000), user);
   const percent = asNum(settings.referral_percent, 0);
   const appUrl = (process.env.APP_URL || "").replace(/\/+$/, "");
   const referralLink = row.referralCode

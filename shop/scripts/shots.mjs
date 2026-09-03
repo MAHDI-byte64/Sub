@@ -75,7 +75,8 @@ try {
   const user = await userCtx.newPage();
   user.on("dialog", (d) => d.accept());
   await user.goto(`${BASE}/register`, { waitUntil: "domcontentloaded" });
-  await user.fill("#email", `shot${Date.now()}@test.local`);
+  const shopperEmail = `shot${Date.now()}@test.local`;
+  await user.fill("#email", shopperEmail);
   await user.fill("#password", "test12345");
   await user.fill("#confirm", "test12345");
   await Promise.all([user.waitForURL("**/dashboard"), user.click("button[type=submit]")]);
@@ -108,6 +109,34 @@ try {
   await Promise.all([user.waitForURL("**/checkout**"), user.click("a:has-text('خرید این پلن')")]);
   await Promise.all([user.waitForURL("**/dashboard/orders/**"), user.click("button:has-text('ثبت سفارش')")]);
   const payUrl = user.url();
+
+  // فعال‌کردن نمایندگی برای کاربر تست تا صفحه‌های پنل نمایندگی داده داشته باشند
+  await admin.goto(`${BASE}/admin/users?q=${encodeURIComponent(shopperEmail)}`, {
+    waitUntil: "domcontentloaded",
+  });
+  const userLink = await admin.getAttribute("a.cell-main", "href").catch(() => null);
+  console.log("  · نماینده‌کردن", shopperEmail, "→", userLink);
+  if (userLink) {
+    await admin.goto(`${BASE}${userLink}`, { waitUntil: "domcontentloaded" });
+    await admin.fill("#resellerOff", "25");
+    await admin.fill("#resellerName", "فروشگاه نمونه");
+    await admin.check("#isReseller");
+    await admin.click("button:has-text('ذخیره نمایندگی')");
+    await admin.waitForSelector(".alert-success, .alert-error", { timeout: 30000 });
+    await admin.fill("#wallet-amount", "800000");
+    await admin.fill("#wallet-note", "اعتبار نمایندگی");
+    await admin.click("button:has-text('اعمال')");
+    await admin.waitForSelector(".alert-success, .alert-error", { timeout: 30000 });
+
+    await user.goto(`${BASE}/reseller/sell`, { waitUntil: "domcontentloaded" });
+    await user.fill("#customerName", "علی رضایی");
+    await user.click("button:has-text('ساخت و تحویل سرویس')").catch(() => null);
+    await user.waitForURL(/reseller\/services\//, { timeout: 30000 }).catch(async () => {
+      const problem = await user.textContent(".alert-error").catch(() => null);
+      console.log("  · فروش نمایندگی انجام نشد:", problem ?? "بدون پیام");
+    });
+  }
+
 
   // صفحات عمومی را با کاربر مهمان (خارج‌شده) می‌گیریم
   const guestCtx = await browser.newContext({ locale: "fa-IR", viewport: DESKTOP });
@@ -148,6 +177,10 @@ try {
     ["notifications", "/dashboard/notifications"],
     ["tickets", "/dashboard/tickets"],
     ["profile", "/dashboard/profile"],
+    ["reseller", "/reseller"],
+    ["reseller-sell", "/reseller/sell"],
+    ["reseller-services", "/reseller/services"],
+    ["reseller-prices", "/reseller/prices"],
   ];
   const adminPages = [
     ["admin-home", "/admin"],
@@ -157,6 +190,7 @@ try {
     ["admin-services", "/admin/services"],
     ["admin-monitor", "/admin/monitor"],
     ["admin-payments", "/admin/payments"],
+    ["admin-resellers", "/admin/resellers"],
     ["admin-settings", "/admin/settings"],
     ["admin-tickets", "/admin/tickets"],
     ["admin-users", "/admin/users"],

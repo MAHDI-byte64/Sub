@@ -667,6 +667,73 @@ export async function broadcastPushAction(_prev: AdminState, formData: FormData)
     : { error: "هیچ کاربری اعلان پوش را روشن نکرده است." };
 }
 
+/* ------------------------ کاربر ویژه و نمایندگی ------------------------ */
+
+/** کاربر ویژه: روش‌های پرداختِ «فقط ویژه» (مثل کارت‌به‌کارت) برایش باز می‌شود */
+export async function toggleVipAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const id = str(formData, "id");
+  const user = await db.user.findUnique({ where: { id } });
+  if (!user) return { error: "کاربر پیدا نشد." };
+
+  const updated = await db.user.update({
+    where: { id },
+    data: { isVip: !user.isVip, vipNote: str(formData, "vipNote") || user.vipNote },
+  });
+  await logAdmin(updated.isVip ? "user_vip_on" : "user_vip_off", user.email);
+  revalidatePath("/admin/users");
+  revalidatePath(`/admin/users/${id}`);
+  return {
+    success: updated.isVip
+      ? `${user.email} کاربر ویژه شد؛ شماره کارت برای او نمایش داده می‌شود.`
+      : `${user.email} از فهرست کاربران ویژه خارج شد.`,
+  };
+}
+
+/** فعال/غیرفعال کردن نمایندگی و تنظیم درصد تخفیف */
+export async function saveResellerAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const id = str(formData, "id");
+  const user = await db.user.findUnique({ where: { id } });
+  if (!user) return { error: "کاربر پیدا نشد." };
+
+  const enabled = checked(formData, "isReseller");
+  const discount = Math.min(90, Math.max(0, num(formData, "resellerOff", user.resellerOff)));
+
+  await db.user.update({
+    where: { id },
+    data: {
+      isReseller: enabled,
+      resellerOff: discount,
+      resellerName: str(formData, "resellerName") || null,
+    },
+  });
+
+  await logAdmin(enabled ? "reseller_on" : "reseller_off", user.email, `${discount}٪ تخفیف`);
+  if (enabled && !user.isReseller) {
+    await notifyUser({
+      userId: user.id,
+      kind: "announcement",
+      title: "پنل نمایندگی شما فعال شد",
+      body: `از این پس با ${faNum(discount)}٪ تخفیف می‌توانید برای مشتری‌های خودتان سرویس بسازید.`,
+      href: "/reseller",
+    });
+  }
+
+  revalidatePath("/admin/users");
+  revalidatePath("/admin/resellers");
+  revalidatePath(`/admin/users/${id}`);
+  return {
+    success: enabled
+      ? `نمایندگی ${user.email} با ${faNum(discount)}٪ تخفیف فعال است.`
+      : `نمایندگی ${user.email} خاموش شد.`,
+  };
+}
+
 /* --------------------------- روش‌های پرداخت --------------------------- */
 
 /** افزودن یا ویرایش یک درگاه پرداخت آنلاین */

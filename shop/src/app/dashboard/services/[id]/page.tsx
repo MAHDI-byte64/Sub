@@ -28,7 +28,7 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
   const { id } = await params;
   const user = await requireUser(`/dashboard/services/${id}`);
 
-  const owned = await db.service.findFirst({ where: { id, userId: user.id } });
+  const owned = await db.service.findFirst({ where: { id, userId: user.id, resellerId: null } });
   if (!owned) notFound();
 
   await syncService(id, true);

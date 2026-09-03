@@ -32,7 +32,14 @@ const CRYPTO_KEYS = [
   "usdt_rate_margin",
 ];
 
-const CARD_KEYS = ["card_enabled", "card_number", "card_holder", "card_bank", "payment_note"];
+const CARD_KEYS = [
+  "card_enabled",
+  "card_vip_only",
+  "card_number",
+  "card_holder",
+  "card_bank",
+  "payment_note",
+];
 const WALLET_KEYS = ["wallet_enabled", "min_topup"];
 
 /** فیلد یک تنظیم، با همان ظاهر صفحهٔ تنظیمات */
@@ -547,6 +554,10 @@ export default async function AdminPaymentsPage({
             {asBool(settings.card_enabled) ? "فعال" : "خاموش"}
           </span>
         </div>
+        <p className="field-hint">
+          با «فقط برای کاربران ویژه»، شماره کارت تنها به کاربرانی نشان داده می‌شود که در پروندهٔ آن‌ها
+          دکمهٔ «⭐ کاربر ویژه» را زده‌اید.
+        </p>
         <ActionForm action={saveSettingsAction} submitLabel="ذخیره کارت‌به‌کارت">
           <HiddenRest except={CARD_KEYS} values={settings} />
           <div className="grid grid-2">

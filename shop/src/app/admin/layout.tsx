@@ -11,6 +11,7 @@ const ITEMS: NavItem[] = [
   { href: "/admin/payments", label: "روش‌های پرداخت", icon: "💳" },
   { href: "/admin/discounts", label: "کد تخفیف", icon: "🎟️" },
   { href: "/admin/users", label: "کاربران", icon: "👥" },
+  { href: "/admin/resellers", label: "نمایندگان", icon: "🤝" },
   { href: "/admin/tickets", label: "تیکت‌ها", icon: "🎫" },
   { href: "/admin/logs", label: "گزارش فعالیت", icon: "📋" },
   { href: "/admin/settings", label: "تنظیمات", icon: "⚙️" },

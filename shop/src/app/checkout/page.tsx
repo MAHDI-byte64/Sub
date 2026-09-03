@@ -46,7 +46,7 @@ export default async function CheckoutPage({
     db.user.findUniqueOrThrow({ where: { id: user.id }, select: { balance: true } }),
   ]);
 
-  const methods = await availableMethods(plan.priceToman);
+  const methods = await availableMethods(plan.priceToman, user);
 
   // سروری که پایش خرابش تشخیص داده به کاربر پیشنهاد نمی‌شود
   const healthyPanels = allPanels.filter((p) => !p.autoDisabled);

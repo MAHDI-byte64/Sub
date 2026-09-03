@@ -179,15 +179,23 @@ export async function quoteCrypto(amountToman: number) {
 /*                        روش‌های در دسترس برای مشتری                          */
 /* -------------------------------------------------------------------------- */
 
-export async function availableMethods(amount: number): Promise<MethodAvailability> {
+export async function availableMethods(
+  amount: number,
+  viewer?: { isVip?: boolean } | null,
+): Promise<MethodAvailability> {
   const settings = await getSettings();
   const [gateways, crypto] = await Promise.all([
     activeGateways(amount),
     cryptoEnabled(settings),
   ]);
 
+  // کارت‌به‌کارت می‌تواند «فقط برای کاربران ویژه» باشد؛ بقیه اصلاً شماره کارت را نمی‌بینند
+  const cardOn = asBool(settings.card_enabled);
+  const vipOnly = asBool(settings.card_vip_only);
+  const card = cardOn && (!vipOnly || Boolean(viewer?.isVip));
+
   return {
-    card: asBool(settings.card_enabled),
+    card,
     wallet: asBool(settings.wallet_enabled),
     crypto: crypto && amount >= Math.max(0, asNum(settings.crypto_min_amount, 0)),
     gateways: gateways.map((row) => ({

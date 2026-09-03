@@ -62,6 +62,11 @@ export default async function SiteHeader() {
                     {tr("common.admin")}
                   </Link>
                 ) : null}
+                {user.isReseller ? (
+                  <Link className="btn btn-sm hide-sm" href="/reseller">
+                    {tr("common.reseller")}
+                  </Link>
+                ) : null}
                 <Link className="btn btn-sm" href="/plans">
                   {tr("common.buyNow")}
                 </Link>

@@ -35,6 +35,15 @@ import {
   verifyWithGateway,
 } from "../src/lib/payments";
 import { tomanToUsdt, usdtRate } from "../src/lib/rates";
+import {
+  renameCustomer,
+  resellerCreateService,
+  resellerPlans,
+  resellerPrice,
+  resellerRenewService,
+  resellerServices,
+  resellerStats,
+} from "../src/lib/reseller";
 import { completePaidOrder } from "../src/lib/orders";
 import {
   broadcastPush,
@@ -1218,6 +1227,144 @@ async function hooshpayAndCryptoScenario() {
   check("خاموش‌کردن روش‌ها از تنظیمات اثر می‌کند", !off.crypto && !off.card);
 }
 
+/** نمایندگی: قیمت عمده، کسر از اعتبار، مالکیت سرویس‌ها و کاربر ویژه */
+async function resellerScenario() {
+  console.log("\n══════ پنل نمایندگی و کاربر ویژه ══════");
+  await reset();
+  await saveSettings({ card_enabled: "1", card_vip_only: "1", wallet_enabled: "1", trial_enabled: "0" });
+
+  const panel = await db.panel.create({
+    data: {
+      name: "RS-PANEL",
+      location: "آلمان",
+      url: MOCK_V2,
+      username: "admin",
+      password: "admin",
+      templateEmail: "template-vip",
+      subBase: "https://sub.test.local/sub",
+      inboundId: 1,
+    },
+  });
+  const plan = await db.plan.create({
+    data: { title: "پلن نمایندگی", volumeGb: 20, days: 30, deviceLimit: 2, priceToman: 200_000, sortOrder: 1 },
+  });
+
+  // قیمت عمده
+  check("قیمت با ۲۵٪ تخفیف درست حساب شد", resellerPrice(200_000, 25) === 150_000, resellerPrice(200_000, 25));
+  check("تخفیف صفر یعنی قیمت کامل", resellerPrice(200_000, 0) === 200_000);
+  check("تخفیف بیش از حد محدود می‌شود", resellerPrice(200_000, 200) === resellerPrice(200_000, 90));
+
+  const reseller = await db.user.create({
+    data: {
+      email: "reseller@test.local",
+      passwordHash: "scrypt:x:y",
+      isReseller: true,
+      resellerOff: 25,
+      resellerName: "فروشگاه تست",
+      balance: 400_000,
+    },
+  });
+  const normal = await db.user.create({
+    data: { email: "normal@test.local", passwordHash: "scrypt:x:y", balance: 0 },
+  });
+
+  const priced = await resellerPlans(reseller.resellerOff);
+  check("لیست قیمت نماینده ساخته شد", priced[0]?.price === 150_000 && priced[0]?.saving === 50_000, priced[0]);
+
+  // فروش سرویس
+  const sold = await resellerCreateService({
+    resellerId: reseller.id,
+    planId: plan.id,
+    panelId: panel.id,
+    customerName: "مشتری اول",
+  });
+  const afterSale = await db.user.findUniqueOrThrow({ where: { id: reseller.id } });
+  check("سرویس مشتری ساخته شد", Boolean(sold.clientEmail), sold.clientEmail);
+  check("مبلغ عمده از اعتبار کم شد", afterSale.balance === 250_000, afterSale.balance);
+  check("سرویس به نماینده نسبت داده شد", sold.resellerId === reseller.id);
+  check("نام مشتری ذخیره شد", sold.customerName === "مشتری اول", sold.customerName);
+
+  const saleTx = await db.walletTx.findFirst({
+    where: { userId: reseller.id, kind: "reseller_sale" },
+  });
+  check("تراکنش فروش نمایندگی ثبت شد", saleTx?.amount === -150_000, saleTx?.amount);
+
+  // سرویس نمایندگی نباید در پنل شخصی نماینده بیاید
+  const personal = await db.service.count({ where: { userId: reseller.id, resellerId: null } });
+  const asReseller = await resellerServices(reseller.id);
+  check("سرویس مشتری در پنل شخصی نماینده نمی‌آید", personal === 0, personal);
+  check("سرویس در فهرست نمایندگی هست", asReseller.length === 1, asReseller.length);
+
+  // تمدید
+  const renewed = await resellerRenewService({ resellerId: reseller.id, serviceId: sold.id });
+  const afterRenew = await db.user.findUniqueOrThrow({ where: { id: reseller.id } });
+  check("حجم بعد از تمدید دو برابر شد", renewed.totalBytes === 40 * GB, renewed.totalBytes);
+  check("مبلغ تمدید هم از اعتبار کم شد", afterRenew.balance === 100_000, afterRenew.balance);
+  check("لینک اشتراک مشتری بعد از تمدید عوض نشد", renewed.subId === sold.subId);
+
+  // موجودی ناکافی
+  let blocked = "";
+  try {
+    await resellerCreateService({
+      resellerId: reseller.id,
+      planId: plan.id,
+      panelId: panel.id,
+      customerName: "مشتری دوم",
+    });
+  } catch (err) {
+    blocked = (err as Error).message;
+  }
+  check("با موجودی کم، فروش انجام نمی‌شود", blocked.includes("موجودی"), blocked);
+  check(
+    "بعد از تلاش ناموفق، اعتبار دست‌نخورده ماند",
+    (await db.user.findUniqueOrThrow({ where: { id: reseller.id } })).balance === 100_000,
+  );
+
+  // کاربر عادی نمی‌تواند بفروشد
+  let denied = "";
+  try {
+    await resellerCreateService({ resellerId: normal.id, planId: plan.id, customerName: "x" });
+  } catch (err) {
+    denied = (err as Error).message;
+  }
+  check("کاربر عادی نمی‌تواند از مسیر نمایندگی سرویس بسازد", denied.includes("نمایندگی"), denied);
+
+  // تغییر نام مشتری فقط برای سرویس‌های خود نماینده
+  await renameCustomer(reseller.id, sold.id, "مشتری تغییرنام‌یافته");
+  const renamed = await db.service.findUniqueOrThrow({ where: { id: sold.id } });
+  check("نام مشتری تغییر کرد", renamed.customerName === "مشتری تغییرنام‌یافته");
+
+  let foreign = "";
+  try {
+    await renameCustomer(normal.id, sold.id, "دزدیده‌شده");
+  } catch (err) {
+    foreign = (err as Error).message;
+  }
+  check("نماینده دیگر نمی‌تواند سرویس این نماینده را عوض کند", foreign.includes("فهرست شما"), foreign);
+
+  const stats = await resellerStats(reseller.id);
+  check("گزارش نمایندگی درست است", stats.services === 1 && stats.spent === 300_000, stats);
+
+  /* ------------------------------ کاربر ویژه ------------------------------ */
+  const vip = await db.user.create({
+    data: { email: "vip@test.local", passwordHash: "scrypt:x:y", isVip: true },
+  });
+
+  const forNormal = await availableMethods(200_000, { isVip: false });
+  const forVip = await availableMethods(200_000, { isVip: vip.isVip });
+  check("کاربر عادی شماره کارت را نمی‌بیند", !forNormal.card);
+  check("کاربر ویژه کارت‌به‌کارت را می‌بیند", forVip.card);
+
+  await saveSettings({ card_vip_only: "0" });
+  check("با خاموش‌کردن حالت ویژه، کارت برای همه باز می‌شود", (await availableMethods(200_000)).card);
+
+  await saveSettings({ card_enabled: "0" });
+  check(
+    "اگر کارت‌به‌کارت خاموش باشد، حتی کاربر ویژه هم نمی‌بیند",
+    !(await availableMethods(200_000, { isVip: true })).card,
+  );
+}
+
 async function main() {
   await scenario({
     label: "پنل نسخه ۲ — ورود با نام کاربری و رمز",
@@ -1245,6 +1392,7 @@ async function main() {
   await monitorScenario();
   await gatewayScenario();
   await hooshpayAndCryptoScenario();
+  await resellerScenario();
   await pushScenario();
   i18nScenario();
 

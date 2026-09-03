@@ -11,7 +11,9 @@ import {
   resetServiceTrafficAction,
   rotateServiceAdminAction,
   resetTrialFlagAction,
+  saveResellerAction,
   toggleUserBlockAction,
+  toggleVipAction,
   toggleServiceAction,
 } from "@/app/actions/admin";
 import ActionForm from "@/components/ActionForm";
@@ -98,7 +100,70 @@ export default async function AdminUserDetail({
                 <input type="hidden" name="id" value={user.id} />
               </ActionForm>
             ) : null}
+            <ActionForm
+              action={toggleVipAction}
+              submitLabel={user.isVip ? "لغو کاربر ویژه" : "⭐ کاربر ویژه"}
+              buttonClass={`btn btn-sm${user.isVip ? "" : " btn-primary"}`}
+              inline
+            >
+              <input type="hidden" name="id" value={user.id} />
+            </ActionForm>
           </div>
+        </div>
+      </div>
+
+      <div className="grid grid-2" style={{ alignItems: "start" }}>
+        <div className="card">
+          <div className="card-title">
+            <h3>⭐ کاربر ویژه</h3>
+            <span className={`badge ${user.isVip ? "badge-success" : "badge"}`}>
+              {user.isVip ? "ویژه" : "عادی"}
+            </span>
+          </div>
+          <p className="field-hint">
+            روش‌های پرداختی که «فقط برای کاربران ویژه» علامت زده‌اید — مثل کارت‌به‌کارت — فقط به این
+            کاربران نشان داده می‌شود. کلید مربوطه در{" "}
+            <Link href="/admin/payments">روش‌های پرداخت</Link> است.
+          </p>
+          {user.vipNote ? <p className="dim">یادداشت: {user.vipNote}</p> : null}
+        </div>
+
+        <div className="card">
+          <div className="card-title">
+            <h3>🤝 نمایندگی</h3>
+            <span className={`badge ${user.isReseller ? "badge-success" : "badge"}`}>
+              {user.isReseller ? `${faNum(user.resellerOff)}٪ تخفیف` : "غیرفعال"}
+            </span>
+          </div>
+          <p className="field-hint">
+            با فعال‌کردن نمایندگی، این کاربر علاوه بر پنل کاربری خودش یک «پنل نمایندگی» جدا می‌گیرد و
+            می‌تواند با قیمت عمده از اعتبارش برای مشتری‌هایش سرویس بسازد.
+          </p>
+          <ActionForm action={saveResellerAction} submitLabel="ذخیره نمایندگی">
+            <input type="hidden" name="id" value={user.id} />
+            <div className="grid grid-2">
+              <div className="field">
+                <label htmlFor="resellerOff">درصد تخفیف</label>
+                <input
+                  id="resellerOff"
+                  name="resellerOff"
+                  type="number"
+                  min={0}
+                  max={90}
+                  defaultValue={user.resellerOff}
+                  className="ltr"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="resellerName">نام فروشگاه نماینده</label>
+                <input id="resellerName" name="resellerName" defaultValue={user.resellerName ?? ""} />
+              </div>
+            </div>
+            <div className="checkbox">
+              <input id="isReseller" name="isReseller" type="checkbox" defaultChecked={user.isReseller} />
+              <label htmlFor="isReseller">نمایندگی فعال باشد</label>
+            </div>
+          </ActionForm>
         </div>
       </div>
 

@@ -18,6 +18,15 @@ model User {
   role         String    @default("user")
   telegramId   String?
   isBlocked    Boolean   @default(false)
+  /// کاربر ویژه: روش‌های پرداختِ «فقط ویژه» (مثل کارت‌به‌کارت) برای او باز است
+  isVip        Boolean   @default(false)
+  vipNote      String?
+  /// نمایندگی: پنل جدا + خرید با قیمت عمده از کیف پول
+  isReseller   Boolean   @default(false)
+  /// درصد تخفیف نماینده روی قیمت پلن‌ها
+  resellerOff  Int       @default(0)
+  /// نام فروشگاه/برند نماینده (فقط برای نمایش در پنل خودش و گزارش‌ها)
+  resellerName String?
   trialUsedAt  DateTime?
   /// موجودی کیف پول به تومان
   balance      Int       @default(0)
@@ -299,6 +308,9 @@ model Service {
   isTrial     Boolean   @default(false)
   /// تمدید خودکار از کیف پول در زمان انقضا
   autoRenew   Boolean   @default(false)
+  /// اگر از پنل نمایندگی ساخته شده، شناسهٔ نماینده و نام مشتریِ او
+  resellerId   String?
+  customerName String?
   /// آخرین بازتولید کانفیگ (تعویض UUID و لینک اشتراک)
   rotatedAt   DateTime?
   rotateCount Int       @default(0)
@@ -313,6 +325,7 @@ model Service {
   tickets Ticket[]
 
   @@index([userId])
+  @@index([resellerId])
 }
 
 /// تیکت پشتیبانی

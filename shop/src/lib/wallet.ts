@@ -52,6 +52,8 @@ const WALLET_KIND_EN: Record<string, string> = {
   renew: "Service renewal",
   auto_renew: "Automatic renewal",
   referral: "Referral reward",
+  reseller_sale: "Reseller sale",
+  reseller_renew: "Reseller renewal",
   admin: "Adjusted by admin",
   refund: "Refund",
 };
@@ -68,6 +70,8 @@ export const WALLET_KIND: Record<string, string> = {
   renew: "تمدید سرویس",
   auto_renew: "تمدید خودکار",
   referral: "پاداش دعوت",
+  reseller_sale: "فروش نمایندگی",
+  reseller_renew: "تمدید نمایندگی",
   admin: "تنظیم توسط مدیر",
   refund: "بازگشت وجه",
 };
