@@ -584,6 +584,58 @@ try {
   await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
   check("بازگشت به فارسی کار می‌کند", (await user.textContent("body")).includes("سرویس‌های من"));
 
+  console.log("→ انتقال سرویس به سرور دیگر");
+  // سرور دومی روی همان پنل شبیه‌سازی‌شده، با کلاینت الگوی دیگر
+  await admin.goto(`${BASE}/admin/panels`, { waitUntil: "domcontentloaded" });
+  await admin.fill("#name", "MOCK-UI-2");
+  await admin.fill("#location", "هلند - تست UI");
+  await admin.fill("#url", MOCK);
+  await admin.fill("#apiToken", API_TOKEN);
+  await admin.fill("#inboundId", "2");
+  await admin.fill("#subBase", "https://sub2.test.local/sub");
+  await admin.fill("#templateEmail", "template-alt");
+  await admin.fill("#namePattern", "{template}-{code}");
+  await admin.click("form:has(#name) button[type=submit]");
+  await admin.waitForSelector("text=سرور ذخیره شد", { timeout: 20000 });
+  check("سرور دوم برای انتقال ساخته شد", true);
+
+  // سرویس شخصی خودِ کاربر (قدیمی‌ترین ردیف)، نه سرویسی که نماینده برای مشتری ساخته
+  await admin.goto(`${BASE}/admin/services`, { waitUntil: "domcontentloaded" });
+  const ownRow = admin.locator("table tbody tr").last();
+  const beforeRow = (await ownRow.textContent()) ?? "";
+  check("سرویس روی سرور اول است", beforeRow.includes("آلمان - تست UI"), beforeRow.slice(0, 140));
+
+  const migrateForm = ownRow.locator("form.row-form").first();
+  const targetOption = await migrateForm
+    .locator("select[name=panelId] option")
+    .filter({ hasText: "MOCK-UI-2" })
+    .first()
+    .getAttribute("value");
+  await migrateForm.locator("select[name=panelId]").selectOption(targetOption ?? "");
+  await migrateForm.locator("button[type=submit]").click();
+  await migrateForm.locator(".alert").first().waitFor({ timeout: 60000 });
+  const migrateMsg = (await migrateForm.locator(".alert").first().textContent()) ?? "";
+  check("انتقال سرویس انجام شد", migrateMsg.includes("منتقل شد"), migrateMsg);
+  check("حجم باقی‌مانده در پیام آمد", /باقی‌مانده/.test(migrateMsg), migrateMsg);
+
+  await admin.goto(`${BASE}/admin/services`, { waitUntil: "domcontentloaded" });
+  const afterRow = (await admin.locator("table tbody tr").last().textContent()) ?? "";
+  check("سرویس روی سرور دوم نشست", afterRow.includes("هلند - تست UI"), afterRow.slice(0, 140));
+
+  // کاربر باید اعلان بگیرد و از همان اعلان به سرویس منتقل‌شده برسد
+  await user.goto(`${BASE}/dashboard/notifications`, { waitUntil: "domcontentloaded" });
+  const movedCard = user.locator("a.ticket-card:has-text('منتقل شد')").first();
+  check("به کاربر اعلان انتقال داده شد", (await movedCard.count()) > 0);
+
+  const movedHref = await movedCard.getAttribute("href");
+  await user.goto(`${BASE}${movedHref}`, { waitUntil: "domcontentloaded" });
+  const movedDetail = (await user.textContent("body")) ?? "";
+  check(
+    "لینک اشتراک از سرور تازه ساخته شد",
+    movedDetail.includes("sub2.test.local"),
+    movedDetail.match(/https:\/\/[^\s]+/)?.[0],
+  );
+
   console.log("→ پشتیبان‌گیری از پنل مدیر");
   await admin.goto(`${BASE}/admin/backup`, { waitUntil: "domcontentloaded" });
   const backupEmpty = await admin.textContent("body");

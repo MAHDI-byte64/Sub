@@ -12,6 +12,7 @@ import {
   panelClient,
   pickPanel,
   removeService,
+  migrateService,
   renewServiceOnPanel,
   resetServiceTraffic,
   rotateService,
@@ -39,7 +40,7 @@ import { creditWallet, debitWallet } from "@/lib/wallet";
 import { notifyUser } from "@/lib/notify";
 import { payReferralBonus } from "@/lib/referral";
 import { notifyAdmin as notifyTelegram, telegramApi } from "@/lib/telegram";
-import { faNum, toman } from "@/lib/format";
+import { faNum, formatBytes, toman } from "@/lib/format";
 
 export type AdminState = { error?: string; success?: string };
 
@@ -797,6 +798,109 @@ export async function restoreBackupAction(_prev: AdminState, formData: FormData)
 /** فهرست پشتیبان‌ها برای نمایش در پنل */
 export async function backupList() {
   return listBackups();
+}
+
+/* --------------------- انتقال سرویس بین سرورها --------------------- */
+
+/** انتقال یک سرویس به سرور دیگر با حفظ حجم باقی‌مانده و تاریخ انقضا */
+export async function migrateServiceAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const id = str(formData, "id");
+  const panelId = str(formData, "panelId");
+  if (!panelId) return { error: "سرور مقصد را انتخاب کنید." };
+
+  const service = await db.service.findUnique({ where: { id }, include: { user: true } });
+  if (!service) return { error: "سرویس پیدا نشد." };
+
+  try {
+    const result = await migrateService(id, panelId);
+    await logAdmin("service_migrated", service.user.email, `${result.fromPanel} → ${result.toPanel}`);
+    await notifyUser({
+      userId: service.userId,
+      kind: "migrated",
+      title: "سرویس شما به سرور تازه منتقل شد",
+      body: "حجم باقی‌مانده و تاریخ انقضا سر جای خودشان هستند، ولی لینک اشتراک عوض شده است؛ لینک تازه را از پنل کاربری بردارید یا در برنامه یک بار Update بزنید.",
+      href: `/dashboard/services/${service.id}`,
+      serviceId: service.id,
+    });
+    revalidatePath("/admin/services");
+    revalidatePath("/admin/monitor");
+    revalidatePath(`/admin/users/${service.userId}`);
+
+    const notes: string[] = [];
+    if (!result.usageFromPanel) notes.push("سرور قبلی پاسخ نداد، پس آمار از دیتابیس برداشته شد");
+    if (!result.oldRemoved) notes.push("کلاینت قدیمی روی سرور قبلی پاک نشد");
+
+    const volume = result.remainingBytes ? formatBytes(result.remainingBytes) : "نامحدود";
+    return {
+      success:
+        `سرویس از «${result.fromPanel}» به «${result.toPanel}» منتقل شد (باقی‌مانده: ${volume}).` +
+        (notes.length ? ` توجه: ${notes.join("؛ ")}.` : "") +
+        " به کاربر هم اطلاع داده شد که لینک اشتراکش عوض شده است.",
+    };
+  } catch (err) {
+    return { error: `انتقال سرویس ناموفق بود: ${(err as Error).message}` };
+  }
+}
+
+/** انتقال همهٔ سرویس‌های یک سرور (مثلاً سرور خراب) به سرور دیگر */
+export async function migratePanelServicesAction(
+  _prev: AdminState,
+  formData: FormData,
+): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const fromId = str(formData, "fromId");
+  const panelId = str(formData, "panelId");
+  if (!fromId || !panelId) return { error: "سرور مبدأ و مقصد را انتخاب کنید." };
+  if (fromId === panelId) return { error: "سرور مبدأ و مقصد یکی است." };
+
+  const [from, to] = await Promise.all([
+    db.panel.findUnique({ where: { id: fromId } }),
+    db.panel.findUnique({ where: { id: panelId } }),
+  ]);
+  if (!from || !to) return { error: "سرور پیدا نشد." };
+
+  const services = await db.service.findMany({
+    where: { panelId: fromId, status: { in: ["active", "disabled"] } },
+    include: { user: true },
+  });
+  if (!services.length) return { error: `سرویس فعالی روی «${from.name}» نیست.` };
+
+  let moved = 0;
+  const failed: string[] = [];
+
+  for (const service of services) {
+    try {
+      await migrateService(service.id, panelId);
+      moved += 1;
+      await notifyUser({
+        userId: service.userId,
+        kind: "migrated",
+        title: "سرویس شما به سرور تازه منتقل شد",
+        body: "حجم باقی‌مانده و تاریخ انقضا سر جای خودشان هستند، ولی لینک اشتراک عوض شده است؛ لینک تازه را از پنل کاربری بردارید یا در برنامه یک بار Update بزنید.",
+        href: `/dashboard/services/${service.id}`,
+        serviceId: service.id,
+      });
+    } catch (err) {
+      failed.push(`${service.clientEmail}: ${(err as Error).message}`);
+    }
+  }
+
+  await logAdmin("panel_services_migrated", `${from.name} → ${to.name}`, `${moved} سرویس`);
+  revalidatePath("/admin/services");
+  revalidatePath("/admin/monitor");
+
+  if (!moved) return { error: `هیچ سرویسی منتقل نشد. ${failed[0] ?? ""}`.trim() };
+  return {
+    success:
+      `${faNum(moved)} سرویس از «${from.name}» به «${to.name}» منتقل شد.` +
+      (failed.length ? ` ${faNum(failed.length)} سرویس منتقل نشد (${failed[0]}).` : "") +
+      " برای همهٔ کاربرها اعلان فرستاده شد.",
+  };
 }
 
 /* ------------------------ کاربر ویژه و نمایندگی ------------------------ */

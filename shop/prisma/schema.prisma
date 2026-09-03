@@ -133,7 +133,7 @@ model Panel {
   orders   Order[]
   checks   PanelCheck[]
   /// پلن‌هایی که فقط روی این سرور فروخته می‌شوند (خالی = همه پلن‌ها)
-  plans    Plan[]    @relation("PlanPanels")
+  plans    Plan[]       @relation("PlanPanels")
 }
 
 /// دستگاه‌هایی که اعلان پوش را روشن کرده‌اند
@@ -276,12 +276,12 @@ model Order {
   paidAt         DateTime?
   reviewedAt     DateTime?
 
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan     Plan?     @relation(fields: [planId], references: [id])
-  panel    Panel?    @relation(fields: [panelId], references: [id])
-  discount Discount? @relation(fields: [discountId], references: [id])
-  gatewayRow Gateway? @relation(fields: [gatewayId], references: [id])
-  service  Service?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan       Plan?     @relation(fields: [planId], references: [id])
+  panel      Panel?    @relation(fields: [panelId], references: [id])
+  discount   Discount? @relation(fields: [discountId], references: [id])
+  gatewayRow Gateway?  @relation(fields: [gatewayId], references: [id])
+  service    Service?
 
   @@index([userId])
   @@index([status])
@@ -289,34 +289,39 @@ model Order {
 
 /// سرویس تحویل‌شده = یک client داخل inbound پنل
 model Service {
-  id          String    @id @default(cuid())
-  userId      String
-  planId      String?
-  panelId     String
-  orderId     String?   @unique
-  remark      String
-  clientEmail String    @unique
-  uuid        String
-  subId       String
-  inboundId   Int
+  id           String    @id @default(cuid())
+  userId       String
+  planId       String?
+  panelId      String
+  orderId      String?   @unique
+  remark       String
+  clientEmail  String    @unique
+  uuid         String
+  subId        String
+  inboundId    Int
   /// همهٔ کلاینت‌های این سرویس روی پنل: [{"inboundId":1,"email":"..."}]
-  clientRefs  String?
-  totalBytes  Float     @default(0)
-  usedBytes   Float     @default(0)
-  deviceLimit Int       @default(0)
-  expiresAt   DateTime?
-  isTrial     Boolean   @default(false)
+  clientRefs   String?
+  totalBytes   Float     @default(0)
+  usedBytes    Float     @default(0)
+  /// مصرف انتقال‌یافته از سرورهای قبلی؛ شمارندهٔ پنل تازه از صفر شروع می‌شود
+  usageOffset  Float     @default(0)
+  /// آخرین انتقال بین سرورها و نام سرور قبلی
+  movedAt      DateTime?
+  movedFrom    String?
+  deviceLimit  Int       @default(0)
+  expiresAt    DateTime?
+  isTrial      Boolean   @default(false)
   /// تمدید خودکار از کیف پول در زمان انقضا
-  autoRenew   Boolean   @default(false)
+  autoRenew    Boolean   @default(false)
   /// اگر از پنل نمایندگی ساخته شده، شناسهٔ نماینده و نام مشتریِ او
   resellerId   String?
   customerName String?
   /// آخرین بازتولید کانفیگ (تعویض UUID و لینک اشتراک)
-  rotatedAt   DateTime?
-  rotateCount Int       @default(0)
-  status      String    @default("active")
-  lastSyncAt  DateTime?
-  createdAt   DateTime  @default(now())
+  rotatedAt    DateTime?
+  rotateCount  Int       @default(0)
+  status       String    @default("active")
+  lastSyncAt   DateTime?
+  createdAt    DateTime  @default(now())
 
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan    Plan?    @relation(fields: [planId], references: [id])

@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import Link from "next/link";
 import {
   deleteServiceAction,
+  migrateServiceAction,
   pruneExpiredServicesAction,
   resetServiceTrafficAction,
   rotateServiceAdminAction,
@@ -228,6 +229,27 @@ export default async function AdminServicesPage({
                         >
                           <input type="hidden" name="id" value={service.id} />
                         </ActionForm>
+                        {panels.length > 1 ? (
+                          <ActionForm
+                            action={migrateServiceAction}
+                            submitLabel="🚚 انتقال"
+                            buttonClass="btn btn-sm"
+                            className="row-form"
+                            confirm="این سرویس به سرور انتخاب‌شده منتقل شود؟ حجم باقی‌مانده و انقضا حفظ می‌شود ولی لینک اشتراک کاربر عوض می‌شود."
+                          >
+                            <input type="hidden" name="id" value={service.id} />
+                            <select name="panelId" defaultValue="" className="select-sm" aria-label="سرور مقصد">
+                              <option value="">سرور مقصد…</option>
+                              {panels
+                                .filter((row) => row.id !== service.panelId)
+                                .map((row) => (
+                                  <option key={row.id} value={row.id}>
+                                    {row.flag} {row.name}
+                                  </option>
+                                ))}
+                            </select>
+                          </ActionForm>
+                        ) : null}
                         <ActionForm
                           action={deleteServiceAction}
                           submitLabel="حذف"

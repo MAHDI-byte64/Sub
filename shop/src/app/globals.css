@@ -2570,6 +2570,25 @@ tbody tr:hover {
   justify-content: flex-end;
 }
 
+/* انتقال سرویس: سلکت کوچک و دکمه در یک خط، پیام در خط بعد */
+.row-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.row-form .alert {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+}
+.select-sm {
+  width: auto;
+  max-width: 160px;
+  padding: 7px 10px;
+  font-size: 0.82rem;
+  border-radius: 9px;
+}
+
 /* فرم‌های بخش‌بندی‌شده در پنل مدیریت */
 .form-section {
   border: 1px solid var(--border);

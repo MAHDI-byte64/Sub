@@ -6,16 +6,21 @@
  *   bash scripts/test.sh
  */
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { rm, utimes, writeFile } from "node:fs/promises";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { db } from "../src/lib/db";
 import { GB } from "../src/lib/format";
-import { pickPanel } from "../src/lib/provision";
 import {
+  createServiceOnPanel,
   createTrialService,
   fulfillOrder,
+  migrateService,
   panelClient,
+  pickPanel,
   removeService,
+  renewServiceOnPanel,
+  resetServiceTraffic,
   rotateCooldownLeft,
   rotateService,
   serviceLinks,
@@ -1596,6 +1601,159 @@ async function backupScenario() {
   delete process.env.BACKUP_DIR;
 }
 
+/* ------------------------- انتقال سرویس بین سرورها ------------------------- */
+
+async function migrateScenario() {
+  console.log("\n══════ انتقال سرویس بین سرورها ══════");
+  await reset();
+  await saveSettings({ trial_enabled: "0" });
+
+  const source = await db.panel.create({
+    data: {
+      name: "سرور قدیمی", location: "آلمان", flag: "🇩🇪", url: MOCK_V2,
+      username: "admin", password: "admin", inboundId: 1,
+      templateEmail: "template-vip", multiInbound: false, sortOrder: 1,
+      subBase: "https://old.test.local/sub",
+    },
+  });
+  const target = await db.panel.create({
+    data: {
+      name: "سرور تازه", location: "هلند", flag: "🇳🇱", url: MOCK_V2,
+      username: "admin", password: "admin", inboundId: 2,
+      templateEmail: "template-alt", multiInbound: false, sortOrder: 2,
+      subBase: "https://new.test.local/sub",
+    },
+  });
+
+  const plan = await db.plan.create({
+    data: { title: "۱۰ گیگ", volumeGb: 10, days: 30, deviceLimit: 2, priceToman: 100_000 },
+  });
+  const buyer = await db.user.create({
+    data: { email: "move@test.local", name: "مشتری انتقالی", passwordHash: "x" },
+  });
+
+  const before = await createServiceOnPanel({
+    userId: buyer.id,
+    userEmail: buyer.email,
+    plan: { volumeGb: plan.volumeGb, days: plan.days, deviceLimit: plan.deviceLimit },
+    planId: plan.id,
+    panel: source,
+    code: "MOVE-1",
+    remark: "سرویس انتقالی",
+  });
+
+  // ۳ گیگ مصرف روی سرور قدیمی
+  await fetch(`${MOCK_V2}/_mock/usage?email=${encodeURIComponent(before.clientEmail)}&up=${GB}&down=${2 * GB}`);
+  const synced = await syncService(before.id, true);
+  check("مصرف اولیه روی سرور قدیمی ثبت شد", Math.round(synced.usedBytes / GB) === 3, synced.usedBytes / GB);
+
+  const moved = await migrateService(before.id, target.id);
+  const after = moved.service;
+
+  check("سرویس روی سرور تازه نشست", after.panelId === target.id, after.panelId);
+  check("نام سرور قبلی ثبت شد", after.movedFrom === "سرور قدیمی", after.movedFrom);
+  check("زمان انتقال ثبت شد", Boolean(after.movedAt));
+  check("آمار از پنل قبلی خوانده شد", moved.usageFromPanel);
+  check("کلاینت قدیمی از سرور قبلی پاک شد", moved.oldRemoved);
+  check("فقط باقی‌مانده منتقل شد", Math.round(moved.remainingBytes / GB) === 7, moved.remainingBytes / GB);
+
+  check("حجم کل سرویس عوض نشده", Math.round(after.totalBytes / GB) === 10, after.totalBytes / GB);
+  check("مصرف قبلی حفظ شد", Math.round(after.usedBytes / GB) === 3, after.usedBytes / GB);
+  check("مصرف قبلی در usageOffset نگه داشته شد", Math.round(after.usageOffset / GB) === 3, after.usageOffset / GB);
+  check(
+    "تاریخ انقضا دست‌نخورده ماند",
+    Math.abs((after.expiresAt?.getTime() ?? 0) - (before.expiresAt?.getTime() ?? 0)) < 2000,
+  );
+  check("شناسه اشتراک (subId) همان است", after.subId === before.subId);
+  check("UUID تازه است", after.uuid !== before.uuid);
+  check("نام کلاینت تازه است", after.clientEmail !== before.clientEmail);
+  check("اینباند سرور مقصد گرفته شد", after.inboundId === 2, after.inboundId);
+
+  const targetClient = new XuiClient({
+    url: target.url, username: "admin", password: "admin", insecure: true,
+  });
+  const onTarget = await targetClient.getClientTraffics(after.clientEmail);
+  check("کلاینت روی سرور مقصد ساخته شد", Boolean(onTarget));
+  check("سهمیهٔ کلاینت تازه، باقی‌ماندهٔ سرویس است", Math.round((onTarget?.total ?? 0) / GB) === 7, onTarget?.total);
+
+  const sourceClient = new XuiClient({
+    url: source.url, username: "admin", password: "admin", insecure: true,
+  });
+  const oldClients = await sourceClient.listClients(1);
+  check(
+    "کلاینت قدیمی روی سرور قبلی نمانده",
+    !oldClients.some((c) => c.email === before.clientEmail),
+    oldClients.map((c) => c.email),
+  );
+
+  // مصرف تازه روی سرور مقصد روی مصرف قبلی سوار می‌شود
+  await fetch(`${MOCK_V2}/_mock/usage?email=${encodeURIComponent(after.clientEmail)}&up=${GB}&down=0`);
+  const resynced = await syncService(after.id, true);
+  check("مصرف بعد از انتقال جمع می‌شود", Math.round(resynced.usedBytes / GB) === 4, resynced.usedBytes / GB);
+  check("حجم کل بعد از همگام‌سازی هم درست است", Math.round(resynced.totalBytes / GB) === 10, resynced.totalBytes / GB);
+
+  const links = await serviceLinks(after.id);
+  check("لینک اشتراک از سرور تازه ساخته می‌شود", links.subscription.includes("new.test.local"), links.subscription);
+
+  // تمدید بعد از انتقال هم باید حجم را روی همان مبنا اضافه کند
+  const renewed = await renewServiceOnPanel(resynced, { volumeGb: 5, days: 10, deviceLimit: 2, id: plan.id });
+  check("تمدید بعد از انتقال حجم را درست بالا می‌برد", Math.round(renewed.totalBytes / GB) === 15, renewed.totalBytes / GB);
+  check("مصرف بعد از تمدید هم حفظ شد", Math.round(renewed.usedBytes / GB) === 4, renewed.usedBytes / GB);
+
+  // صفر کردن مصرف، مصرف انتقال‌یافته را هم پاک می‌کند
+  await resetServiceTraffic(renewed.id);
+  const zeroed = await db.service.findUniqueOrThrow({ where: { id: renewed.id } });
+  check("صفرکردن مصرف، مصرف انتقالی را هم صفر می‌کند", zeroed.usedBytes === 0 && zeroed.usageOffset === 0, zeroed.usedBytes);
+
+  /* انتقال از سرور خراب: آمار از دیتابیس و کلاینت قدیمی باقی می‌ماند */
+  const dead = await db.panel.create({
+    data: {
+      name: "سرور خراب", location: "فرانسه", flag: "🇫🇷", url: "http://127.0.0.1:9",
+      username: "admin", password: "admin", inboundId: 1, templateEmail: "template-vip",
+      multiInbound: false, sortOrder: 3,
+    },
+  });
+  const stranded = await db.service.create({
+    data: {
+      userId: buyer.id, planId: plan.id, panelId: dead.id, remark: "روی سرور خراب",
+      clientEmail: "stranded-client", uuid: randomUUID(), subId: "abcdef0123456789",
+      inboundId: 1, clientRefs: JSON.stringify([{ inboundId: 1, email: "stranded-client" }]),
+      totalBytes: 10 * GB, usedBytes: 4 * GB, deviceLimit: 1,
+      expiresAt: new Date(Date.now() + 15 * 86_400_000), status: "active",
+    },
+  });
+
+  const rescued = await migrateService(stranded.id, target.id);
+  check("انتقال از سرور خراب هم انجام می‌شود", rescued.service.panelId === target.id);
+  check("آمار از دیتابیس برداشته شد", rescued.usageFromPanel === false);
+  check("کلاینت روی سرور خراب پاک نشد (و خطا نداد)", rescued.oldRemoved === false);
+  check("باقی‌ماندهٔ درست منتقل شد", Math.round(rescued.remainingBytes / GB) === 6, rescued.remainingBytes / GB);
+  check("مصرف قبلی از دیتابیس حفظ شد", Math.round(rescued.service.usedBytes / GB) === 4);
+
+  /* سرویس نامحدود: باقی‌مانده هم نامحدود می‌ماند */
+  const unlimited = await createServiceOnPanel({
+    userId: buyer.id,
+    userEmail: buyer.email,
+    plan: { volumeGb: 0, days: 0, deviceLimit: 0 },
+    planId: null,
+    panel: source,
+    code: "MOVE-2",
+    remark: "نامحدود",
+  });
+  const movedUnlimited = await migrateService(unlimited.id, target.id);
+  check("سرویس نامحدود بعد از انتقال نامحدود می‌ماند", movedUnlimited.remainingBytes === 0);
+  check("حجم کل نامحدود صفر می‌ماند", movedUnlimited.service.totalBytes === 0);
+
+  /* انتقال به همان سرور باید رد شود */
+  let sameRejected = false;
+  try {
+    await migrateService(movedUnlimited.service.id, target.id);
+  } catch {
+    sameRejected = true;
+  }
+  check("انتقال به سرور فعلی رد می‌شود", sameRejected);
+}
+
 async function main() {
   await scenario({
     label: "پنل نسخه ۲ — ورود با نام کاربری و رمز",
@@ -1625,6 +1783,7 @@ async function main() {
   await hooshpayAndCryptoScenario();
   await resellerScenario();
   await pushScenario();
+  await migrateScenario();
   await backupScenario();
   i18nScenario();
 

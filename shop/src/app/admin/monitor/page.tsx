@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { checkAllPanelsAction, checkPanelAction, resumePanelSalesAction } from "@/app/actions/admin";
+import {
+  checkAllPanelsAction,
+  checkPanelAction,
+  migratePanelServicesAction,
+  resumePanelSalesAction,
+} from "@/app/actions/admin";
 import { latencyHistory, uptimeStats } from "@/lib/monitor";
 import { asBool, getSettings } from "@/lib/settings";
 import { faDate, faNum } from "@/lib/format";
@@ -25,12 +30,22 @@ export default async function AdminMonitorPage({
 }) {
   const { msg, type } = await searchParams;
 
-  const [panels, settings, day, week] = await Promise.all([
+  const [panels, settings, day, week, serviceCounts] = await Promise.all([
     db.panel.findMany({ orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
     getSettings(),
     uptimeStats(24),
     uptimeStats(24 * 7),
+    db.service.groupBy({
+      by: ["panelId"],
+      where: { status: { in: ["active", "disabled"] } },
+      _count: { _all: true },
+    }),
   ]);
+
+  const liveServices = new Map(serviceCounts.map((row) => [row.panelId, row._count._all]));
+
+  // مقصدهای پیشنهادی برای انتقال: سرورهای سالم و فعال
+  const healthyTargets = panels.filter((row) => row.healthOk && row.isActive && !row.autoDisabled);
 
   const histories = new Map<string, ChartPoint[]>();
   for (const panel of panels) {
@@ -172,6 +187,39 @@ export default async function AdminMonitorPage({
             {!panel.healthOk && panel.lastError ? (
               <div className="alert alert-error" style={{ marginTop: 12 }}>
                 {panel.lastError}
+              </div>
+            ) : null}
+
+            {!panel.healthOk && (liveServices.get(panel.id) ?? 0) > 0 ? (
+              <div className="alert alert-warn" style={{ marginTop: 12 }}>
+                <b>{faNum(liveServices.get(panel.id) ?? 0)} سرویس</b> روی این سرور است و تا برگشتنش
+                قطع می‌مانند. می‌توانید همه را با حفظ حجم باقی‌مانده و انقضا به سرور دیگری منتقل
+                کنید؛ لینک اشتراک کاربرها عوض می‌شود و خودشان هم اعلان می‌گیرند.
+                {healthyTargets.length ? (
+                  <ActionForm
+                    action={migratePanelServicesAction}
+                    submitLabel="🚚 انتقال همه"
+                    buttonClass="btn btn-sm btn-primary"
+                    className="row-form"
+                    confirm="همهٔ سرویس‌های این سرور به سرور انتخاب‌شده منتقل شوند؟"
+                  >
+                    <input type="hidden" name="fromId" value={panel.id} />
+                    <select name="panelId" defaultValue="" className="select-sm" aria-label="سرور مقصد">
+                      <option value="">سرور مقصد…</option>
+                      {healthyTargets
+                        .filter((row) => row.id !== panel.id)
+                        .map((row) => (
+                          <option key={row.id} value={row.id}>
+                            {row.flag} {row.name}
+                          </option>
+                        ))}
+                    </select>
+                  </ActionForm>
+                ) : (
+                  <p className="dim" style={{ marginBottom: 0 }}>
+                    سرور سالم دیگری برای انتقال ندارید.
+                  </p>
+                )}
               </div>
             ) : null}
 
