@@ -830,6 +830,92 @@ try {
   ]);
   check("تیکت ثبت شد", user.url().includes("/dashboard/tickets/"));
 
+  console.log("→ نوار بالا و منوی موبایل");
+  const phone = await browser.newContext({ locale: "fa-IR", viewport: { width: 360, height: 780 } });
+  const small = await phone.newPage();
+  await small.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
+  await small.fill("#email", email);
+  await small.fill("#password", userPassword);
+  await Promise.all([
+    small.waitForURL(/dashboard|admin/, { timeout: 20000 }),
+    small.click("button[type=submit]"),
+  ]);
+
+  const fits = async (page) =>
+    page.evaluate(() => {
+      const vw = document.documentElement.clientWidth;
+      for (const el of document.querySelectorAll(".nav-inner *")) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0) continue;
+        if (Math.round(rect.right) > vw + 1 || Math.round(rect.left) < -1) {
+          return `${el.tagName.toLowerCase()}.${(el.className || "").toString().split(" ")[0]}`;
+        }
+      }
+      return "";
+    });
+
+  check("هیچ دکمه‌ای از نوار بالا بیرون نمی‌زند", (await fits(small)) === "", await fits(small));
+  check("دکمهٔ منوی موبایل هست", await small.isVisible(".menu-btn"));
+  check("دکمهٔ خروج روی موبایل داخل نوار نیست", !(await small.isVisible(".nav-actions > .hide-sm")));
+
+  await small.click(".menu-btn");
+  await small.waitForSelector(".menu-sheet .menu-link", { timeout: 10000 });
+  const sheet = (await small.textContent(".menu-sheet")) ?? "";
+  check("منو لینک‌های سایت را دارد", sheet.includes("تعرفه‌ها") && sheet.includes("آموزش اتصال"), sheet.slice(0, 80));
+  check("منو پنل کاربری را دارد", sheet.includes("پنل کاربری"));
+  check("منو دکمهٔ خروج دارد", sheet.includes("خروج"));
+  check("منو تعویض زبان دارد", await small.isVisible(".menu-sheet .lang-switch"));
+
+  await small.click(".menu-sheet a:has-text('تعرفه‌ها')");
+  await small.waitForURL("**/plans", { timeout: 20000 });
+  check("لینک منو کار می‌کند و منو بسته می‌شود", !(await small.isVisible(".menu-sheet .menu-link")));
+
+  // مهمان هم نباید سرریز داشته باشد
+  const phoneGuest = await browser.newContext({ locale: "fa-IR", viewport: { width: 360, height: 780 } });
+  const smallGuest = await phoneGuest.newPage();
+  await smallGuest.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+  check("نوار بالای مهمان هم جا می‌شود", (await fits(smallGuest)) === "", await fits(smallGuest));
+  await phoneGuest.close();
+  await phone.close();
+
+  console.log("→ اطلاعیه به کاربران");
+  await admin.goto(`${BASE}/admin/announce`, { waitUntil: "domcontentloaded" });
+  check("صفحهٔ اطلاعیه باز شد", (await admin.textContent("body")).includes("نوشتن اطلاعیه"));
+  check("گروه‌های مخاطب نمایش داده شدند", (await admin.textContent("#audience")).includes("نمایندگان"));
+
+  await admin.fill("#title", "سرور آلمان ارتقا پیدا کرد");
+  await admin.fill("#body", "سرعت بیشتر، بدون تغییر لینک اشتراک.");
+  await admin.fill("#href", "/plans");
+  await admin.click("button:has-text('ارسال اطلاعیه')");
+  await admin.waitForSelector("form .alert-success, form .alert-error", { timeout: 30000 });
+  const announceMsg = (await admin.textContent("form .alert-success, form .alert-error")) ?? "";
+  check("اطلاعیه فرستاده شد", announceMsg.includes("ثبت شد"), announceMsg);
+
+  await admin.reload({ waitUntil: "domcontentloaded" });
+  check(
+    "اطلاعیه در تاریخچه آمد",
+    (await admin.textContent("body")).includes("سرور آلمان ارتقا پیدا کرد"),
+  );
+
+  // کاربر باید همان اطلاعیه را در زنگ اعلان ببیند
+  await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
+  check("زنگ اعلان کاربر عدد گرفت", await user.isVisible(".bell-dot"));
+
+  await user.goto(`${BASE}/dashboard/notifications`, { waitUntil: "domcontentloaded" });
+  const inbox = (await user.textContent("body")) ?? "";
+  check("اطلاعیه به کاربر رسید", inbox.includes("سرور آلمان ارتقا پیدا کرد"), inbox.slice(0, 120));
+  check("متن اطلاعیه هم آمد", inbox.includes("سرعت بیشتر"));
+
+  const noteLink = await user.getAttribute("a.ticket-card:has-text('سرور آلمان')", "href");
+  check("لینک اطلاعیه همان است که مدیر داد", noteLink === "/plans", noteLink);
+
+  // اطلاعیهٔ بدون عنوان نباید فرستاده شود
+  await admin.goto(`${BASE}/admin/announce`, { waitUntil: "domcontentloaded" });
+  await admin.fill("#title", "کم");
+  await admin.click("button:has-text('ارسال اطلاعیه')");
+  await admin.waitForSelector("form .alert-error", { timeout: 20000 });
+  check("عنوان کوتاه رد می‌شود", (await admin.textContent("form .alert-error")).includes("حداقل"));
+
   console.log("→ دکمهٔ باز کردن صفحهٔ اشتراک");
   await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
   const cardSubLink = await user.getAttribute(".svc-actions a[target=_blank]", "href");

@@ -211,6 +211,7 @@ try {
     ["admin-logs", "/admin/logs"],
     ["admin-backup", "/admin/backup"],
     ["admin-security", "/admin/security"],
+    ["admin-announce", "/admin/announce"],
   ];
 
   // پروندهٔ یک کاربر واقعی
@@ -265,31 +266,39 @@ try {
     await page.waitForTimeout(400);
     const result = await page.evaluate(() => {
       const vw = document.documentElement.clientWidth;
-      const overflow = document.documentElement.scrollWidth - window.innerWidth;
 
-      // عنصری که واقعاً باعث سرریز صفحه است (نه چیزی که داخل اسکرولر افقی کلیپ شده)
-      const clipped = (el) => {
-        let p = el.parentElement;
-        while (p && p !== document.documentElement) {
-          const st = getComputedStyle(p);
-          if (["auto", "scroll", "hidden"].includes(st.overflowX)) return true;
-          p = p.parentElement;
+      // اسکرولرهای واقعی (مثل جدول‌ها) مجازند؛ ولی `body { overflow-x: hidden }`
+      // فقط سرریز را پنهان می‌کند، پس عمداً استثنا حساب نمی‌شود — همان چیزی که
+      // باعث شده بود دکمه‌های نوار بالا روی موبایل بی‌صدا بریده شوند.
+      const inScroller = (el) => {
+        let parent = el.parentElement;
+        while (parent && parent !== document.documentElement) {
+          if (parent !== document.body) {
+            const style = getComputedStyle(parent);
+            if (["auto", "scroll", "hidden"].includes(style.overflowX)) return true;
+          }
+          parent = parent.parentElement;
         }
         return false;
       };
 
       const offenders = [];
-      if (overflow > 2) {
-        for (const el of document.querySelectorAll("body *")) {
-          const rect = el.getBoundingClientRect();
-          if (rect.width === 0) continue;
-          if (Math.round(rect.right) <= vw + 1 && Math.round(rect.left) >= -1) continue;
-          if (clipped(el)) continue;
+      let overflow = 0;
+
+      for (const el of document.querySelectorAll("body *")) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) continue;
+
+        // هم سرریز راست (چیدمان چپ‌چین) و هم چپ (راست‌چین) شمرده می‌شود
+        const out = Math.max(Math.round(rect.right) - vw, -Math.round(rect.left));
+        if (out <= 2 || inScroller(el)) continue;
+
+        overflow = Math.max(overflow, out);
+        if (offenders.length < 3) {
           offenders.push(
             `${el.tagName.toLowerCase()}.${(el.className || "").toString().split(" ")[0]}` +
               ` (w=${Math.round(rect.width)}, left=${Math.round(rect.left)})`,
           );
-          if (offenders.length >= 3) break;
         }
       }
       return { overflow, offenders };

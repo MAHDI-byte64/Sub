@@ -16,6 +16,7 @@ const ITEMS: AdminNavItem[] = [
   { href: "/admin/users", label: "کاربران", icon: "👥", staff: true },
   { href: "/admin/resellers", label: "نمایندگان", icon: "🤝" },
   { href: "/admin/tickets", label: "تیکت‌ها", icon: "🎫", staff: true },
+  { href: "/admin/announce", label: "اطلاعیه به کاربران", icon: "📣" },
   { href: "/admin/logs", label: "گزارش فعالیت", icon: "📋" },
   { href: "/admin/backup", label: "پشتیبان‌گیری", icon: "🗄️" },
   { href: "/admin/security", label: "امنیت حساب", icon: "🔐", staff: true },

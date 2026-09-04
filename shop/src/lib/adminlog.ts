@@ -40,6 +40,7 @@ export const ACTION_LABELS: Record<string, { label: string; icon: string }> = {
   mail_tested: { label: "تست ارسال ایمیل", icon: "📧" },
   push_enabled: { label: "فعال‌سازی اعلان پوش", icon: "🔔" },
   push_broadcast: { label: "ارسال اطلاعیه پوش", icon: "📣" },
+  announcement_sent: { label: "ارسال اطلاعیه به کاربران", icon: "📣" },
   telegram_webhook_set: { label: "فعال‌سازی ربات تلگرام", icon: "🤖" },
   ticket_replied: { label: "پاسخ به تیکت", icon: "💬" },
   backup_downloaded: { label: "دانلود پشتیبان", icon: "💾" },

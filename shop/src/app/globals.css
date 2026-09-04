@@ -314,6 +314,7 @@ hr {
   align-items: center;
   gap: 14px;
   height: var(--header-h);
+  min-width: 0;
 }
 .brand {
   display: inline-flex;
@@ -323,6 +324,13 @@ hr {
   font-size: 19px;
   letter-spacing: -0.03em;
   white-space: nowrap;
+  /* روی صفحهٔ باریک، نام سایت کوتاه می‌شود تا دکمه‌ها بیرون نزنند */
+  min-width: 0;
+  overflow: hidden;
+}
+.brand span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .brand-logo {
   width: 40px;
@@ -353,6 +361,77 @@ hr {
   gap: 8px;
   align-items: center;
   flex-shrink: 0;
+}
+
+/* منوی موبایل: دکمهٔ ☰ و کشویی که زیر نوار بالا باز می‌شود */
+.menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 17px;
+  cursor: pointer;
+}
+.menu-btn.is-open {
+  border-color: var(--border-strong);
+  color: var(--gold);
+}
+.menu-backdrop {
+  position: fixed;
+  inset: var(--header-h) 0 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 40;
+}
+.menu-sheet {
+  position: fixed;
+  inset-inline: 10px;
+  top: calc(var(--header-h) + 8px);
+  z-index: 45;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  padding: 10px;
+  max-height: calc(100dvh - var(--header-h) - 24px);
+  overflow-y: auto;
+}
+.menu-links {
+  display: grid;
+  gap: 4px;
+}
+.menu-link {
+  display: block;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  color: var(--text-soft);
+  font-weight: 600;
+}
+.menu-link.is-primary {
+  background: var(--grad-soft);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+}
+.menu-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.menu-foot .field-hint {
+  margin-inline-end: auto;
+}
+.field-hint {
+  /* نمونه‌های JSON و آدرس‌های بلند باید بشکنند، نه اینکه ستون را پهن کنند */
+  overflow-wrap: anywhere;
 }
 
 /* ---------------------------------- دکمه‌ها --------------------------------- */
@@ -950,6 +1029,9 @@ hr {
 }
 .field {
   display: grid;
+  /* بدون minmax، ستون به اندازهٔ بلندترین محتوا باز می‌شود و روی موبایل
+     ورودی‌ها از لبهٔ صفحه بیرون می‌زنند */
+  grid-template-columns: minmax(0, 1fr);
   gap: 7px;
   min-width: 0;
 }
@@ -962,6 +1044,7 @@ input,
 select,
 textarea {
   width: 100%;
+  max-width: 100%;
   padding: 12px 15px;
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.035);
@@ -1690,6 +1773,12 @@ tbody tr:hover {
   .hide-sm {
     display: none;
   }
+  .menu-btn {
+    display: inline-flex;
+  }
+  .brand {
+    font-size: 17px;
+  }
   .footer-grid {
     grid-template-columns: 1fr;
   }
@@ -1870,6 +1959,13 @@ tbody tr:hover {
   align-items: center;
   gap: 7px;
   white-space: nowrap;
+  /* روی صفحهٔ باریک، برچسب کوتاه می‌شود تا مقدار سمت مقابل بیرون نزند */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.meta-row > b {
+  flex: 0 0 auto;
 }
 .meta-row > b {
   font-weight: 700;

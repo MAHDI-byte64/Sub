@@ -21,7 +21,7 @@ import {
 } from "@/lib/provision";
 import { logAdmin } from "@/lib/adminlog";
 import { checkPanel, runPanelChecks } from "@/lib/monitor";
-import { broadcastPush, ensureVapidKeys, sendPushToUser } from "@/lib/push";
+import { ensureVapidKeys, sendPushToUser } from "@/lib/push";
 import { findDriver } from "@/lib/gateway";
 import { gatewayUsable, migrateLegacyGateway } from "@/lib/payments";
 import { usdtRate } from "@/lib/rates";
@@ -37,11 +37,11 @@ import {
   type SendCode,
 } from "@/lib/backup";
 import { creditWallet, debitWallet } from "@/lib/wallet";
-import { notifyUser } from "@/lib/notify";
 import { payReferralBonus } from "@/lib/referral";
 import { notifyAdmin as notifyTelegram, telegramApi } from "@/lib/telegram";
 import { faNum, formatBytes, toman } from "@/lib/format";
 import { mailReady, mailTemplate, sendMail } from "@/lib/mail";
+import { announceToUsers, AUDIENCE_LABEL, notifyUser, type Audience } from "@/lib/notify";
 
 export type AdminState = { error?: string; success?: string };
 
@@ -671,22 +671,6 @@ export async function testPushAction(_prev: AdminState, _formData: FormData): Pr
       };
 }
 
-/** اطلاعیه برای همهٔ کاربرانی که اعلان را روشن کرده‌اند */
-export async function broadcastPushAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
-  const denied = await guard();
-  if (denied) return denied;
-
-  const title = str(formData, "title");
-  const body = str(formData, "body");
-  const url = str(formData, "url") || "/dashboard";
-  if (!title) return { error: "عنوان اطلاعیه لازم است." };
-
-  const { users, sent } = await broadcastPush({ title, body, url, tag: "announcement" });
-  await logAdmin("push_broadcast", title, `${sent} دستگاه`);
-  return sent
-    ? { success: `اطلاعیه به ${faNum(sent)} دستگاه از ${faNum(users)} کاربر فرستاده شد.` }
-    : { error: "هیچ کاربری اعلان پوش را روشن نکرده است." };
-}
 
 /* ------------------------------ پشتیبان‌گیری ------------------------------ */
 
@@ -835,6 +819,42 @@ export async function testMailAction(_prev: AdminState, _formData: FormData): Pr
   return result.ok
     ? { success: `ایمیل آزمایشی به ${user!.email} فرستاده شد. صندوق ورودی و اسپم را ببینید.` }
     : { error: `ارسال ایمیل انجام نشد: ${result.detail ?? "تنظیمات را بررسی کنید."}` };
+}
+
+/** اطلاعیهٔ همگانی: اعلان درون‌سایتی برای همهٔ کاربرانِ انتخاب‌شده (+ پوش اختیاری) */
+export async function announceAction(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const title = str(formData, "title");
+  const body = str(formData, "body");
+  const href = str(formData, "href");
+  const audience = (str(formData, "audience") || "all") as Audience;
+  const withPush = checked(formData, "push");
+
+  if (title.length < 3) return { error: "عنوان اطلاعیه را بنویسید (حداقل ۳ حرف)." };
+  if (title.length > 120) return { error: "عنوان طولانی است؛ کوتاه‌ترش کنید." };
+  if (href && !href.startsWith("/")) {
+    return { error: "لینک باید داخلی باشد و با / شروع شود؛ مثلاً /plans" };
+  }
+  if (!(audience in AUDIENCE_LABEL)) return { error: "مخاطب اطلاعیه درست انتخاب نشده است." };
+
+  const result = await announceToUsers({ audience, title, body, href, push: withPush });
+  if (!result.users) return { error: `کاربری در گروه «${AUDIENCE_LABEL[audience]}» نیست.` };
+
+  await logAdmin("announcement_sent", title, `${result.users} کاربر`);
+  revalidatePath("/admin/announce");
+  revalidatePath("/dashboard", "layout");
+
+  const pushNote = withPush
+    ? result.pushed
+      ? ` و روی ${faNum(result.pushed)} دستگاه پوش شد`
+      : " (اعلان پوش به هیچ دستگاهی نرسید؛ کسی آن را روشن نکرده است)"
+    : "";
+
+  return {
+    success: `اطلاعیه برای ${faNum(result.users)} کاربر ثبت شد${pushNote}. کاربران آن را در زنگ اعلان‌ها می‌بینند.`,
+  };
 }
 
 /* --------------------- انتقال سرویس بین سرورها --------------------- */
