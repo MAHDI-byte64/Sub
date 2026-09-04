@@ -830,6 +830,28 @@ try {
   ]);
   check("تیکت ثبت شد", user.url().includes("/dashboard/tickets/"));
 
+  console.log("→ دکمهٔ باز کردن صفحهٔ اشتراک");
+  await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
+  const cardSubLink = await user.getAttribute(".svc-actions a[target=_blank]", "href");
+  check(
+    "دکمهٔ کارت سرویس به لینک اشتراک می‌رود",
+    (cardSubLink ?? "").includes("/sub/"),
+    cardSubLink,
+  );
+  check(
+    "دیگر لینک v2rayng:// در پنل نیست",
+    !((await user.content()).includes("v2rayng://")),
+  );
+
+  await user.click("a:has-text('کانفیگ و QR')");
+  await user.waitForURL("**/dashboard/services/**", { timeout: 20000 });
+  const openSub = user.locator("a:has-text('باز کردن صفحهٔ اشتراک')").first();
+  check("دکمهٔ باز کردن صفحهٔ اشتراک هست", (await openSub.count()) > 0);
+  const openHref = await openSub.getAttribute("href");
+  const shownSub = (await user.textContent(".copy-box code")) ?? "";
+  check("آدرس دکمه همان لینک اشتراک است", openHref === shownSub.trim(), openHref);
+  check("در تب تازه باز می‌شود", (await openSub.getAttribute("target")) === "_blank");
+
   console.log("→ بازیابی رمز عبور با ایمیل");
   // تست نسخهٔ انگلیسی، زبان این مرورگر را عوض کرده بود؛ برمی‌گردانیم به فارسی
   await guestCtx.addCookies([{ name: "fandogh_lang", value: "fa", url: BASE }]);
