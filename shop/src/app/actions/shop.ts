@@ -301,15 +301,19 @@ export async function requestTrialAction(_prev: ShopState, formData: FormData): 
   if (user.trialUsedAt) return { error: "شما قبلاً اکانت تست دریافت کرده‌اید." };
 
   const panelId = String(formData.get("panelId") || "") || null;
+
+  let service;
   try {
-    await createTrialService(user.id, panelId);
+    service = await createTrialService(user.id, panelId);
   } catch (err) {
     return { error: (err as Error).message || "ساخت اکانت تست ناموفق بود." };
   }
 
   await notifyAdmin(`🎁 اکانت تست رایگان برای ${user.email} ساخته شد.`, "system");
   revalidatePath("/dashboard");
-  return { success: "اکانت تست شما ساخته شد. در بخش سرویس‌ها آن را ببینید." };
+  // بعد از ساخت، کارت تست از پنل برداشته می‌شود؛ پس کاربر را مستقیم به همان
+  // سرویس می‌بریم تا کانفیگ و QR را ببیند، نه اینکه بی‌پیام روی داشبورد بماند.
+  redirect(`/dashboard/services/${service.id}`);
 }
 
 /* ---------------------------- کیف پول و دعوت ---------------------------- */

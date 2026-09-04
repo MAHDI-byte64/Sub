@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { Panel, Plan, Service } from "@prisma/client";
 import { db } from "./db";
 import { GB } from "./format";
-import { asNum, getSettings } from "./settings";
+import { asNum, getSettings, type Settings } from "./settings";
 import { XuiClient, XuiError, parseInboundClients, type XuiRawClient } from "./xui";
 import { buildClientLink, buildSubscriptionUrl, resolveHost } from "./vless";
 
@@ -479,12 +479,30 @@ export async function fulfillOrder(orderId: string): Promise<Service> {
 }
 
 /** ساخت اکانت تست رایگان */
+/**
+ * سرور اکانت تست.
+ *
+ * اگر مدیر در تنظیمات سروری را برای تست انتخاب کرده باشد، تست فقط از همان داده
+ * می‌شود و انتخاب لوکیشنِ مشتری نادیده گرفته می‌شود. اگر آن سرور خاموش یا خراب
+ * باشد، `pickPanel` سرور سالم دیگری می‌دهد تا تست بی‌جواب نماند.
+ */
+export async function trialPanelId(
+  settings: Settings,
+  requestedPanelId?: string | null,
+): Promise<string | null> {
+  const fixed = settings.trial_panel_id?.trim();
+  if (!fixed) return requestedPanelId ?? null;
+
+  const panel = await db.panel.findFirst({ where: { id: fixed, isActive: true } });
+  return panel ? panel.id : null;
+}
+
 export async function createTrialService(userId: string, panelId?: string | null): Promise<Service> {
   const settings = await getSettings();
   const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
   if (user.trialUsedAt) throw new XuiError("شما قبلاً اکانت تست رایگان دریافت کرده‌اید.");
 
-  const panel = await pickPanel(panelId);
+  const panel = await pickPanel(await trialPanelId(settings, panelId));
   const trialPlan: PlanShape = {
     volumeGb: asNum(settings.trial_volume_gb, 1),
     days: asNum(settings.trial_days, 1),

@@ -1,6 +1,6 @@
 import { db } from "./db";
 
-export type SettingType = "text" | "textarea" | "number" | "bool" | "password";
+export type SettingType = "text" | "textarea" | "number" | "bool" | "password" | "panel";
 
 export type SettingDef = {
   key: string;
@@ -334,6 +334,14 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "trial_volume_gb", label: "حجم تست (گیگابایت)", type: "number", group: "تست رایگان", default: "1" },
   { key: "trial_days", label: "مدت تست (روز)", type: "number", group: "تست رایگان", default: "1" },
   { key: "trial_device_limit", label: "تعداد کاربر همزمان تست", type: "number", group: "تست رایگان", default: "1" },
+  {
+    key: "trial_panel_id",
+    label: "سرور اکانت تست",
+    type: "panel",
+    group: "تست رایگان",
+    default: "",
+    hint: "خالی یعنی مثل خرید عادی: مشتری لوکیشن را انتخاب می‌کند و کم‌بارترین سرور سالم داده می‌شود. با انتخاب یک سرور، همهٔ تست‌ها فقط از همان داده می‌شوند (اگر آن سرور خاموش یا خراب باشد، سرور سالم دیگری جایگزین می‌شود تا تست بی‌جواب نماند).",
+  },
 
   {
     key: "canned_replies",

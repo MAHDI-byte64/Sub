@@ -829,6 +829,66 @@ try {
   ]);
   check("تیکت ثبت شد", user.url().includes("/dashboard/tickets/"));
 
+  console.log("→ انتخاب سرور اکانت تست");
+  // سرور تست را روی سرور دوم ثابت می‌کنیم و با یک کاربر تازه تست می‌گیریم
+  await admin.goto(`${BASE}/admin/settings`, { waitUntil: "domcontentloaded" });
+  const trialOption = await admin
+    .locator("#trial_panel_id option")
+    .filter({ hasText: "MOCK-UI-2" })
+    .first()
+    .getAttribute("value");
+  check("سرور تست در تنظیمات قابل انتخاب است", Boolean(trialOption), trialOption);
+
+  await admin.selectOption("#trial_panel_id", trialOption ?? "");
+  await admin.check("#trial_enabled");
+  await admin.click("button:has-text('ذخیره همه تنظیمات')");
+  await admin.waitForSelector(".alert-success", { timeout: 20000 });
+
+  await admin.reload({ waitUntil: "domcontentloaded" });
+  check("انتخاب سرور تست ذخیره شد", (await admin.inputValue("#trial_panel_id")) === trialOption);
+
+  const trialCtx = await browser.newContext({ locale: "fa-IR" });
+  const trialUser = await trialCtx.newPage();
+  trialUser.on("dialog", (d) => d.accept());
+  const trialEmail = `trial${Date.now()}@test.local`;
+  await trialUser.goto(`${BASE}/register`, { waitUntil: "domcontentloaded" });
+  await trialUser.fill("#email", trialEmail);
+  await trialUser.fill("#password", "test12345");
+  await trialUser.fill("#confirm", "test12345");
+  await Promise.all([
+    trialUser.waitForURL("**/dashboard", { timeout: 20000 }),
+    trialUser.click("button[type=submit]"),
+  ]);
+
+  const trialBody = (await trialUser.textContent("body")) ?? "";
+  check("کارت تست رایگان نمایش داده شد", trialBody.includes("تست رایگان"), trialBody.slice(0, 80));
+  check(
+    "با ثابت‌بودن سرور، انتخاب لوکیشن به مشتری نشان داده نمی‌شود",
+    !(await trialUser.isVisible("#trialPanel")),
+  );
+  check("لوکیشن سرور تست به مشتری گفته می‌شود", trialBody.includes("هلند - تست UI"), trialBody.slice(0, 200));
+
+  await Promise.all([
+    trialUser.waitForURL("**/dashboard/services/**", { timeout: 40000 }),
+    trialUser.click("button:has-text('ساخت اکانت تست')"),
+  ]);
+  const trialDetail = (await trialUser.textContent("body")) ?? "";
+  check("بعد از ساخت تست، کانفیگ همان سرویس باز می‌شود", trialUser.url().includes("/dashboard/services/"));
+  check("لینک اشتراک تست از سرور دوم است", trialDetail.includes("sub2.test.local"), trialDetail.slice(0, 120));
+
+  await admin.goto(`${BASE}/admin/services?q=${encodeURIComponent(trialEmail)}`, {
+    waitUntil: "domcontentloaded",
+  });
+  const trialRow = (await admin.textContent("table tbody tr:first-child")) ?? "";
+  check("تست از سرور تعیین‌شده داده شد", trialRow.includes("هلند - تست UI"), trialRow.slice(0, 140));
+  await trialCtx.close();
+
+  // تنظیم را برمی‌گردانیم تا بقیهٔ تست‌ها دست‌نخورده بمانند
+  await admin.goto(`${BASE}/admin/settings`, { waitUntil: "domcontentloaded" });
+  await admin.selectOption("#trial_panel_id", "");
+  await admin.click("button:has-text('ذخیره همه تنظیمات')");
+  await admin.waitForSelector(".alert-success", { timeout: 20000 });
+
   console.log("→ نقش پشتیبان");
   // کاربر فعلی را پشتیبان می‌کنیم و با یک مرورگر جدا واردش می‌شویم
   await admin.goto(adminUserUrl, { waitUntil: "domcontentloaded" });

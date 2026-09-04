@@ -25,6 +25,7 @@ import {
   rotateService,
   serviceLinks,
   syncService,
+  trialPanelId,
 } from "../src/lib/provision";
 import { getSettings, saveSettings } from "../src/lib/settings";
 import { creditWallet, debitWallet } from "../src/lib/wallet";
@@ -1823,6 +1824,81 @@ function securityScenario() {
   check("برچسب نقش‌ها درست است", roleLabel("support") === "پشتیبان" && roleLabel("admin") === "مدیر");
 }
 
+/* ------------------------- سرور اکانت تست رایگان ------------------------- */
+
+async function trialPanelScenario() {
+  console.log("\n══════ انتخاب سرور اکانت تست ══════");
+  await reset();
+  await saveSettings({ trial_enabled: "1", trial_volume_gb: "1", trial_days: "1", trial_panel_id: "" });
+
+  const normal = await db.panel.create({
+    data: {
+      name: "سرور فروش", location: "آلمان", flag: "🇩🇪", url: MOCK_V2,
+      username: "admin", password: "admin", inboundId: 1,
+      templateEmail: "template-vip", multiInbound: false, sortOrder: 1,
+    },
+  });
+  const trialServer = await db.panel.create({
+    data: {
+      name: "سرور تست", location: "هلند", flag: "🇳🇱", url: MOCK_V2,
+      username: "admin", password: "admin", inboundId: 2,
+      templateEmail: "template-alt", multiInbound: false, sortOrder: 2,
+    },
+  });
+
+  const newUser = async (tag: string) =>
+    db.user.create({ data: { email: `trial-${tag}-${Date.now()}@test.local`, passwordHash: "x" } });
+
+  /* ۱) بدون تنظیم: انتخاب مشتری رعایت می‌شود */
+  const auto = await createTrialService((await newUser("auto")).id, trialServer.id);
+  check("بدون تنظیم، لوکیشن انتخابی مشتری رعایت می‌شود", auto.panelId === trialServer.id, auto.panelId);
+
+  const settings = await getSettings();
+  check("بدون تنظیم، انتخاب مشتری برگردانده می‌شود", (await trialPanelId(settings, normal.id)) === normal.id);
+  check("بدون تنظیم و بدون انتخاب مشتری، خودکار می‌ماند", (await trialPanelId(settings, null)) === null);
+
+  /* ۲) با تنظیم مدیر: انتخاب مشتری نادیده گرفته می‌شود */
+  await saveSettings({ trial_panel_id: trialServer.id });
+  const fixedSettings = await getSettings();
+  check(
+    "با تنظیم مدیر، همان سرور برگردانده می‌شود",
+    (await trialPanelId(fixedSettings, normal.id)) === trialServer.id,
+  );
+
+  const forced = await createTrialService((await newUser("forced")).id, normal.id);
+  check("تست از سرور تعیین‌شدهٔ مدیر داده می‌شود", forced.panelId === trialServer.id, forced.panelId);
+  check("سرویس تست علامت تست دارد", forced.isTrial && forced.totalBytes === GB, forced.totalBytes);
+  check("کلاینت روی اینباند همان سرور ساخته شد", forced.inboundId === 2, forced.inboundId);
+
+  /* ۳) سرور تست خاموش شود: تست بی‌جواب نمی‌ماند */
+  await db.panel.update({ where: { id: trialServer.id }, data: { isActive: false } });
+  const offSettings = await getSettings();
+  check("سرور خاموش، انتخاب را به حالت خودکار برمی‌گرداند", (await trialPanelId(offSettings, null)) === null);
+
+  const fallback = await createTrialService((await newUser("fallback")).id, null);
+  check("با خاموش‌بودن سرور تست، سرور دیگری جایگزین می‌شود", fallback.panelId === normal.id, fallback.panelId);
+
+  /* ۴) سرور تست خراب (توسط پایش کنار گذاشته شده) */
+  await db.panel.update({
+    where: { id: trialServer.id },
+    data: { isActive: true, autoDisabled: true },
+  });
+  const brokenSettings = await getSettings();
+  check(
+    "سرور خرابِ تعیین‌شده هنوز انتخاب است ولی pickPanel کنارش می‌گذارد",
+    (await trialPanelId(brokenSettings, null)) === trialServer.id,
+  );
+  const rescued = await createTrialService((await newUser("broken")).id, null);
+  check("تست روی سرور خراب ساخته نمی‌شود", rescued.panelId === normal.id, rescued.panelId);
+
+  /* ۵) سرور پاک‌شده هم نباید تست را قفل کند */
+  await saveSettings({ trial_panel_id: "panel-that-does-not-exist" });
+  const goneSettings = await getSettings();
+  check("سرور پاک‌شده به حالت خودکار برمی‌گردد", (await trialPanelId(goneSettings, null)) === null);
+
+  await saveSettings({ trial_panel_id: "" });
+}
+
 async function main() {
   await scenario({
     label: "پنل نسخه ۲ — ورود با نام کاربری و رمز",
@@ -1852,6 +1928,7 @@ async function main() {
   await hooshpayAndCryptoScenario();
   await resellerScenario();
   await pushScenario();
+  await trialPanelScenario();
   await migrateScenario();
   await backupScenario();
   securityScenario();
