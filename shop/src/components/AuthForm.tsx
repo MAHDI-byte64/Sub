@@ -13,11 +13,17 @@ export default function AuthForm({
   next,
   referral,
   locale = "fa",
+  resetDone = false,
+  canReset = false,
 }: {
   mode: "login" | "register";
   next: string;
   referral?: string;
   locale?: Locale;
+  /** بعد از ساخت رمز تازه به صفحهٔ ورود برگشته است */
+  resetDone?: boolean;
+  /** ایمیل سایت تنظیم شده و بازیابی رمز روشن است */
+  canReset?: boolean;
 }) {
   const action = mode === "login" ? loginAction : registerAction;
   const [state, formAction] = useActionState<AuthState, FormData>(action, {});
@@ -63,6 +69,7 @@ export default function AuthForm({
           <img src="/fandogh.svg" alt="" width={52} height={52} style={{ width: 52, height: 52 }} />
         </div>
 
+        {resetDone ? <div className="alert alert-success">{tr("auth.resetDone")}</div> : null}
         {state.error ? <div className="alert alert-error">{state.error}</div> : null}
 
         <form action={formAction} className="form">
@@ -123,6 +130,14 @@ export default function AuthForm({
             {mode === "login" ? tr("auth.loginBtn") : tr("auth.registerBtn")}
           </SubmitButton>
         </form>
+
+        {mode === "login" && canReset ? (
+          <div className="center" style={{ marginTop: 14, fontSize: 14 }}>
+            <Link className="dim" href="/forgot">
+              {tr("auth.forgotLink")}
+            </Link>
+          </div>
+        ) : null}
 
         <div className="center" style={{ marginTop: 16, fontSize: 14 }}>
           {mode === "login" ? (

@@ -155,6 +155,13 @@ try {
     await admin.waitForSelector(".alert-success, .alert-error", { timeout: 40000 });
   }
 
+  // ایمیل را تنظیم می‌کنیم تا صفحهٔ «فراموشی رمز» در دسترس باشد
+  await admin.goto(`${BASE}/admin/settings`, { waitUntil: "domcontentloaded" });
+  await admin.fill("#smtp_host", "smtp.example.com");
+  await admin.fill("#smtp_from", "فندق <no-reply@example.com>");
+  await admin.click("button:has-text('ذخیره همه تنظیمات')");
+  await admin.waitForSelector("form:has(#smtp_host) .alert-success", { timeout: 20000 });
+
   // یک پشتیبان بساز تا جدول صفحهٔ پشتیبان‌گیری خالی نباشد
   await admin.goto(`${BASE}/admin/backup`, { waitUntil: "domcontentloaded" });
   await admin.click("button:has-text('ساخت پشتیبان تازه')");
@@ -170,6 +177,7 @@ try {
     ["status", "/status"],
     ["maintenance", "/maintenance"],
     ["login", "/login"],
+    ["forgot", "/forgot"],
     ["register", "/register"],
   ];
   const userPages = [

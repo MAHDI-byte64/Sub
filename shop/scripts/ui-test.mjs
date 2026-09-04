@@ -139,6 +139,7 @@ try {
   const user = await userCtx.newPage();
   user.on("dialog", (d) => d.accept());
   const email = `buyer${Date.now()}@test.local`;
+  let userPassword = "test12345";
 
   await user.goto(`${BASE}/register`, { waitUntil: "domcontentloaded" });
   await user.fill("#email", email);
@@ -829,6 +830,101 @@ try {
   ]);
   check("تیکت ثبت شد", user.url().includes("/dashboard/tickets/"));
 
+  console.log("→ بازیابی رمز عبور با ایمیل");
+  // تست نسخهٔ انگلیسی، زبان این مرورگر را عوض کرده بود؛ برمی‌گردانیم به فارسی
+  await guestCtx.addCookies([{ name: "fandogh_lang", value: "fa", url: BASE }]);
+  const SMTP_PORT = Number(process.env.MOCK_SMTP_PORT || 8894);
+  const INBOX = `http://127.0.0.1:${SMTP_PORT + 1}/_mail`;
+
+  // بدون تنظیم SMTP نباید لینک «رمزم را فراموش کرده‌ام» دیده شود
+  await guest.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
+  check(
+    "بدون تنظیم ایمیل، لینک فراموشی رمز نیست",
+    !(await guest.isVisible("a[href='/forgot']")),
+  );
+
+  await admin.goto(`${BASE}/admin/settings`, { waitUntil: "domcontentloaded" });
+  await admin.fill("#smtp_host", "127.0.0.1");
+  await admin.fill("#smtp_port", String(SMTP_PORT));
+  await admin.fill("#smtp_user", process.env.MOCK_SMTP_USER || "shop");
+  await admin.fill("#smtp_pass", process.env.MOCK_SMTP_PASS || "smtp-pass");
+  await admin.fill("#smtp_from", "فندق <no-reply@test.local>");
+  await admin.check("#reset_enabled");
+  await admin.click("button:has-text('ذخیره همه تنظیمات')");
+  // پیام همین فرم، نه پیام موقتِ صفحه
+  await admin.waitForSelector("form:has(#smtp_host) .alert-success", { timeout: 20000 });
+
+  await fetch(`${INBOX}/clear`).catch(() => null);
+  const mailForm = admin.locator("form:has(button:has-text('ارسال ایمیل آزمایشی'))");
+  await mailForm.locator("button").click();
+  await mailForm.locator(".alert").first().waitFor({ timeout: 30000 });
+  const mailMsg = (await mailForm.locator(".alert").first().textContent()) ?? "";
+  const testMail = await fetch(`${INBOX}/last`).then((r) => r.json());
+  check("ایمیل آزمایشی از پنل فرستاده شد", Boolean(testMail), mailMsg);
+
+  // حالا کاربر واقعی رمزش را فراموش می‌کند
+  await fetch(`${INBOX}/clear`);
+  await guest.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
+  check("لینک فراموشی رمز ظاهر شد", await guest.isVisible("a[href='/forgot']"));
+
+  await Promise.all([
+    guest.waitForURL("**/forgot", { timeout: 20000 }),
+    guest.click("a[href='/forgot']"),
+  ]);
+  await guest.fill("#email", email);
+  await guest.click("button:has-text('ارسال لینک بازیابی')");
+  await guest.waitForSelector(".alert-success", { timeout: 30000 });
+  check(
+    "پیام یکسان بعد از درخواست نشان داده شد",
+    (await guest.textContent(".alert-success")).includes("اگر این ایمیل"),
+  );
+
+  const resetMail = await fetch(`${INBOX}/last`).then((r) => r.json());
+  check("ایمیل بازیابی رسید", Boolean(resetMail), resetMail?.subject);
+  check("ایمیل به همان کاربر رفت", (resetMail?.to ?? []).includes(email), resetMail?.to);
+
+  const linkMatch = (resetMail?.text ?? "").match(/https?:\/\/[^\s"'<]+\/reset\?token=[a-f0-9]+/i);
+  check("لینک بازیابی داخل ایمیل هست", Boolean(linkMatch), (resetMail?.text ?? "").slice(0, 160));
+  const resetPath = linkMatch ? linkMatch[0].replace(/^https?:\/\/[^/]+/, "") : "";
+
+  // لینک دست‌کاری‌شده نباید کار کند
+  await guest.goto(`${BASE}/reset?token=deadbeef`, { waitUntil: "domcontentloaded" });
+  check("توکن الکی رد می‌شود", (await guest.textContent("body")).includes("معتبر نیست"));
+
+  await guest.goto(`${BASE}${resetPath}`, { waitUntil: "domcontentloaded" });
+  check("صفحهٔ ساخت رمز تازه باز شد", await guest.isVisible("#password"));
+
+  await guest.fill("#password", "new-pass-12345");
+  await guest.fill("#confirm", "different-pass");
+  await guest.click("button:has-text('ثبت رمز تازه')");
+  await guest.waitForSelector(".alert-error", { timeout: 20000 });
+  check("رمز و تکرارش باید یکی باشند", (await guest.textContent(".alert-error")).includes("یکی نیستند"));
+
+  await guest.fill("#password", "new-pass-12345");
+  await guest.fill("#confirm", "new-pass-12345");
+  await Promise.all([
+    guest.waitForURL(/login\?reset=1/, { timeout: 30000 }),
+    guest.click("button:has-text('ثبت رمز تازه')"),
+  ]);
+  userPassword = "new-pass-12345";
+  check("بعد از ثبت رمز به صفحهٔ ورود برگشت", guest.url().includes("reset=1"));
+  check("پیام موفقیت نمایش داده شد", (await guest.textContent("body")).includes("رمز عبور عوض شد"));
+
+  // همان لینک دیگر کار نمی‌کند
+  await guest.goto(`${BASE}${resetPath}`, { waitUntil: "domcontentloaded" });
+  check("لینک بازیابی یک‌بارمصرف است", (await guest.textContent("body")).includes("معتبر نیست"));
+
+  // رمز تازه واقعاً کار می‌کند و کاربر از دستگاه قبلی بیرون افتاده است
+  await login(guest, email, "new-pass-12345");
+  check("ورود با رمز تازه انجام شد", guest.url().includes("/dashboard"), guest.url());
+
+  await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
+  check(
+    "نشست قبلی بعد از تغییر رمز بسته شد",
+    user.url().includes("/login"),
+    user.url(),
+  );
+
   console.log("→ انتخاب سرور اکانت تست");
   // سرور تست را روی سرور دوم ثابت می‌کنیم و با یک کاربر تازه تست می‌گیریم
   await admin.goto(`${BASE}/admin/settings`, { waitUntil: "domcontentloaded" });
@@ -900,7 +996,7 @@ try {
   const supportCtx = await browser.newContext({ locale: "fa-IR" });
   const support = await supportCtx.newPage();
   support.on("dialog", (d) => d.accept());
-  await login(support, email, "test12345");
+  await login(support, email, userPassword);
   await support.goto(`${BASE}/admin`, { waitUntil: "domcontentloaded" });
   const supportHome = (await support.textContent("body")) ?? "";
   check("پشتیبان وارد پنل می‌شود", support.url().includes("/admin"), support.url());

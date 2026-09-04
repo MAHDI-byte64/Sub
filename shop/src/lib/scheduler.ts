@@ -7,6 +7,7 @@ import { debitWallet } from "./wallet";
 import { notifyAdmin } from "./telegram";
 import { pruneChecks, runPanelChecks } from "./monitor";
 import { runAutoBackup } from "./backup";
+import { pruneResetTokens } from "./reset";
 import { toman, faNum } from "./format";
 
 const TICK_MS = 15 * 60_000;
@@ -41,6 +42,9 @@ export async function runMaintenance(): Promise<{
     panelsDown: 0,
     backup: undefined as string | undefined,
   };
+
+  // توکن‌های بازیابی رمزِ منقضی یا مصرف‌شده تلنبار نشوند
+  await pruneResetTokens().catch(() => 0);
 
   // ۰) پشتیبان خودکار (اگر وقتش رسیده باشد)
   try {

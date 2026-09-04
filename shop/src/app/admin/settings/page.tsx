@@ -6,6 +6,7 @@ import {
   enablePushAction,
   saveSettingsAction,
   setupTelegramWebhookAction,
+  testMailAction,
   testPushAction,
   testTelegramAction,
 } from "@/app/actions/admin";
@@ -44,6 +45,12 @@ export default async function AdminSettingsPage() {
           <ActionForm
             action={testTelegramAction}
             submitLabel="✈️ ارسال پیام آزمایشی تلگرام"
+            buttonClass="btn btn-sm"
+            inline
+          />
+          <ActionForm
+            action={testMailAction}
+            submitLabel="📧 ارسال ایمیل آزمایشی"
             buttonClass="btn btn-sm"
             inline
           />
