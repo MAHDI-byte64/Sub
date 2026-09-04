@@ -14,5 +14,5 @@ node scripts/mock-xui.mjs "$MOCK_PORT" v3 >/dev/null 2>&1 & MOCK_PID=$!
 setsid node_modules/.bin/next start -p "$PORT" >/tmp/next-dbg.log 2>&1 & NEXT_PID=$!
 trap cleanup EXIT
 for _ in $(seq 1 30); do curl -s -o /dev/null -m 2 "$BASE_URL/" && break; sleep 1; done
-node scripts/overflow-debug.mjs
+node "${DBG_SCRIPT:-scripts/overflow-debug.mjs}"
 rm -f data/dbg.db

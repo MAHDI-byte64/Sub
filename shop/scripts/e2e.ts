@@ -55,7 +55,6 @@ import {
 } from "../src/lib/reseller";
 import { completePaidOrder } from "../src/lib/orders";
 import {
-  broadcastPush,
   ensureVapidKeys,
   pushPublicKey,
   pushReady,
@@ -100,7 +99,7 @@ import {
   pruneResetTokens,
   requestPasswordReset,
 } from "../src/lib/reset";
-import { notifyUser } from "../src/lib/notify";
+import { announceToUsers, audienceUserIds, notifyUser, unreadCount } from "../src/lib/notify";
 import { fmt } from "../src/lib/format";
 import { DICT, t, type Locale } from "../src/lib/i18n";
 import { XuiClient, type XuiRawClient } from "../src/lib/xui";
@@ -1021,8 +1020,8 @@ async function pushScenario() {
   const sent = await sendPushToUser(user.id, { title: "تست", body: "متن" });
   check("ارسال به اشتراک نامعتبر خطا نمی‌دهد", sent === 0, sent);
 
-  const broadcast = await broadcastPush({ title: "اطلاعیه" });
-  check("اطلاعیه همگانی هم امن است", broadcast.users === 1 && broadcast.sent === 0, broadcast);
+  const broadcast = await announceToUsers({ audience: "all", title: "اطلاعیه", push: true });
+  check("اطلاعیه همگانی با پوشِ شکست‌خورده هم ثبت می‌شود", broadcast.users >= 1 && broadcast.pushed === 0, broadcast);
 
   await notifyUser({
     userId: user.id,
@@ -2054,6 +2053,86 @@ async function resetScenario() {
   delete process.env.APP_URL;
 }
 
+/* -------------------------- اطلاعیه به کاربران -------------------------- */
+
+async function announceScenario() {
+  console.log("\n══════ اطلاعیه به کاربران ══════");
+  await reset();
+
+  const shopper = await db.user.create({
+    data: { email: "note-shopper@test.local", passwordHash: "x" },
+  });
+  const reseller = await db.user.create({
+    data: { email: "note-reseller@test.local", passwordHash: "x", isReseller: true, resellerOff: 20 },
+  });
+  const blocked = await db.user.create({
+    data: { email: "note-blocked@test.local", passwordHash: "x", isBlocked: true },
+  });
+
+  const panel = await db.panel.create({
+    data: {
+      name: "سرور اطلاعیه", location: "آلمان", url: MOCK_V2, username: "admin", password: "admin",
+      inboundId: 1, templateEmail: "template-vip", multiInbound: false,
+    },
+  });
+  await db.service.create({
+    data: {
+      userId: shopper.id, panelId: panel.id, remark: "سرویس فعال",
+      clientEmail: "note-active-client", uuid: randomUUID(), subId: "aabbccddeeff0011",
+      inboundId: 1, totalBytes: 10 * GB, status: "active",
+    },
+  });
+
+  /* مخاطب‌ها */
+  check("گروه «همه» کاربران مسدود را ندارد", (await audienceUserIds("all")).length === 2);
+  check("گروه «سرویس فعال» فقط مشتری را دارد", (await audienceUserIds("active")).join() === shopper.id);
+  check("گروه «نمایندگان» فقط نماینده را دارد", (await audienceUserIds("resellers")).join() === reseller.id);
+
+  /* ارسال به همه */
+  const all = await announceToUsers({
+    audience: "all",
+    title: "سرور آلمان ارتقا پیدا کرد",
+    body: "سرعت بیشتر، بدون تغییر لینک اشتراک.",
+  });
+  check("اطلاعیه برای هر دو کاربر ثبت شد", all.users === 2, all);
+  check(
+    "کاربر مسدود اطلاعیه نگرفت",
+    (await db.notification.count({ where: { userId: blocked.id } })) === 0,
+  );
+
+  const stored = await db.notification.findFirstOrThrow({ where: { userId: shopper.id } });
+  check("نوع اعلان «اطلاعیه» است", stored.kind === "announcement", stored.kind);
+  check("عنوان و متن درست ثبت شد", stored.title === "سرور آلمان ارتقا پیدا کرد" && Boolean(stored.body));
+  check("لینک پیش‌فرض به فهرست اعلان‌هاست", stored.href === "/dashboard/notifications", stored.href);
+  check("اعلان خوانده‌نشده است", stored.readAt === null);
+
+  /* ارسال گروهی با لینک دلخواه */
+  const onlyResellers = await announceToUsers({
+    audience: "resellers",
+    title: "قیمت عمده به‌روز شد",
+    href: "/reseller/prices",
+  });
+  check("اطلاعیهٔ نمایندگان فقط یک گیرنده داشت", onlyResellers.users === 1, onlyResellers);
+  check(
+    "مشتری عادی اطلاعیهٔ نمایندگان را نگرفت",
+    (await db.notification.count({ where: { userId: shopper.id } })) === 1,
+  );
+  const resellerNote = await db.notification.findFirstOrThrow({ where: { userId: reseller.id, title: "قیمت عمده به‌روز شد" } });
+  check("لینک دلخواه ثبت شد", resellerNote.href === "/reseller/prices", resellerNote.href);
+
+  /* بدون گیرنده */
+  await db.user.update({ where: { id: reseller.id }, data: { isReseller: false } });
+  const empty = await announceToUsers({ audience: "resellers", title: "بدون مخاطب" });
+  check("وقتی گیرنده‌ای نیست چیزی ثبت نمی‌شود", empty.users === 0, empty);
+  check(
+    "اطلاعیهٔ بی‌مخاطب در دیتابیس نمی‌ماند",
+    (await db.notification.count({ where: { title: "بدون مخاطب" } })) === 0,
+  );
+
+  /* شمارش خوانده‌نشده‌ها برای زنگ اعلان */
+  check("زنگ اعلان کاربر عدد درست را نشان می‌دهد", (await unreadCount(shopper.id)) === 1);
+}
+
 async function main() {
   await scenario({
     label: "پنل نسخه ۲ — ورود با نام کاربری و رمز",
@@ -2083,6 +2162,7 @@ async function main() {
   await hooshpayAndCryptoScenario();
   await resellerScenario();
   await pushScenario();
+  await announceScenario();
   await resetScenario();
   await trialPanelScenario();
   await migrateScenario();

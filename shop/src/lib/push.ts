@@ -120,12 +120,3 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
   return sent;
 }
 
-/** ارسال پوش به همهٔ کاربرانی که اشتراک دارند (اطلاعیه) */
-export async function broadcastPush(payload: PushPayload): Promise<{ users: number; sent: number }> {
-  if (!(await configure())) return { users: 0, sent: 0 };
-
-  const userIds = await db.pushSub.findMany({ select: { userId: true }, distinct: ["userId"] });
-  let sent = 0;
-  for (const { userId } of userIds) sent += await sendPushToUser(userId, payload);
-  return { users: userIds.length, sent };
-}

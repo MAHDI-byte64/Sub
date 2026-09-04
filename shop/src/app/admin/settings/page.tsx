@@ -2,7 +2,6 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { getSettings, SETTING_DEFS } from "@/lib/settings";
 import {
-  broadcastPushAction,
   enablePushAction,
   saveSettingsAction,
   setupTelegramWebhookAction,
@@ -94,27 +93,13 @@ export default async function AdminSettingsPage() {
 
       <div className="card">
         <div className="card-title">
-          <h3>📣 اطلاعیه پوش</h3>
-          <span className="badge badge-info">به همهٔ کاربران</span>
+          <h3>📣 اطلاعیه به کاربران</h3>
         </div>
         <p className="field-hint">
-          برای کاربرانی که اعلان را روی مرورگر/گوشی‌شان روشن کرده‌اند فرستاده می‌شود؛ مثلاً اعلام تخفیف
-          یا اطلاع‌رسانی قطعی سرور.
+          نوشتن اطلاعیه، انتخاب مخاطب و دیدن اطلاعیه‌های قبلی در صفحهٔ{" "}
+          <Link href="/admin/announce">اطلاعیه به کاربران</Link> است؛ آنجا پیام در زنگ اعلان همهٔ
+          کاربران می‌نشیند و در صورت تمایل روی گوشی‌شان هم پوش می‌شود.
         </p>
-        <ActionForm action={broadcastPushAction} submitLabel="ارسال اطلاعیه">
-          <div className="field">
-            <label htmlFor="push-title">عنوان</label>
-            <input id="push-title" name="title" placeholder="مثلاً: تخفیف ۲۰٪ نوروزی" />
-          </div>
-          <div className="field">
-            <label htmlFor="push-body">متن</label>
-            <input id="push-body" name="body" placeholder="متن کوتاه اطلاعیه" />
-          </div>
-          <div className="field">
-            <label htmlFor="push-url">لینک باز شونده</label>
-            <input id="push-url" name="url" defaultValue="/plans" className="ltr" />
-          </div>
-        </ActionForm>
       </div>
 
       <ActionForm action={saveSettingsAction} submitLabel="ذخیره همه تنظیمات">

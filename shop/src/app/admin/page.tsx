@@ -174,6 +174,10 @@ export default async function AdminHome() {
         ) : null}
         {isAdmin ? (
           <>
+            <Link className="admin-link" href="/admin/announce">
+              <i>📣</i>
+              <span>اطلاعیه به کاربران</span>
+            </Link>
             <Link className="admin-link" href="/admin/backup">
               <i>🗄️</i>
               <span>پشتیبان‌گیری</span>

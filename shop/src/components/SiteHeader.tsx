@@ -7,6 +7,7 @@ import { fmt } from "@/lib/format";
 import { getLocale } from "@/lib/locale";
 import { translator } from "@/lib/i18n";
 import LangSwitch from "./LangSwitch";
+import MobileMenu from "./MobileMenu";
 
 export default async function SiteHeader() {
   const [user, settings, locale] = await Promise.all([getCurrentUser(), getSettings(), getLocale()]);
@@ -67,17 +68,19 @@ export default async function SiteHeader() {
                     {tr("common.reseller")}
                   </Link>
                 ) : null}
-                <Link className="btn btn-sm" href="/plans">
+                <Link className="btn btn-sm hide-sm" href="/plans">
                   {tr("common.buyNow")}
                 </Link>
                 <Link className="btn btn-sm btn-primary" href="/dashboard">
                   {tr("common.dashboard")}
                 </Link>
-                <LogoutButton label={tr("common.logout")} />
+                <span className="hide-sm">
+                  <LogoutButton label={tr("common.logout")} />
+                </span>
               </>
             ) : (
               <>
-                <Link className="btn btn-sm" href="/login">
+                <Link className="btn btn-sm hide-sm" href="/login">
                   {tr("common.login")}
                 </Link>
                 <Link className="btn btn-sm btn-primary" href="/plans">
@@ -85,7 +88,39 @@ export default async function SiteHeader() {
                 </Link>
               </>
             )}
-            <LangSwitch locale={locale} />
+            <span className="hide-sm">
+              <LangSwitch locale={locale} />
+            </span>
+
+            {/* روی موبایل، همهٔ لینک‌ها داخل این منو جمع می‌شوند */}
+            <MobileMenu
+              locale={locale}
+              showLogout={Boolean(user)}
+              labels={{
+                open: tr("common.menuOpen"),
+                close: tr("common.menuClose"),
+                language: tr("common.language"),
+                logout: tr("common.logout"),
+              }}
+              links={[
+                { href: "/plans", label: tr("nav.plans"), primary: !user },
+                { href: "/tutorial", label: tr("nav.tutorial") },
+                { href: "/faq", label: tr("nav.faq") },
+                { href: "/contact", label: tr("nav.contact") },
+                ...(user
+                  ? [
+                      { href: "/dashboard", label: tr("common.dashboard"), primary: true },
+                      ...(user.role === "admin"
+                        ? [{ href: "/admin", label: tr("common.admin") }]
+                        : []),
+                      ...(user.isReseller
+                        ? [{ href: "/reseller", label: tr("common.reseller") }]
+                        : []),
+                      { href: "/dashboard/notifications", label: tr("common.notifications") },
+                    ]
+                  : [{ href: "/login", label: tr("common.login") }]),
+              ]}
+            />
           </div>
         </div>
       </header>
