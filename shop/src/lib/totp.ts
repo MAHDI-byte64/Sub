@@ -134,7 +134,7 @@ export function newBackupCodes(count = 8): { codes: string[]; hashed: string } {
 }
 
 /** اگر کد پشتیبان درست باشد، همان کد مصرف و از فهرست حذف می‌شود */
-export function useBackupCode(
+export function redeemBackupCode(
   stored: string | null | undefined,
   code: string,
 ): { ok: boolean; rest: string; left: number } {

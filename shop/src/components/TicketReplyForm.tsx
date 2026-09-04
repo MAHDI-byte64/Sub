@@ -38,6 +38,7 @@ export default function TicketReplyForm({
   return (
     <>
       {state.error ? <div className="alert alert-error">{state.error}</div> : null}
+      {state.success ? <div className="alert alert-success">{state.success}</div> : null}
       {closeState.success ? <div className="alert alert-success">{closeState.success}</div> : null}
 
       <form action={formAction} className="composer">
@@ -69,6 +70,18 @@ export default function TicketReplyForm({
             placeholder={placeholder ?? tr("ticket.replyPlaceholder")}
             aria-label={tr("ticket.replyLabel")}
           />
+          <div className="composer-file">
+            <label className="field-hint" htmlFor={`attach-${ticketId}`}>
+              {tr("ticket.attach")}
+            </label>
+            <input
+              id={`attach-${ticketId}`}
+              name="attachment"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+            />
+          </div>
+
           <div className="composer-actions">
             <span className="field-hint">{hint ?? tr("ticket.reply")}</span>
             <div className="btn-row">

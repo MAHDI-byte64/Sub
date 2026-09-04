@@ -5,14 +5,27 @@ import { creditWallet } from "./wallet";
 import { notifyUser } from "./notify";
 import { notifyAdmin } from "./telegram";
 import { payReferralBonus } from "./referral";
-import { toman } from "./format";
+import { fmt, toman } from "./format";
+import { t, type Locale } from "./i18n";
 
 export type CompleteResult = {
   ok: boolean;
-  /** سفارش شارژ کیف پول بوده یا خرید سرویس */
-  kind: "plan" | "topup";
+  /** خرید سرویس، شارژ کیف پول یا خرید حجم اضافه */
+  kind: "plan" | "topup" | "addon";
   message: string;
 };
+
+/** عنوان خواندنی یک سفارش (پلن، شارژ کیف پول یا حجم اضافه) */
+export function orderTitle(
+  locale: Locale,
+  order: { kind: string; addonGb: number; plan?: { title: string } | null },
+): string {
+  if (order.plan?.title) return order.plan.title;
+  if (order.kind === "addon") {
+    return t(locale, "order.addonTitle", { gb: fmt(locale).num(order.addonGb) });
+  }
+  return t(locale, "order.topup");
+}
 
 /**
  * کارِ بعد از «پول رسید»: تحویل سرویس یا شارژ کیف پول، مصرف کد تخفیف،
@@ -31,7 +44,11 @@ export async function completePaidOrder(
   });
 
   if (order.status === "approved") {
-    return { ok: true, kind: order.kind as "plan" | "topup", message: "این سفارش قبلاً تکمیل شده است." };
+    return {
+      ok: true,
+      kind: order.kind as CompleteResult["kind"],
+      message: "این سفارش قبلاً تکمیل شده است.",
+    };
   }
 
   await db.order.update({
@@ -65,7 +82,7 @@ export async function completePaidOrder(
     return { ok: true, kind: "topup", message: `کیف پول شما ${toman(order.payable)} شارژ شد.` };
   }
 
-  // خرید یا تمدید سرویس
+  // خرید یا تمدید سرویس (و خرید حجم اضافه، که همان مسیر تحویل را دارد)
   await fulfillOrder(order.id);
   await payReferralBonus(order.userId, order.payable);
 
@@ -76,20 +93,32 @@ export async function completePaidOrder(
     });
   }
 
+  const isAddon = order.kind === "addon";
+  const title = orderTitle("fa", order);
+
   await notifyUser({
     userId: order.userId,
     kind: "order_approved",
-    title: "سرویس شما فعال شد",
-    body: `${order.plan?.title ?? "سرویس"} آماده استفاده است.`,
-    href: "/dashboard",
+    title: isAddon ? "حجم اضافه روی سرویس شما نشست" : "سرویس شما فعال شد",
+    body: isAddon
+      ? `${title} به سرویس شما اضافه شد؛ تاریخ انقضا تغییری نکرده است.`
+      : `${title} آماده استفاده است.`,
+    href: isAddon && order.renewServiceId ? `/dashboard/services/${order.renewServiceId}` : "/dashboard",
+    ...(isAddon && order.renewServiceId ? { serviceId: order.renewServiceId } : {}),
   });
   await notifyAdmin(
-    `✅ پرداخت آنلاین موفق\nکاربر: ${order.user.email}\nپلن: ${order.plan?.title ?? "—"}\n` +
+    `✅ پرداخت آنلاین موفق\nکاربر: ${order.user.email}\n${isAddon ? "حجم اضافه" : "پلن"}: ${title}\n` +
       `مبلغ: ${toman(order.payable)}\nسفارش: ${order.code}`,
     "order",
   );
 
-  return { ok: true, kind: "plan", message: "پرداخت انجام و سرویس شما تحویل شد." };
+  return {
+    ok: true,
+    kind: isAddon ? "addon" : "plan",
+    message: isAddon
+      ? "پرداخت انجام و حجم اضافه روی سرویس شما اعمال شد."
+      : "پرداخت انجام و سرویس شما تحویل شد.",
+  };
 }
 
 /** ثبت شکست پرداخت روی سفارش */

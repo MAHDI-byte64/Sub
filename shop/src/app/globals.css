@@ -2941,6 +2941,53 @@ tbody tr:hover {
   flex-wrap: wrap;
 }
 
+/* پیوست فایل در گفتگوی تیکت */
+.composer-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.composer-file input[type="file"] {
+  flex: 1 1 200px;
+  min-width: 0;
+  font-size: 12px;
+  padding: 8px 10px;
+}
+.attach-chip,
+.attach-thumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  max-width: 100%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  text-decoration: none;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.attach-chip:hover,
+.attach-thumb:hover {
+  border-color: rgba(244, 183, 64, 0.45);
+}
+.attach-thumb {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px;
+}
+.attach-thumb img {
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  height: auto;
+  border-radius: 8px;
+}
+
 /* پیشنهاد موضوع تیکت */
 .subject-chips {
   display: flex;

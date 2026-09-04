@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 import { randomBytes } from "node:crypto";
 import { db } from "./db";
-import { isStaff, roleLabel } from "./roles";
+import { isStaff } from "./roles";
 
 export { hashPassword, isStaff, roleLabel, verifyPassword } from "./roles";
 

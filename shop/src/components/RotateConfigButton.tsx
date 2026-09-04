@@ -1,7 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useActionState, useState } from "react";
 import { rotateServiceAction, type ShopState } from "@/app/actions/shop";
 import { t, type Locale } from "@/lib/i18n";
 import SubmitButton from "./SubmitButton";
@@ -30,16 +29,14 @@ export default function RotateConfigButton({
   locale?: Locale;
 }) {
   const [state, formAction] = useActionState<ShopState, FormData>(rotateServiceAction, {});
-  const [armed, setArmed] = useState(false);
-  const router = useRouter();
+  const [confirming, setConfirming] = useState(false);
   const tr = (key: string, vars?: Record<string, string | number>) => t(locale, key, vars);
 
-  useEffect(() => {
-    if (state.success) {
-      setArmed(false);
-      router.refresh();
-    }
-  }, [state.success, router]);
+  // بعد از موفقیت، خود اکشن صفحه را تازه می‌کند (revalidatePath)؛ اینجا فقط
+  // حالت «تأیید» را کنار می‌گذاریم و این را از روی نتیجه حساب می‌کنیم تا
+  // نیازی به setState داخل useEffect نباشد.
+  const armed = confirming && !state.success;
+  const setArmed = setConfirming;
 
   return (
     <div className={`sec-panel${armed ? " is-armed" : ""}`}>

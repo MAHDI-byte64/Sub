@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { orderTitle } from "@/lib/orders";
 import { approveOrderAction, rejectOrderAction } from "@/app/actions/admin";
 import { requireStaff } from "@/lib/auth";
 import { faDate, faNum, toman } from "@/lib/format";
@@ -96,6 +97,8 @@ export default async function AdminOrdersPage({
           <button className="btn btn-sm btn-primary" type="submit">
             جستجو
           </button>
+          {/* لینک دانلود فایل است، نه صفحه؛ باید مرورگر خودش بازش کند */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a className="btn btn-sm" href="/api/admin/export/orders">
             ⬇ خروجی CSV
           </a>
@@ -118,7 +121,7 @@ export default async function AdminOrdersPage({
               <div className="card" key={order.id}>
                 <div className="card-title">
                   <h3>
-                    <span className="mono">{order.code}</span> — {order.plan?.title ?? "شارژ کیف پول"}
+                    <span className="mono">{order.code}</span> — {orderTitle("fa", order)}
                     {order.renewServiceId ? <span className="badge" style={{ marginInlineStart: 6 }}>تمدید</span> : null}
                   </h3>
                   <span className={`badge ${badge.badge}`}>{badge.label}</span>

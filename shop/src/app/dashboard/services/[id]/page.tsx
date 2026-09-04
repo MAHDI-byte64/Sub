@@ -7,14 +7,23 @@ import { fmt, remainingDays } from "@/lib/format";
 import { getLocale } from "@/lib/locale";
 import { translator } from "@/lib/i18n";
 import { asBool, asNum, getSettings } from "@/lib/settings";
+import { customRates, ratesReady } from "@/lib/pricing";
 import CopyButton from "@/components/CopyButton";
 import UsageRing from "@/components/UsageRing";
 import RotateConfigButton from "@/components/RotateConfigButton";
+import AddonBox from "@/components/AddonBox";
 
 export const dynamic = "force-dynamic";
 
-export default async function ServiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ServiceDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ paid?: string }>;
+}) {
   const { id } = await params;
+  const { paid } = await searchParams;
   const user = await requireUser(`/dashboard/services/${id}`);
 
   const owned = await db.service.findFirst({ where: { id, userId: user.id, resellerId: null } });
@@ -44,8 +53,15 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
   const rotateEnabled = asBool(settings.rotate_enabled);
   const rotateCooldown = Math.max(0, asNum(settings.rotate_cooldown_minutes, 30));
 
+  // حجم اضافه فقط برای سرویس فعالِ حجم‌دار معنا دارد
+  const rates = customRates(settings);
+  const addonOffered = rates.addonEnabled && ratesReady(rates);
+  const canBuyAddon = addonOffered && !unlimited && !expired;
+
   return (
     <div>
+      {paid ? <div className="alert alert-success">{tr("service.addonDone")}</div> : null}
+
       <div className="card-title">
         <h1 style={{ fontSize: "1.35rem" }}>
           {service.panel.flag}{" "}
@@ -172,6 +188,26 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
           ) : null}
         </div>
       </div>
+
+      {/* خرید حجم اضافه */}
+      {addonOffered ? (
+        <div className="card">
+          <div className="card-title">
+            <h3>📦 {tr("service.addonTitle")}</h3>
+            {canBuyAddon ? <span className="badge badge-info">{tr("service.addonInstant")}</span> : null}
+          </div>
+          <p className="field-hint" style={{ marginBottom: 14 }}>
+            {tr("service.addonText")}
+          </p>
+          {canBuyAddon ? (
+            <AddonBox serviceId={service.id} rates={rates} locale={locale} />
+          ) : (
+            <div className="alert alert-info">
+              {unlimited ? tr("service.addonUnlimited") : tr("service.addonExpired")}
+            </div>
+          )}
+        </div>
+      ) : null}
 
       {/* امنیت سرویس */}
       <div className="card">

@@ -6,6 +6,7 @@ import { durationLabel, faDate, faNum, formatBytes, relativeTime, toman } from "
 import { averageResponseMs, awaitingReply, groupByDay } from "@/lib/tickets";
 import { TICKET_STATUS } from "@/lib/status";
 import TicketReplyForm from "@/components/TicketReplyForm";
+import TicketAttachment from "@/components/TicketAttachment";
 
 export const dynamic = "force-dynamic";
 
@@ -87,6 +88,14 @@ export default async function AdminTicketDetail({ params }: { params: Promise<{ 
                         <span>{relativeTime(msg.createdAt)}</span>
                       </div>
                       <div className="body">{msg.body}</div>
+                      {msg.attachment ? (
+                        <TicketAttachment
+                          file={msg.attachment}
+                          name={msg.attachmentName}
+                          label="پیوست"
+                          openLabel="📎 مشاهدهٔ پیوست"
+                        />
+                      ) : null}
                     </div>
                   </div>
                 ))}

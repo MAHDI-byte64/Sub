@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireReseller } from "@/lib/auth";
-import { resellerPlans, resellerProfile, resellerStats } from "@/lib/reseller";
+import { resellerOptions, resellerPlans, resellerProfile, resellerStats } from "@/lib/reseller";
 import { faDate, faNum, formatBytes, relativeTime, remainingDays, toman } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
 export default async function ResellerHomePage() {
   const user = await requireReseller();
-  const [profile, stats, plans, recent, expiring] = await Promise.all([
+  const [profile, stats, allPlans, recent, expiring, options] = await Promise.all([
     resellerProfile(user.id),
     resellerStats(user.id),
     resellerPlans(user.resellerOff),
@@ -28,7 +28,11 @@ export default async function ResellerHomePage() {
       orderBy: { expiresAt: "asc" },
       take: 5,
     }),
+    resellerOptions(),
   ]);
+
+  // اگر مدیر پلن‌های آماده را برای نماینده بسته باشد، فقط نرخ دلخواه می‌ماند
+  const plans = options.showPlans ? allPlans : [];
 
   const cheapest = plans.reduce(
     (best, plan) => (best === null || plan.price < best.price ? plan : best),
@@ -124,6 +128,18 @@ export default async function ResellerHomePage() {
             </Link>
           </div>
           <div className="svc-meta">
+            {options.showCustom ? (
+              <>
+                <div className="meta-row">
+                  <span>📦 هر گیگابایت</span>
+                  <b>{toman(options.rates.perGb)}</b>
+                </div>
+                <div className="meta-row">
+                  <span>📅 هر روز</span>
+                  <b>{toman(options.rates.perDay)}</b>
+                </div>
+              </>
+            ) : null}
             {plans.slice(0, 5).map((plan) => (
               <div className="meta-row" key={plan.id}>
                 <span>{plan.title}</span>

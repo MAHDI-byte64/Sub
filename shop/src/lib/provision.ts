@@ -335,7 +335,14 @@ async function fetchClient(
 }
 
 /** ورودی تمدید: می‌تواند یک پلن واقعی باشد یا مقدار دلخواه مدیر */
-export type RenewInput = PlanShape & { id?: string | null };
+export type RenewInput = PlanShape & {
+  id?: string | null;
+  /**
+   * تاریخ انقضای فعلی دست‌نخورده بماند (خرید حجم اضافه).
+   * بدون این پرچم، `days = 0` یعنی «بدون محدودیت زمانی».
+   */
+  keepExpiry?: boolean;
+};
 
 /** تمدید سرویس: افزودن حجم و زمان روی همان کلاینت‌ها */
 export async function renewServiceOnPanel(service: Service, plan: RenewInput): Promise<Service> {
@@ -356,7 +363,13 @@ export async function renewServiceOnPanel(service: Service, plan: RenewInput): P
   const addBytes = planBytes(plan.volumeGb);
   const newTotal = currentTotal === 0 || addBytes === 0 ? 0 : currentTotal + addBytes;
   const base = currentExpiry && currentExpiry > Date.now() ? currentExpiry : Date.now();
-  const newExpiry = plan.days > 0 ? (currentExpiry === 0 ? 0 : expiryFrom(plan.days, base)) : 0;
+  const newExpiry = plan.keepExpiry
+    ? currentExpiry
+    : plan.days > 0
+      ? currentExpiry === 0
+        ? 0
+        : expiryFrom(plan.days, base)
+      : 0;
 
   const makeSpec = (ref: ClientRef, template: XuiRawClient | null) =>
     buildClientFromTemplate(template, {
@@ -443,6 +456,26 @@ export async function fulfillOrder(orderId: string): Promise<Service> {
     where: { id: orderId },
     include: { plan: { include: { panels: true } }, user: true },
   });
+
+  // خرید حجم اضافه: پلن ندارد؛ فقط حجم به همان کانفیگ اضافه می‌شود و تاریخ
+  // انقضا (اگر روز نخریده باشد) دست‌نخورده می‌ماند.
+  if (order.kind === "addon") {
+    if (!order.renewServiceId) {
+      throw new XuiError("این سفارش حجم اضافه، سرویسی برای اعمال ندارد.");
+    }
+    const service = await db.service.findUniqueOrThrow({ where: { id: order.renewServiceId } });
+    const updated = await renewServiceOnPanel(service, {
+      volumeGb: order.addonGb,
+      days: order.addonDays,
+      deviceLimit: 0,
+      keepExpiry: order.addonDays <= 0,
+    });
+    await db.order.update({
+      where: { id: order.id },
+      data: { status: "approved", reviewedAt: new Date(), panelId: service.panelId },
+    });
+    return updated;
+  }
 
   if (!order.plan) {
     throw new XuiError("این سفارش پلن ندارد (سفارش شارژ کیف پول) و سرویسی برای تحویل نیست.");

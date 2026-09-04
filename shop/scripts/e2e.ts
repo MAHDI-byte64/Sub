@@ -45,15 +45,21 @@ import {
 } from "../src/lib/payments";
 import { tomanToUsdt, usdtRate } from "../src/lib/rates";
 import {
+  customQuote,
   renameCustomer,
+  resellerCreateCustomService,
   resellerCreateService,
+  resellerOptions,
   resellerPlans,
   resellerPrice,
+  resellerRenewCustom,
   resellerRenewService,
   resellerServices,
   resellerStats,
 } from "../src/lib/reseller";
-import { completePaidOrder } from "../src/lib/orders";
+import { checkCustom, customPrice, customRates, ratesReady } from "../src/lib/pricing";
+import { displayName, isImageFile, saveUpload } from "../src/lib/uploads";
+import { completePaidOrder, orderTitle } from "../src/lib/orders";
 import {
   ensureVapidKeys,
   pushPublicKey,
@@ -88,7 +94,7 @@ import {
   newTotpSecret,
   otpauthUrl,
   totpCode,
-  useBackupCode,
+  redeemBackupCode,
   verifyTotp,
 } from "../src/lib/totp";
 import { hashPassword, isStaff, roleLabel, verifyPassword } from "../src/lib/roles";
@@ -1815,12 +1821,12 @@ function securityScenario() {
   check("۸ کد پشتیبان ساخته شد", backup.codes.length === 8);
   check("کدها هش‌شده ذخیره می‌شوند", !backup.hashed.includes(backup.codes[0]));
 
-  const used = useBackupCode(backup.hashed, backup.codes[0]);
+  const used = redeemBackupCode(backup.hashed, backup.codes[0]);
   check("کد پشتیبان درست پذیرفته می‌شود", used.ok);
   check("کد مصرف‌شده از فهرست حذف می‌شود", used.left === 7, used.left);
-  check("همان کد بار دوم کار نمی‌کند", !useBackupCode(used.rest, backup.codes[0]).ok);
-  check("کد دیگر هنوز کار می‌کند", useBackupCode(used.rest, backup.codes[1]).ok);
-  check("کد ساختگی رد می‌شود", !useBackupCode(used.rest, "00000-00000").ok);
+  check("همان کد بار دوم کار نمی‌کند", !redeemBackupCode(used.rest, backup.codes[0]).ok);
+  check("کد دیگر هنوز کار می‌کند", redeemBackupCode(used.rest, backup.codes[1]).ok);
+  check("کد ساختگی رد می‌شود", !redeemBackupCode(used.rest, "00000-00000").ok);
   check("شمارش کدهای باقی‌مانده درست است", backupCodesLeft(used.rest) === 7);
 
   /* نقش‌ها */
@@ -2133,6 +2139,277 @@ async function announceScenario() {
   check("زنگ اعلان کاربر عدد درست را نشان می‌دهد", (await unreadCount(shopper.id)) === 1);
 }
 
+/* --------------------- حجم دلخواه، حجم اضافه و پیوست --------------------- */
+
+async function customPricingScenario() {
+  console.log("\n══════ حجم دلخواه، حجم اضافه و پیوست تیکت ══════");
+  await reset();
+  await saveSettings({
+    wallet_enabled: "1",
+    trial_enabled: "0",
+    custom_price_per_gb: "3000",
+    custom_price_per_day: "1000",
+    custom_round_to: "1000",
+    custom_min_gb: "5",
+    custom_max_gb: "200",
+    custom_min_days: "7",
+    custom_max_days: "180",
+    custom_device_limit: "2",
+    addon_enabled: "1",
+    reseller_custom_enabled: "1",
+    reseller_plans_visible: "1",
+  });
+
+  /* ------------------------------ حساب قیمت ------------------------------ */
+  const rates = customRates(await getSettings());
+  check("نرخ‌ها از تنظیمات خوانده شد", rates.perGb === 3000 && rates.perDay === 1000, rates);
+  check("قیمت = گیگ×نرخ + روز×نرخ", customPrice(rates, 10, 30) === 60_000, customPrice(rates, 10, 30));
+  check("قیمت فقط حجم (بدون روز)", customPrice(rates, 10, 0) === 30_000, customPrice(rates, 10, 0));
+  check("رند رو به بالا انجام می‌شود", customPrice({ ...rates, perGb: 2500, roundTo: 1000 }, 3, 0) === 8000);
+  check("بدون رند، قیمت خام می‌ماند", customPrice({ ...rates, perGb: 2500, roundTo: 0 }, 3, 0) === 7500);
+  check("نرخ صفر یعنی فروش دلخواه آماده نیست", !ratesReady({ ...rates, perGb: 0, perDay: 0 }));
+
+  check("حجم کمتر از حداقل رد می‌شود", checkCustom(rates, { gb: 1, days: 30 }).ok === false);
+  check("حجم بیشتر از حداکثر رد می‌شود", checkCustom(rates, { gb: 500, days: 30 }).ok === false);
+  check("مدت کمتر از حداقل رد می‌شود", checkCustom(rates, { gb: 10, days: 1 }).ok === false);
+  check("ورودی درست پذیرفته می‌شود", checkCustom(rates, { gb: 10, days: 30 }).ok === true);
+  check("در حالت حجم اضافه، روز بررسی نمی‌شود", checkCustom(rates, { gb: 10 }, "addon").ok === true);
+
+  /* ------------------------- خرید حجم اضافه توسط مشتری ------------------------- */
+  const panel = await db.panel.create({
+    data: {
+      name: "ADDON-PANEL",
+      location: "فنلاند",
+      url: MOCK_V2,
+      username: "admin",
+      password: "admin",
+      templateEmail: "template-vip",
+      subBase: "https://sub.test.local/sub",
+      inboundId: 1,
+    },
+  });
+  const plan = await db.plan.create({
+    data: { title: "پلن پایه", volumeGb: 20, days: 30, deviceLimit: 2, priceToman: 100_000 },
+  });
+  const user = await db.user.create({
+    data: { email: "addon@test.local", passwordHash: "scrypt:x:y", balance: 0 },
+  });
+
+  const service = await createServiceOnPanel({
+    userId: user.id,
+    userEmail: user.email,
+    plan,
+    planId: plan.id,
+    panel,
+    code: "FD-ADDON",
+    remark: "تست حجم اضافه",
+  });
+  const beforeExpiry = service.expiresAt?.getTime() ?? 0;
+  check("سرویس پایه ساخته شد", service.totalBytes === 20 * GB, service.totalBytes);
+
+  const addonOrder = await db.order.create({
+    data: {
+      code: "FD-ADDON1",
+      userId: user.id,
+      kind: "addon",
+      payMethod: "card",
+      renewServiceId: service.id,
+      addonGb: 15,
+      amount: customPrice(rates, 15, 0),
+      payable: customPrice(rates, 15, 0),
+      status: "pending_review",
+    },
+  });
+  check("مبلغ سفارش حجم اضافه درست است", addonOrder.payable === 45_000, addonOrder.payable);
+
+  const afterAddon = await fulfillOrder(addonOrder.id);
+  check("حجم اضافه روی سرویس نشست", afterAddon.totalBytes === 35 * GB, afterAddon.totalBytes);
+  check("تاریخ انقضا با حجم اضافه عوض نشد", (afterAddon.expiresAt?.getTime() ?? 0) === beforeExpiry);
+  check("لینک اشتراک بعد از حجم اضافه عوض نشد", afterAddon.subId === service.subId);
+  check(
+    "سفارش حجم اضافه تأیید شد",
+    (await db.order.findUniqueOrThrow({ where: { id: addonOrder.id } })).status === "approved",
+  );
+  check("عنوان سفارش حجم اضافه خوانا است", orderTitle("fa", { kind: "addon", addonGb: 15 }).includes("۱۵"));
+
+  // مسیر پرداخت آنلاین: completePaidOrder هم باید همین کار را بکند
+  const secondAddon = await db.order.create({
+    data: {
+      code: "FD-ADDON2",
+      userId: user.id,
+      kind: "addon",
+      payMethod: "online",
+      renewServiceId: service.id,
+      addonGb: 5,
+      amount: 15_000,
+      payable: 15_000,
+      status: "awaiting_payment",
+    },
+  });
+  const completed = await completePaidOrder(secondAddon.id, { gateway: "test", ref: "ref-addon" });
+  const afterSecond = await db.service.findUniqueOrThrow({ where: { id: service.id } });
+  check("پرداخت آنلاین حجم اضافه تکمیل شد", completed.ok && completed.kind === "addon", completed);
+  check("حجم دوم هم اضافه شد", afterSecond.totalBytes === 40 * GB, afterSecond.totalBytes);
+
+  const addonNotice = await db.notification.findFirst({
+    where: { userId: user.id, kind: "order_approved" },
+    orderBy: { createdAt: "desc" },
+  });
+  check("به کاربر اعلان حجم اضافه داده شد", Boolean(addonNotice?.title.includes("حجم اضافه")), addonNotice?.title);
+
+  // سفارش حجم اضافه بدون سرویس باید خطا بدهد
+  const orphan = await db.order.create({
+    data: { code: "FD-ADDON3", userId: user.id, kind: "addon", addonGb: 10, amount: 1, payable: 1 },
+  });
+  let orphanError = "";
+  try {
+    await fulfillOrder(orphan.id);
+  } catch (err) {
+    orphanError = (err as Error).message;
+  }
+  check("سفارش حجم اضافهٔ بی‌سرویس رد شد", orphanError.includes("سرویس"), orphanError);
+
+  /* --------------------------- فروش دلخواه نماینده --------------------------- */
+  const reseller = await db.user.create({
+    data: {
+      email: "custom-reseller@test.local",
+      passwordHash: "scrypt:x:y",
+      isReseller: true,
+      resellerOff: 20,
+      balance: 500_000,
+    },
+  });
+
+  const quote = customQuote(rates, 50, 30, 20);
+  check("قیمت دلخواه نماینده با تخفیف حساب شد", quote.listPrice === 180_000 && quote.price === 144_000, quote);
+
+  const customService = await resellerCreateCustomService({
+    resellerId: reseller.id,
+    gb: 50,
+    days: 30,
+    panelId: panel.id,
+    customerName: "مشتری دلخواه",
+  });
+  const resellerAfterSale = await db.user.findUniqueOrThrow({ where: { id: reseller.id } });
+  check("سرویس دلخواه با حجم درخواستی ساخته شد", customService.totalBytes === 50 * GB, customService.totalBytes);
+  check("سرویس دلخواه پلن ندارد", customService.planId === null);
+  check("تعداد کاربر همزمان از تنظیمات آمد", customService.deviceLimit === 2, customService.deviceLimit);
+  check("مبلغ دلخواه از اعتبار نماینده کم شد", resellerAfterSale.balance === 356_000, resellerAfterSale.balance);
+
+  const customExpiry = customService.expiresAt?.getTime() ?? 0;
+  const days30 = Math.round((customExpiry - Date.now()) / 86_400_000);
+  check("مدت دلخواه روی سرویس نشست", days30 === 30, days30);
+
+  // شارژ دلخواه: فقط حجم
+  const onlyVolume = await resellerRenewCustom({
+    resellerId: reseller.id,
+    serviceId: customService.id,
+    gb: 10,
+    days: 0,
+  });
+  check("شارژ فقط‌حجم، حجم را زیاد کرد", onlyVolume.totalBytes === 60 * GB, onlyVolume.totalBytes);
+  check(
+    "شارژ فقط‌حجم، تاریخ انقضا را دست نزد",
+    Math.abs((onlyVolume.expiresAt?.getTime() ?? 0) - customExpiry) < 1000,
+  );
+
+  // شارژ دلخواه: حجم و زمان
+  const withDays = await resellerRenewCustom({
+    resellerId: reseller.id,
+    serviceId: customService.id,
+    gb: 10,
+    days: 30,
+  });
+  const extended = Math.round(((withDays.expiresAt?.getTime() ?? 0) - customExpiry) / 86_400_000);
+  check("شارژ با روز، اعتبار را تمدید کرد", extended === 30, extended);
+  check("حجم شارژ دوم هم اضافه شد", withDays.totalBytes === 70 * GB, withDays.totalBytes);
+
+  const renewTx = await db.walletTx.findFirst({
+    where: { userId: reseller.id, kind: "reseller_renew" },
+    orderBy: { createdAt: "desc" },
+  });
+  check("تراکنش شارژ دلخواه ثبت شد", (renewTx?.amount ?? 0) < 0, renewTx?.amount);
+
+  // ورودی نامعتبر: نه پولی کم می‌شود نه سرویسی ساخته
+  const balanceBefore = (await db.user.findUniqueOrThrow({ where: { id: reseller.id } })).balance;
+  let badInput = "";
+  try {
+    await resellerCreateCustomService({ resellerId: reseller.id, gb: 1, days: 30, customerName: "" });
+  } catch (err) {
+    badInput = (err as Error).message;
+  }
+  check("حجم خارج از محدوده رد شد", badInput.includes("کمترین حجم"), badInput);
+  check(
+    "بعد از ورودی نامعتبر، اعتبار دست‌نخورده ماند",
+    (await db.user.findUniqueOrThrow({ where: { id: reseller.id } })).balance === balanceBefore,
+  );
+
+  /* ------------------------- کلیدهای روشن/خاموش مدیر ------------------------- */
+  await saveSettings({ reseller_plans_visible: "0" });
+  const hiddenPlans = await resellerOptions();
+  check("با خاموش‌کردن پلن‌ها، نمایش پلن قطع شد", !hiddenPlans.showPlans);
+  let planBlocked = "";
+  try {
+    await resellerCreateService({ resellerId: reseller.id, planId: plan.id, customerName: "x" });
+  } catch (err) {
+    planBlocked = (err as Error).message;
+  }
+  check("فروش با پلن آماده در این حالت رد می‌شود", planBlocked.includes("پلن آماده"), planBlocked);
+
+  await saveSettings({ reseller_plans_visible: "1", reseller_custom_enabled: "0" });
+  let customBlocked = "";
+  try {
+    await resellerCreateCustomService({ resellerId: reseller.id, gb: 10, days: 30, customerName: "x" });
+  } catch (err) {
+    customBlocked = (err as Error).message;
+  }
+  check("با خاموش‌بودن فروش دلخواه، ساخت رد می‌شود", customBlocked.includes("حجم دلخواه"), customBlocked);
+  await saveSettings({ reseller_custom_enabled: "1" });
+
+  /* ---------------------------- پیوست فایل تیکت ---------------------------- */
+  const uploads = path.resolve("data/e2e-uploads");
+  process.env.UPLOAD_DIR = uploads;
+
+  const png = await saveUpload(new File([new Uint8Array([1, 2, 3, 4])], "shot.png", { type: "image/png" }));
+  check("فایل تصویری ذخیره شد", png.ok && png.fileName.endsWith(".png"), png);
+  check("پسوند فایل از نوع اعلام‌شده می‌آید", png.ok && !png.fileName.includes("shot"), png);
+
+  const badType = await saveUpload(new File([new Uint8Array([1])], "app.exe", { type: "application/x-msdownload" }));
+  check("فایل غیرمجاز رد شد", !badType.ok && badType.error.includes("PDF"), badType);
+
+  const tooBig = await saveUpload(
+    new File([new Uint8Array(7 * 1024 * 1024)], "big.png", { type: "image/png" }),
+  );
+  check("فایل بزرگ‌تر از ۶ مگابایت رد شد", !tooBig.ok && tooBig.error.includes("مگابایت"), tooBig);
+
+  const empty = await saveUpload(new File([], "empty.png", { type: "image/png" }));
+  check("فایل خالی ذخیره نمی‌شود", !empty.ok, empty);
+
+  check("نام نمایشی مسیر را حذف می‌کند", displayName("../../etc/passwd") === "passwd");
+  check("نام نمایشی کاراکتر خطرناک را پاک می‌کند", !displayName('a<b>"c.png').includes("<"));
+  check("نام خالی به برچسب پیش‌فرض می‌رسد", displayName("   ") === "پیوست");
+  check("تصویر بودن فایل تشخیص داده می‌شود", isImageFile("a.png") && !isImageFile("a.pdf"));
+
+  if (png.ok) {
+    const ticket = await db.ticket.create({
+      data: {
+        userId: user.id,
+        subject: "پیوست تست",
+        messages: {
+          create: { body: "این هم عکس", attachment: png.fileName, attachmentName: "shot.png" },
+        },
+      },
+      include: { messages: true },
+    });
+    const stored = ticket.messages[0];
+    check("پیوست روی پیام تیکت ذخیره شد", stored.attachment === png.fileName, stored.attachment);
+    check("نام اصلی فایل برای نمایش ماند", stored.attachmentName === "shot.png", stored.attachmentName);
+  }
+
+  await rm(uploads, { recursive: true, force: true });
+  delete process.env.UPLOAD_DIR;
+}
+
 async function main() {
   await scenario({
     label: "پنل نسخه ۲ — ورود با نام کاربری و رمز",
@@ -2161,6 +2438,7 @@ async function main() {
   await gatewayScenario();
   await hooshpayAndCryptoScenario();
   await resellerScenario();
+  await customPricingScenario();
   await pushScenario();
   await announceScenario();
   await resetScenario();

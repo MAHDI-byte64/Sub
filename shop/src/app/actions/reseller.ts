@@ -6,7 +6,9 @@ import { db } from "@/lib/db";
 import { requireReseller } from "@/lib/auth";
 import {
   renameCustomer,
+  resellerCreateCustomService,
   resellerCreateService,
+  resellerRenewCustom,
   resellerRenewService,
   ResellerError,
 } from "@/lib/reseller";
@@ -48,6 +50,35 @@ export async function sellServiceAction(
   }
 }
 
+/** ساخت سرویس با حجم و زمان دلخواه */
+export async function sellCustomAction(
+  _prev: ResellerState,
+  formData: FormData,
+): Promise<ResellerState> {
+  const user = await requireReseller();
+
+  const gb = Number(formData.get("gb"));
+  const days = Number(formData.get("days"));
+  const panelId = String(formData.get("panelId") || "") || null;
+  const customerName = String(formData.get("customerName") || "");
+
+  try {
+    const service = await resellerCreateCustomService({
+      resellerId: user.id,
+      gb,
+      days,
+      panelId,
+      customerName,
+    });
+    revalidatePath("/reseller");
+    revalidatePath("/reseller/services");
+    redirect(`/reseller/services/${service.id}?new=1`);
+  } catch (err) {
+    if ((err as { digest?: string }).digest?.startsWith("NEXT_REDIRECT")) throw err;
+    return { error: message(err) };
+  }
+}
+
 /** تمدید سرویس یکی از مشتری‌ها */
 export async function renewServiceAction(
   _prev: ResellerState,
@@ -63,6 +94,32 @@ export async function renewServiceAction(
     revalidatePath("/reseller/services");
     revalidatePath(`/reseller/services/${serviceId}`);
     return { success: "سرویس تمدید شد و مبلغ از موجودی شما کم شد." };
+  } catch (err) {
+    return { error: message(err) };
+  }
+}
+
+/** شارژ سرویس مشتری با حجم و زمان دلخواه */
+export async function renewCustomAction(
+  _prev: ResellerState,
+  formData: FormData,
+): Promise<ResellerState> {
+  const user = await requireReseller();
+
+  const serviceId = String(formData.get("serviceId") || "");
+  const gb = Number(formData.get("gb"));
+  const days = Number(formData.get("days") || 0);
+
+  try {
+    await resellerRenewCustom({ resellerId: user.id, serviceId, gb, days });
+    revalidatePath("/reseller/services");
+    revalidatePath(`/reseller/services/${serviceId}`);
+    return {
+      success:
+        days > 0
+          ? "سرویس با حجم و زمان دلخواه شارژ شد و مبلغ از اعتبار شما کم شد."
+          : "حجم دلخواه به سرویس اضافه شد و مبلغ از اعتبار شما کم شد.",
+    };
   } catch (err) {
     return { error: message(err) };
   }

@@ -9,6 +9,7 @@ import { translator } from "@/lib/i18n";
 import { averageResponseMs, awaitingReply, groupByDay } from "@/lib/tickets";
 import { ticketStatus } from "@/lib/status";
 import TicketReplyForm from "@/components/TicketReplyForm";
+import TicketAttachment from "@/components/TicketAttachment";
 
 export const dynamic = "force-dynamic";
 
@@ -99,6 +100,14 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
                         <span>{f.relative(msg.createdAt)}</span>
                       </div>
                       <div className="body">{msg.body}</div>
+                      {msg.attachment ? (
+                        <TicketAttachment
+                          file={msg.attachment}
+                          name={msg.attachmentName}
+                          label={tr("ticket.attachLabel")}
+                          openLabel={tr("ticket.attachOpen")}
+                        />
+                      ) : null}
                     </div>
                   </div>
                 ))}

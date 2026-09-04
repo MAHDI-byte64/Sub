@@ -48,6 +48,9 @@ jobs:
       - name: بررسی تایپ‌ها
         run: npx tsc --noEmit
 
+      - name: لینت
+        run: npm run lint
+
       - name: تست منطق فروش و پنل (پنل شبیه‌سازی‌شده)
         run: npm test
 

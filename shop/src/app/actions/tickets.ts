@@ -6,8 +6,30 @@ import { db } from "@/lib/db";
 import { getCurrentUser, isStaff } from "@/lib/auth";
 import { notifyAdmin } from "@/lib/telegram";
 import { notifyUser } from "@/lib/notify";
+import { displayName, saveAttachment } from "@/lib/uploads";
 
 export type TicketState = { error?: string; success?: string };
+
+/**
+ * پیوست پیام تیکت.
+ *
+ * فایل اختیاری است: اگر کاربر چیزی انتخاب نکرده باشد، فرم یک File خالی
+ * می‌فرستد و باید بی‌صدا رد شود؛ ولی فایل نامعتبر (نوع یا حجم) باید خطا بدهد
+ * تا کاربر بفهمد پیوستش ثبت نشده است.
+ */
+async function readAttachment(
+  formData: FormData,
+): Promise<{ ok: true; file: { attachment: string; attachmentName: string } | null } | { ok: false; error: string }> {
+  const file = formData.get("attachment");
+  if (!(file instanceof File) || file.size === 0) return { ok: true, file: null };
+
+  const saved = await saveAttachment(file);
+  if (!saved.ok) return { ok: false, error: saved.error };
+  return {
+    ok: true,
+    file: { attachment: saved.fileName, attachmentName: displayName(file.name) },
+  };
+}
 
 export async function createTicketAction(_prev: TicketState, formData: FormData): Promise<TicketState> {
   const user = await getCurrentUser();
@@ -26,17 +48,21 @@ export async function createTicketAction(_prev: TicketState, formData: FormData)
     if (owned) linkedService = owned.id;
   }
 
+  const attached = await readAttachment(formData);
+  if (!attached.ok) return { error: attached.error };
+
   const ticket = await db.ticket.create({
     data: {
       userId: user.id,
       serviceId: linkedService,
       subject,
-      messages: { create: { body, fromAdmin: false } },
+      messages: { create: { body, fromAdmin: false, ...(attached.file ?? {}) } },
     },
   });
 
   await notifyAdmin(
-    `💬 <b>تیکت جدید</b>\nموضوع: ${subject}\nکاربر: ${user.email}\n\n${body.slice(0, 300)}\n\n` +
+    `💬 <b>تیکت جدید</b>\nموضوع: ${subject}\nکاربر: ${user.email}\n` +
+      `${attached.file ? `📎 پیوست: ${attached.file.attachmentName}\n` : ""}\n${body.slice(0, 300)}\n\n` +
       `برای پاسخ، همین پیام را ریپلای کنید یا بنویسید:\n<code>/reply ${ticket.id} متن پاسخ</code>\n#T${ticket.id}`,
     "ticket",
   );
@@ -50,7 +76,9 @@ export async function replyTicketAction(_prev: TicketState, formData: FormData):
 
   const ticketId = String(formData.get("ticketId") || "");
   const body = String(formData.get("body") || "").trim();
-  if (body.length < 2) return { error: "متن پیام خالی است." };
+  const hasFile = formData.get("attachment") instanceof File && (formData.get("attachment") as File).size > 0;
+  // با پیوست، متن کوتاه هم قابل قبول است؛ بدون پیوست پیام خالی معنا ندارد
+  if (body.length < 2 && !hasFile) return { error: "متن پیام خالی است." };
 
   const isAdmin = isStaff(user.role);
   const ticket = await db.ticket.findFirst({
@@ -60,7 +88,17 @@ export async function replyTicketAction(_prev: TicketState, formData: FormData):
   if (!ticket) return { error: "تیکت پیدا نشد." };
   if (ticket.status === "closed") return { error: "این تیکت بسته شده است." };
 
-  await db.ticketMessage.create({ data: { ticketId: ticket.id, body, fromAdmin: isAdmin } });
+  const attached = await readAttachment(formData);
+  if (!attached.ok) return { error: attached.error };
+
+  await db.ticketMessage.create({
+    data: {
+      ticketId: ticket.id,
+      body: body || (attached.file ? `📎 ${attached.file.attachmentName}` : ""),
+      fromAdmin: isAdmin,
+      ...(attached.file ?? {}),
+    },
+  });
   await db.ticket.update({
     where: { id: ticket.id },
     data: { status: isAdmin ? "answered" : "open", updatedAt: new Date() },
@@ -71,14 +109,15 @@ export async function replyTicketAction(_prev: TicketState, formData: FormData):
       userId: ticket.userId,
       kind: "ticket_reply",
       title: "پشتیبانی به تیکت شما پاسخ داد",
-      body: `${ticket.subject}: ${body.slice(0, 120)}`,
+      body: `${ticket.subject}: ${body.slice(0, 120)}${attached.file ? " 📎" : ""}`,
       href: `/dashboard/tickets/${ticket.id}`,
     });
   }
 
   if (!isAdmin) {
     await notifyAdmin(
-      `💬 <b>پاسخ جدید</b> روی تیکت «${ticket.subject}»\nاز: ${ticket.user.email}\n\n${body.slice(0, 300)}\n\n` +
+      `💬 <b>پاسخ جدید</b> روی تیکت «${ticket.subject}»\nاز: ${ticket.user.email}\n` +
+        `${attached.file ? `📎 پیوست: ${attached.file.attachmentName}\n` : ""}\n${body.slice(0, 300)}\n\n` +
         `پاسخ سریع: ریپلای کنید یا <code>/reply ${ticket.id} متن</code>\n#T${ticket.id}`,
       "ticket",
     );
@@ -86,7 +125,7 @@ export async function replyTicketAction(_prev: TicketState, formData: FormData):
 
   revalidatePath(`/dashboard/tickets/${ticket.id}`);
   revalidatePath(`/admin/tickets/${ticket.id}`);
-  return { success: "پیام شما ثبت شد." };
+  return { success: attached.file ? "پیام و پیوست شما ثبت شد." : "پیام شما ثبت شد." };
 }
 
 export async function closeTicketAction(_prev: TicketState, formData: FormData): Promise<TicketState> {

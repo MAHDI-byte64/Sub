@@ -62,9 +62,13 @@ export default async function AdminSettingsPage() {
           <Link className="btn btn-sm" href="/admin/backup">
             🗄️ پشتیبان‌گیری و بازیابی
           </Link>
+          {/* لینک دانلود فایل است، نه صفحه؛ باید مرورگر خودش بازش کند */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a className="btn btn-sm" href="/api/admin/export/orders">
             ⬇ خروجی سفارش‌ها
           </a>
+          {/* لینک دانلود فایل است، نه صفحه؛ باید مرورگر خودش بازش کند */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a className="btn btn-sm" href="/api/admin/export/users">
             ⬇ خروجی کاربران
           </a>

@@ -264,7 +264,7 @@ model Order {
   id             String    @id @default(cuid())
   code           String    @unique
   userId         String
-  /// plan = خرید سرویس، topup = شارژ کیف پول
+  /// plan = خرید سرویس، topup = شارژ کیف پول، addon = خرید حجم اضافه روی سرویس
   kind           String    @default("plan")
   /// card = کارت‌به‌کارت، wallet = پرداخت از کیف پول، online = درگاه پرداخت
   payMethod      String    @default("card")
@@ -286,6 +286,9 @@ model Order {
   planId         String?
   panelId        String?
   renewServiceId String?
+  /// خرید حجم/زمان اضافه: مقداری که به سرویس renewServiceId اضافه می‌شود
+  addonGb        Int       @default(0)
+  addonDays      Int       @default(0)
   amount         Int       @default(0)
   discountId     String?
   discountAmount Int       @default(0)
@@ -374,11 +377,14 @@ model Ticket {
 }
 
 model TicketMessage {
-  id        String   @id @default(cuid())
-  ticketId  String
-  fromAdmin Boolean  @default(false)
-  body      String
-  createdAt DateTime @default(now())
+  id             String   @id @default(cuid())
+  ticketId       String
+  fromAdmin      Boolean  @default(false)
+  body           String
+  /// نام فایل پیوست روی دیسک (data/uploads) و نام اصلی آن برای نمایش
+  attachment     String?
+  attachmentName String?
+  createdAt      DateTime @default(now())
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 

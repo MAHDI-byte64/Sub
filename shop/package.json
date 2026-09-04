@@ -14,7 +14,7 @@
     "test:e2e": "bash scripts/test.sh",
     "test": "bash scripts/test.sh",
     "test:ui": "bash scripts/ui-test.sh",
-    "lint": "next lint",
+    "lint": "eslint . --max-warnings 0",
     "shots": "bash scripts/shots.sh",
     "icons": "node scripts/make-icons.mjs"
   },
@@ -36,6 +36,8 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "@types/web-push": "^3.6.4",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.4",
     "playwright-core": "^1.62.1",
     "typescript": "^5.9.3"
   },

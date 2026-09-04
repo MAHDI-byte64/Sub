@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
+import { orderTitle } from "@/lib/orders";
 import { requireUser } from "@/lib/auth";
 import { asNum, getSettings } from "@/lib/settings";
 import { activeGateways, availableMethods } from "@/lib/payments";
@@ -59,6 +60,7 @@ export default async function OrderDetailPage({
       ? new Date(order.createdAt.getTime() + expireMinutes * 60_000)
       : null;
 
+  const title = orderTitle(locale, order);
   const paid = order.status === "pending_review" || order.status === "approved";
   const delivered = order.status === "approved";
   const rejected = order.status === "rejected";
@@ -67,8 +69,8 @@ export default async function OrderDetailPage({
   const timeline: TimelineStep[] = [
     {
       title: tr("order.placed"),
-      hint: `${order.plan?.title ?? tr("order.topup")}${
-        order.renewServiceId ? tr("order.renewParen") : ""
+      hint: `${title}${
+        order.renewServiceId && order.kind !== "addon" ? tr("order.renewParen") : ""
       } — ${f.money(order.payable)}`,
       at: order.createdAt,
       state: "done",
@@ -149,8 +151,8 @@ export default async function OrderDetailPage({
             {tr("order.title")} <span className="mono gold">{order.code}</span>
           </h1>
           <p>
-            {order.plan?.title ?? tr("order.topup")}
-            {order.renewServiceId ? tr("order.renewSuffix") : ""}
+            {title}
+            {order.renewServiceId && order.kind !== "addon" ? tr("order.renewSuffix") : ""}
           </p>
         </div>
         <span className={`badge ${status.badge}`}>{status.label}</span>
@@ -311,7 +313,7 @@ export default async function OrderDetailPage({
           <div className="svc-meta">
             <div className="meta-row">
               <span>{tr("order.plan")}</span>
-              <b>{order.plan?.title ?? tr("order.topup")}</b>
+              <b>{title}</b>
             </div>
             <div className="meta-row">
               <span>{tr("order.location")}</span>

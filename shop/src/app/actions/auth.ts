@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { notifyUser } from "@/lib/notify";
-import { useBackupCode, verifyTotp } from "@/lib/totp";
+import { redeemBackupCode, verifyTotp } from "@/lib/totp";
 import { rateLimit, resetLimit } from "@/lib/ratelimit";
 import { asBool, getSettings } from "@/lib/settings";
 import { mailReady } from "@/lib/mail";
@@ -125,7 +125,7 @@ export async function verifyTotpAction(_prev: AuthState, formData: FormData): Pr
   let usedBackup = false;
 
   if (!ok) {
-    const backup = useBackupCode(user.totpBackupCodes, code);
+    const backup = redeemBackupCode(user.totpBackupCodes, code);
     if (backup.ok) {
       ok = true;
       usedBackup = true;

@@ -22,7 +22,16 @@ export function uploadPath(fileName: string): string {
   return path.join(/*turbopackIgnore: true*/ uploadDir(), safe);
 }
 
-export async function saveReceipt(file: File): Promise<{ ok: true; fileName: string } | { ok: false; error: string }> {
+export type SavedFile = { ok: true; fileName: string } | { ok: false; error: string };
+
+/**
+ * ذخیرهٔ یک فایل آپلودی (رسید پرداخت یا پیوست تیکت).
+ *
+ * نام فایل روی دیسک همیشه ساختهٔ خودمان است (زمان + بایت تصادفی) و پسوند از
+ * روی نوع اعلام‌شده انتخاب می‌شود، پس نام فرستادهٔ کاربر هیچ‌وقت به مسیر
+ * فایل راه پیدا نمی‌کند.
+ */
+export async function saveUpload(file: File): Promise<SavedFile> {
   if (!file || file.size === 0) return { ok: false, error: "فایلی انتخاب نشده است." };
   if (file.size > MAX_BYTES) return { ok: false, error: "حجم فایل نباید بیشتر از ۶ مگابایت باشد." };
   const ext = ALLOWED.get(file.type);
@@ -34,6 +43,28 @@ export async function saveReceipt(file: File): Promise<{ ok: true; fileName: str
   const buffer = Buffer.from(await file.arrayBuffer());
   await writeFile(path.join(dir, fileName), buffer);
   return { ok: true, fileName };
+}
+
+/** رسید پرداخت */
+export function saveReceipt(file: File): Promise<SavedFile> {
+  return saveUpload(file);
+}
+
+/** پیوست تیکت پشتیبانی؛ همان محدودیت‌های رسید را دارد */
+export function saveAttachment(file: File): Promise<SavedFile> {
+  return saveUpload(file);
+}
+
+/** نام امن برای نمایش (نام اصلی فایل کاربر، بدون مسیر و بدون کاراکتر خطرناک) */
+export function displayName(name: string, max = 60): string {
+  const base = name.split(/[\\/]/).pop() ?? "";
+  const clean = base.replace(/[\u0000-\u001f<>"']/g, "").trim();
+  return clean.slice(0, max) || "پیوست";
+}
+
+/** آیا این فایل تصویر است (برای نمایش پیش‌نمایش) */
+export function isImageFile(fileName: string): boolean {
+  return contentTypeOf(fileName).startsWith("image/");
 }
 
 export function contentTypeOf(fileName: string): string {

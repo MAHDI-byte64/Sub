@@ -31,6 +31,18 @@ function check(label, condition, extra) {
   }
 }
 
+/** «۴۰ گیگابایت» یا «۱۴۶,۲۵۰ تومان» → عدد (جداکننده و واحد نادیده گرفته می‌شود) */
+function faDigits(text) {
+  if (!text) return NaN;
+  const digits = text.replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).replace(/\D/g, "");
+  return digits ? Number(digits) : NaN;
+}
+
+/** حجم کل سرویس از روی متن «از ۴۰ گیگابایت» */
+function totalGbFrom(text) {
+  return faDigits((text.match(/از ([۰-۹,٬.]+) گیگابایت/) ?? [])[1]);
+}
+
 /** یک PNG کوچک به‌عنوان رسید پرداخت */
 function makeReceipt() {
   const file = path.join(tmpdir(), "receipt-test.png");
@@ -566,6 +578,45 @@ try {
   await user.goto(`${BASE}/reseller/services`, { waitUntil: "domcontentloaded" });
   check("مشتری در فهرست نمایندگی هست", (await user.textContent("body")).includes("مشتری تست نماینده"));
 
+  console.log("→ فروش نماینده با حجم و زمان دلخواه");
+  await user.goto(`${BASE}/reseller/sell`, { waitUntil: "domcontentloaded" });
+  check("گزینهٔ حجم دلخواه در پنل نماینده هست", await user.isVisible("button:has-text('حجم و زمان دلخواه')"));
+  await user.click("button:has-text('حجم و زمان دلخواه')");
+  await user.fill("#custom-gb", "50");
+  await user.fill("#custom-days", "30");
+  await user.fill("#custom-customer", "مشتری دلخواه");
+  const customPriceText = (await user.textContent("[data-testid=custom-price]")) ?? "";
+  // ۵۰×۳۰۰۰ + ۳۰×۱۵۰۰ = ۱۹۵٬۰۰۰ و با ۲۵٪ تخفیف نمایندگی: ۱۴۶٬۲۵۰
+  check("قیمت دلخواه با تخفیف نمایندگی نشان داده شد", faDigits(customPriceText) === 146250, customPriceText);
+
+  await Promise.all([
+    user.waitForURL(/reseller\/services\//, { timeout: 40000 }),
+    user.click("button:has-text('ساخت و تحویل سرویس')"),
+  ]);
+  const customSoldUrl = user.url();
+  const customBody = (await user.textContent("body")) ?? "";
+  check("سرویس دلخواه ساخته شد", customBody.includes("سرویس ساخته شد"), customBody.slice(0, 80));
+  check("حجم دلخواه روی سرویس نشست", totalGbFrom(customBody) === 50, totalGbFrom(customBody));
+
+  console.log("→ شارژ دلخواه سرویس مشتری");
+  check("کادر شارژ دلخواه در صفحهٔ مشتری هست", await user.isVisible("text=شارژ دلخواه"));
+  await user.fill("#renew-gb", "10");
+  await user.fill("#renew-days", "0");
+  const renewPriceText = (await user.textContent("[data-testid=renew-custom-price]")) ?? "";
+  // ۱۰×۳۰۰۰ = ۳۰٬۰۰۰ و با ۲۵٪ تخفیف: ۲۲٬۵۰۰
+  check("قیمت شارژ دلخواه درست حساب شد", faDigits(renewPriceText) === 22500, renewPriceText);
+
+  await user.click("button:has-text('شارژ و کسر از اعتبار')");
+  await user.waitForSelector("form:has(#renew-gb) .alert-success, form:has(#renew-gb) .alert-error", {
+    timeout: 40000,
+  });
+  const renewMsg = (await user.textContent("form:has(#renew-gb) .alert-success, form:has(#renew-gb) .alert-error")) ?? "";
+  check("شارژ دلخواه انجام شد", renewMsg.includes("حجم دلخواه"), renewMsg);
+
+  await user.goto(customSoldUrl, { waitUntil: "domcontentloaded" });
+  const afterCharge = (await user.textContent("body")) ?? "";
+  check("حجم بعد از شارژ دلخواه زیاد شد", totalGbFrom(afterCharge) === 60, totalGbFrom(afterCharge));
+
   await user.goto(`${BASE}/reseller/wallet`, { waitUntil: "domcontentloaded" });
   check("تراکنش فروش نمایندگی ثبت شد", (await user.textContent("body")).includes("فروش نمایندگی"));
 
@@ -574,6 +625,57 @@ try {
     "سرویس مشتری در پنل شخصی نماینده دیده نمی‌شود",
     !(await user.textContent("body")).includes("مشتری تست نماینده"),
   );
+
+  console.log("→ خرید حجم اضافه توسط مشتری");
+  // شارژ کیف پول کاربر تا خرید حجم اضافه در همان لحظه انجام شود
+  await admin.goto(adminUserUrl, { waitUntil: "domcontentloaded" });
+  await admin.fill("#wallet-amount", "300000");
+  await admin.fill("#wallet-note", "شارژ تست حجم اضافه");
+  await admin.click("button:has-text('اعمال')");
+  await admin.waitForSelector(".alert-success, .alert-error", { timeout: 20000 });
+
+  await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
+  await user.click("a:has-text('کانفیگ و QR')");
+  await user.waitForSelector("text=کانفیگ مستقیم", { timeout: 20000 });
+  const serviceUrl = user.url();
+  const beforeAddon = (await user.textContent("body")) ?? "";
+  const gbBefore = totalGbFrom(beforeAddon);
+  check("کادر خرید حجم اضافه در صفحهٔ سرویس هست", await user.isVisible("#addon-gb"), gbBefore);
+
+  await user.fill("#addon-gb", "10");
+  const addonPriceText = (await user.textContent("[data-testid=addon-price]")) ?? "";
+  // ۱۰ گیگ × ۳٬۰۰۰ تومان
+  check("قیمت حجم اضافه لحظه‌ای حساب شد", faDigits(addonPriceText) === 30000, addonPriceText);
+
+  await Promise.all([
+    user.waitForURL("**/checkout**", { timeout: 20000 }),
+    user.click("button:has-text('خرید حجم اضافه')"),
+  ]);
+  const addonCheckout = (await user.textContent("body")) ?? "";
+  check("صفحهٔ پرداخت حجم اضافه باز شد", user.url().includes("service="), user.url());
+  check("حجم انتخابی در خلاصهٔ سفارش آمد", addonCheckout.includes("۱۰ گیگابایت"), addonCheckout.slice(0, 120));
+  check("کد تخفیف روی حجم اضافه نمایش داده نمی‌شود", !(await user.isVisible("#discountCode")));
+
+  await Promise.all([
+    user.waitForURL(/dashboard\/services\/.*paid=/, { timeout: 40000 }),
+    user.click("button[type=submit]"),
+  ]);
+  const afterAddon = (await user.textContent("body")) ?? "";
+  check("پیام موفقیت حجم اضافه نشان داده شد", afterAddon.includes("حجم اضافه"), afterAddon.slice(0, 120));
+  check("حجم سرویس زیاد شد", totalGbFrom(afterAddon) === gbBefore + 10, [gbBefore, totalGbFrom(afterAddon)]);
+
+  await user.goto(`${BASE}/dashboard/orders`, { waitUntil: "domcontentloaded" });
+  check(
+    "سفارش حجم اضافه در فهرست سفارش‌ها آمد",
+    ((await user.textContent("body")) ?? "").includes("حجم اضافه"),
+  );
+
+  await user.goto(`${BASE}/dashboard/wallet`, { waitUntil: "domcontentloaded" });
+  check(
+    "تراکنش خرید حجم اضافه در کیف پول ثبت شد",
+    ((await user.textContent("body")) ?? "").includes("خرید حجم اضافه"),
+  );
+  await user.goto(serviceUrl, { waitUntil: "domcontentloaded" });
 
   console.log("→ نسخه انگلیسی سایت");
   await guest.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
@@ -820,15 +922,50 @@ try {
   await admin.click("button:has-text('ذخیره تنظیمات پشتیبان‌گیری')");
   await admin.waitForSelector("form:has(#backup_auto) .alert-success", { timeout: 20000 });
 
-  console.log("→ تیکت پشتیبانی");
+  console.log("→ تیکت پشتیبانی و پیوست فایل");
   await user.goto(`${BASE}/dashboard/tickets`, { waitUntil: "domcontentloaded" });
   await user.fill("#subject", "تست پشتیبانی");
   await user.fill("#body", "این یک تیکت تستی است.");
+  check("فیلد پیوست در فرم تیکت هست", await user.isVisible("#attachment"));
+  await user.setInputFiles("#attachment", makeReceipt());
   await Promise.all([
     user.waitForURL("**/dashboard/tickets/**", { timeout: 20000 }),
     user.click("button:has-text('ارسال تیکت')"),
   ]);
   check("تیکت ثبت شد", user.url().includes("/dashboard/tickets/"));
+  const ticketUrl = user.url();
+
+  const attachLink = user.locator(".chat a.attach-thumb, .chat a.attach-chip").first();
+  await attachLink.waitFor({ timeout: 20000 });
+  const attachHref = (await attachLink.getAttribute("href")) ?? "";
+  check("پیوست تیکت روی پیام نمایش داده شد", attachHref.startsWith("/api/attachment/"), attachHref);
+
+  const attachResponse = await user.request.get(`${BASE}${attachHref}`);
+  check("صاحب تیکت می‌تواند پیوست را باز کند", attachResponse.status() === 200, attachResponse.status());
+  check(
+    "پیوست با نوع درست سرو می‌شود",
+    (attachResponse.headers()["content-type"] ?? "").includes("image/"),
+    attachResponse.headers()["content-type"],
+  );
+
+  // کاربر دیگر (اینجا: بازدیدکنندهٔ بدون حساب) نباید به فایل برسد
+  const guestAttach = await guest.request.get(`${BASE}${attachHref}`);
+  check("بدون ورود، پیوست باز نمی‌شود", guestAttach.status() === 401, guestAttach.status());
+
+  // پاسخ پشتیبانی با پیوست
+  const ticketId = ticketUrl.split("/").pop();
+  await admin.goto(`${BASE}/admin/tickets/${ticketId}`, { waitUntil: "domcontentloaded" });
+  check("پیوست کاربر در پنل پشتیبانی هم دیده می‌شود", (await admin.locator("a.attach-thumb").count()) > 0);
+  await admin.fill("textarea[name=body]", "این هم تصویر راهنما.");
+  await admin.setInputFiles("input[name=attachment]", makeReceipt());
+  await admin.click("button:has-text('ارسال پاسخ')");
+  await admin.waitForFunction(() => document.querySelectorAll("a.attach-thumb").length >= 2, null, {
+    timeout: 30000,
+  });
+  check("پاسخ پشتیبانی با پیوست ثبت شد", (await admin.locator("a.attach-thumb").count()) >= 2);
+
+  await user.goto(ticketUrl, { waitUntil: "domcontentloaded" });
+  check("کاربر پیوست پشتیبانی را می‌بیند", (await user.locator("a.attach-thumb").count()) >= 2);
 
   console.log("→ نوار بالا و منوی موبایل");
   const phone = await browser.newContext({ locale: "fa-IR", viewport: { width: 360, height: 780 } });
