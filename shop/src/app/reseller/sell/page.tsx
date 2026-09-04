@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireReseller } from "@/lib/auth";
-import { resellerPlans, resellerProfile } from "@/lib/reseller";
+import { resellerOptions, resellerPlans, resellerProfile } from "@/lib/reseller";
 import { deviceLabel, faNum, planDaysLabel, planVolumeLabel, toman } from "@/lib/format";
 import SellForm from "@/components/SellForm";
 
@@ -10,23 +10,32 @@ export const metadata = { title: "فروش سرویس" };
 
 export default async function ResellerSellPage() {
   const user = await requireReseller();
-  const [profile, plans, panels] = await Promise.all([
+  const [profile, allPlans, panels, options] = await Promise.all([
     resellerProfile(user.id),
     resellerPlans(user.resellerOff),
     db.panel.findMany({ where: { isActive: true, autoDisabled: false }, orderBy: { sortOrder: "asc" } }),
+    resellerOptions(),
   ]);
+
+  // اگر مدیر نمایش پلن‌ها به نماینده را بسته باشد، فقط فروش دلخواه می‌ماند
+  const plans = options.showPlans ? allPlans : [];
+  const canSell = (plans.length > 0 || options.showCustom) && panels.length > 0;
 
   return (
     <div>
       <div className="page-head">
         <div>
           <h1>فروش سرویس</h1>
-          <p>پلن را انتخاب کنید؛ مبلغ عمده از اعتبار شما کم و سرویس در همان لحظه ساخته می‌شود.</p>
+          <p>
+            {options.showCustom
+              ? "پلن آماده را انتخاب کنید یا حجم و زمان را خودتان بچینید؛ مبلغ عمده از اعتبار شما کم و سرویس در همان لحظه ساخته می‌شود."
+              : "پلن را انتخاب کنید؛ مبلغ عمده از اعتبار شما کم و سرویس در همان لحظه ساخته می‌شود."}
+          </p>
         </div>
         <span className="badge badge-info">اعتبار: {toman(profile.balance)}</span>
       </div>
 
-      {plans.length && panels.length ? (
+      {canSell ? (
         <div className="grid grid-2" style={{ alignItems: "start" }}>
           <div className="card">
             <div className="card-title">
@@ -35,6 +44,9 @@ export default async function ResellerSellPage() {
             </div>
             <SellForm
               balance={profile.balance}
+              rates={options.showCustom ? options.rates : null}
+              discount={profile.discount}
+              showPlans={options.showPlans}
               plans={plans.map((plan) => ({
                 id: plan.id,
                 title: plan.title,
@@ -68,6 +80,14 @@ export default async function ResellerSellPage() {
                 <span>🔄 تمدید</span>
                 <b>از صفحهٔ همان سرویس، با همان قیمت عمده</b>
               </div>
+              {options.showCustom ? (
+                <div className="meta-row">
+                  <span>🎚️ نرخ دلخواه</span>
+                  <b>
+                    گیگ {toman(options.rates.perGb, false)} · روز {toman(options.rates.perDay, false)}
+                  </b>
+                </div>
+              ) : null}
             </div>
             <p className="field-hint" style={{ marginTop: 12 }}>
               اگر اعتبارتان کم است، از <Link href="/reseller/wallet">صفحهٔ اعتبار</Link> شارژ کنید.
@@ -78,7 +98,11 @@ export default async function ResellerSellPage() {
       ) : (
         <div className="card empty">
           <div className="empty-icon">🗂️</div>
-          <p>{plans.length ? "سرور فعالی برای تحویل وجود ندارد." : "پلنی برای فروش تعریف نشده است."}</p>
+          <p>
+            {panels.length
+              ? "راه فروشی برای شما فعال نیست: نه پلن آماده‌ای هست و نه فروش با حجم دلخواه."
+              : "سرور فعالی برای تحویل وجود ندارد."}
+          </p>
           <p className="dim">با پشتیبانی تماس بگیرید.</p>
         </div>
       )}

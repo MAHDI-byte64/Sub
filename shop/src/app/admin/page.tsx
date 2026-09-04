@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { orderTitle } from "@/lib/orders";
 import { requireStaff } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { faDate, faNum, relativeTime, toman } from "@/lib/format";
@@ -379,7 +380,7 @@ export default async function AdminHome() {
                     <tr key={order.id}>
                       <td className="mono">{order.code}</td>
                       <td className="ltr">{order.user.email}</td>
-                      <td>{order.plan?.title ?? "شارژ کیف پول"}</td>
+                      <td>{orderTitle("fa", order)}</td>
                       <td className="nowrap">{toman(order.payable)}</td>
                       <td>
                         <span className={`badge ${status.badge}`}>

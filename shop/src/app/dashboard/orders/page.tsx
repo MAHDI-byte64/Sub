@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { orderTitle } from "@/lib/orders";
 import { requireUser } from "@/lib/auth";
 import { fmt } from "@/lib/format";
 import { orderStatus } from "@/lib/status";
@@ -81,7 +82,7 @@ export default async function OrdersPage() {
                 <span className="oi">{STATUS_ICON[order.status] ?? "🧾"}</span>
                 <span className="om">
                   <b>
-                    {order.plan?.title ?? tr("dashPages.topupOrder")}
+                    {order.kind === "topup" ? tr("dashPages.topupOrder") : orderTitle(locale, order)}
                     {order.renewServiceId ? tr("dashPages.renewSuffix") : ""}
                   </b>
                   <small className="mono">{order.code}</small>

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
+import { orderTitle } from "@/lib/orders";
 import { getCurrentUser, isStaff } from "@/lib/auth";
 import { asNum, getSettings, saveSettings } from "@/lib/settings";
 import { notifyAdmin } from "@/lib/telegram";
@@ -122,12 +123,17 @@ export async function approveOrderAction(_prev: AdminState, formData: FormData):
   }
 
   await payReferralBonus(order.userId, order.payable);
+
+  const isAddon = order.kind === "addon";
+  const title = orderTitle("fa", order);
   await notifyUser({
     userId: order.userId,
     kind: "order_approved",
-    title: "سرویس شما فعال شد",
-    body: `${order.plan?.title ?? "سرویس"} آماده استفاده است.`,
-    href: "/dashboard",
+    title: isAddon ? "حجم اضافه روی سرویس شما نشست" : "سرویس شما فعال شد",
+    body: isAddon
+      ? `${title} به سرویس شما اضافه شد؛ تاریخ انقضا تغییری نکرده است.`
+      : `${title} آماده استفاده است.`,
+    href: isAddon && order.renewServiceId ? `/dashboard/services/${order.renewServiceId}` : "/dashboard",
   });
 
   if (order.discountId) {
@@ -138,14 +144,17 @@ export async function approveOrderAction(_prev: AdminState, formData: FormData):
   }
 
   await notifyAdmin(
-    `✅ سفارش ${order.code} تأیید و سرویس «${order.plan?.title ?? "—"}» برای ${order.user.email} ساخته شد.`,
+    `✅ سفارش ${order.code} تأیید و «${title}» برای ${order.user.email} ${isAddon ? "اعمال" : "ساخته"} شد.`,
     "system",
   );
-  await logAdmin("order_approved", order.code, `${order.plan?.title ?? "شارژ کیف پول"} — ${order.user.email}`);
+  await logAdmin("order_approved", order.code, `${title} — ${order.user.email}`);
 
   revalidatePath("/admin/orders");
   revalidatePath("/dashboard");
-  flash("/admin/orders?status=pending_review", `سفارش ${order.code} تأیید و سرویس تحویل شد.`);
+  flash(
+    "/admin/orders?status=pending_review",
+    isAddon ? `حجم اضافهٔ سفارش ${order.code} اعمال شد.` : `سفارش ${order.code} تأیید و سرویس تحویل شد.`,
+  );
 }
 
 export async function rejectOrderAction(_prev: AdminState, formData: FormData): Promise<AdminState> {

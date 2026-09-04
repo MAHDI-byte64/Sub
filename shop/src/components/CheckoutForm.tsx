@@ -12,6 +12,7 @@ export default function CheckoutForm({
   plan,
   panels,
   renew,
+  addon = null,
   wallet,
   methods,
   locale = "fa",
@@ -19,6 +20,8 @@ export default function CheckoutForm({
   plan: { id: string; title: string; priceToman: number; priceLabel: string };
   panels: PanelOption[];
   renew: { id: string; remark: string } | null;
+  /** خرید حجم اضافه: به‌جای پلن، حجم روی یک سرویس موجود می‌نشیند */
+  addon?: { serviceId: string; gb: number } | null;
   wallet: { enabled: boolean; balance: number };
   methods: {
     card: boolean;
@@ -61,7 +64,14 @@ export default function CheckoutForm({
 
   return (
     <form action={formAction} className="form">
-      <input type="hidden" name="planId" value={plan.id} />
+      {addon ? (
+        <>
+          <input type="hidden" name="addonServiceId" value={addon.serviceId} />
+          <input type="hidden" name="addonGb" value={addon.gb} />
+        </>
+      ) : (
+        <input type="hidden" name="planId" value={plan.id} />
+      )}
       {renew ? <input type="hidden" name="renewServiceId" value={renew.id} /> : null}
 
       {state.error ? <div className="alert alert-error">{state.error}</div> : null}
@@ -72,7 +82,7 @@ export default function CheckoutForm({
         </div>
       ) : null}
 
-      {!renew ? (
+      {!renew && !addon ? (
         <div className="field">
           <label htmlFor="panelId">{tr("checkout.selectLocation")}</label>
           <select id="panelId" name="panelId" defaultValue="">
@@ -87,6 +97,8 @@ export default function CheckoutForm({
         </div>
       ) : null}
 
+      {/* کد تخفیف روی خرید حجم اضافه اعمال نمی‌شود */}
+      {addon ? null : (
       <div className="field">
         <label htmlFor="discountCode">{tr("checkout.discount")}</label>
         <div style={{ display: "flex", gap: 8 }}>
@@ -109,6 +121,7 @@ export default function CheckoutForm({
           </span>
         ) : null}
       </div>
+      )}
 
       <div className="field">
         <label>{tr("checkout.payMethod")}</label>

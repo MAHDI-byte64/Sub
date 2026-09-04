@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
+import { orderTitle } from "@/lib/orders";
 import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { activeGateways, gatewayById, startWithGateway } from "@/lib/payments";
@@ -53,7 +54,7 @@ export default async function PayPage({ params }: { params: Promise<{ code: stri
         description:
           order.kind === "topup"
             ? `شارژ کیف پول ${settings.site_name}`
-            : `${settings.site_name} | ${order.plan?.title ?? "خرید سرویس"}`,
+            : `${settings.site_name} | ${orderTitle("fa", order)}`,
         callbackUrl: `${base}/api/pay/callback/${order.code}`,
         email: user.email,
       });

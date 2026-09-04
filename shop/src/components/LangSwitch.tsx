@@ -9,12 +9,6 @@ import { LOCALE_COOKIE, LOCALES, LOCALE_LABEL, type Locale } from "@/lib/i18n";
  * درخواست بعدی آن را بخواند و هم بین بازدیدها بماند.
  */
 export default function LangSwitch({ locale }: { locale: Locale }) {
-  function choose(next: Locale) {
-    if (next === locale) return;
-    document.cookie = `${LOCALE_COOKIE}=${next}; path=/; max-age=${365 * 24 * 60 * 60}; samesite=lax`;
-    window.location.reload();
-  }
-
   return (
     <div className="lang-switch" role="group" aria-label={locale === "fa" ? "زبان" : "Language"}>
       {LOCALES.map((code) => (
@@ -22,7 +16,11 @@ export default function LangSwitch({ locale }: { locale: Locale }) {
           key={code}
           type="button"
           className={`lang-btn${code === locale ? " is-active" : ""}`}
-          onClick={() => choose(code)}
+          onClick={() => {
+            if (code === locale) return;
+            document.cookie = `${LOCALE_COOKIE}=${code}; path=/; max-age=${365 * 24 * 60 * 60}; samesite=lax`;
+            window.location.reload();
+          }}
           lang={code}
         >
           {code === "fa" ? "فا" : "EN"}

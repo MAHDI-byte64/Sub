@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import type { Plan, Service } from "@prisma/client";
 import { db } from "./db";
 import { getSettings } from "./settings";
+import { checkCustom, customPrice, customRates, ratesReady, type CustomRates } from "./pricing";
 import { createServiceOnPanel, pickPanel, renewServiceOnPanel } from "./provision";
 import { debitWallet, WalletError } from "./wallet";
 import { toman } from "./format";
@@ -22,6 +23,39 @@ export class ResellerError extends Error {}
 export function resellerPrice(price: number, discountPercent: number): number {
   const off = Math.min(90, Math.max(0, Math.round(discountPercent)));
   return Math.max(0, Math.round((price * (100 - off)) / 100));
+}
+
+/**
+ * چه چیزی به نماینده نشان داده شود.
+ *
+ * مدیر می‌تواند پلن‌های آماده را برای نماینده‌ها خاموش کند (تا فقط دلخواه
+ * بفروشند) یا برعکس، فروش دلخواه را ببندد.
+ */
+export type ResellerOptions = {
+  rates: CustomRates;
+  showPlans: boolean;
+  showCustom: boolean;
+};
+
+export async function resellerOptions(): Promise<ResellerOptions> {
+  const rates = customRates(await getSettings());
+  return {
+    rates,
+    showPlans: rates.resellerPlans,
+    showCustom: rates.resellerCustom && ratesReady(rates),
+  };
+}
+
+/** قیمت یک ترکیب حجم/زمان دلخواه برای نمایندهٔ مشخص */
+export function customQuote(
+  rates: CustomRates,
+  gb: number,
+  days: number,
+  discountPercent: number,
+): { listPrice: number; price: number; saving: number } {
+  const listPrice = customPrice(rates, gb, days);
+  const price = resellerPrice(listPrice, discountPercent);
+  return { listPrice, price, saving: listPrice - price };
 }
 
 export type ResellerProfile = {
@@ -116,6 +150,33 @@ export async function resellerStats(resellerId: string): Promise<ResellerStats> 
   };
 }
 
+/**
+ * کسر مبلغ از اعتبار نماینده، اجرای کار روی پنل و برگرداندن پول اگر کار
+ * شکست بخورد. اول پول کم می‌شود تا دو درخواست هم‌زمان نتوانند از یک موجودی
+ * دو سرویس بسازند.
+ */
+async function spendCredit<T>(
+  resellerId: string,
+  price: number,
+  kind: "reseller_sale" | "reseller_renew",
+  note: string,
+  refundNote: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  await debitWallet(resellerId, price, kind, note);
+  try {
+    return await run();
+  } catch (err) {
+    await db.user
+      .update({ where: { id: resellerId }, data: { balance: { increment: price } } })
+      .catch(() => null);
+    await db.walletTx
+      .create({ data: { userId: resellerId, amount: price, kind: "refund", note: refundNote } })
+      .catch(() => null);
+    throw err;
+  }
+}
+
 /** ساخت سرویس تازه توسط نماینده؛ مبلغ فوری از کیف پول کم می‌شود */
 export async function resellerCreateService(input: {
   resellerId: string;
@@ -125,6 +186,11 @@ export async function resellerCreateService(input: {
 }): Promise<Service> {
   const reseller = await db.user.findUniqueOrThrow({ where: { id: input.resellerId } });
   if (!reseller.isReseller) throw new ResellerError("این حساب نمایندگی فعال ندارد.");
+
+  const options = await resellerOptions();
+  if (!options.showPlans) {
+    throw new ResellerError("فروش با پلن آماده غیرفعال است؛ از فروش با حجم دلخواه استفاده کنید.");
+  }
 
   const plan = await db.plan.findFirst({
     where: { id: input.planId, isActive: true },
@@ -146,53 +212,108 @@ export async function resellerCreateService(input: {
   const settings = await getSettings();
   const customer = input.customerName.trim().slice(0, 60);
 
-  // اول پول کم می‌شود تا دو درخواست هم‌زمان نتوانند از یک موجودی دو سرویس بسازند
-  await debitWallet(
+  return spendCredit(
     reseller.id,
     price,
     "reseller_sale",
     `${plan.title}${customer ? ` — ${customer}` : ""}`,
+    `بازگشت وجه: ساخت سرویس ناموفق بود (${plan.title})`,
+    async () => {
+      const service = await createServiceOnPanel({
+        userId: reseller.id,
+        userEmail: reseller.email,
+        plan,
+        planId: plan.id,
+        panel,
+        code: `rs-${randomBytes(3).toString("hex")}`,
+        remark: `${settings.site_name} | ${plan.title}${customer ? ` | ${customer}` : ""}`,
+      });
+
+      const tagged = await db.service.update({
+        where: { id: service.id },
+        data: { resellerId: reseller.id, customerName: customer || null },
+      });
+
+      await notifyAdmin(
+        `🤝 فروش نمایندگی\nنماینده: ${reseller.resellerName || reseller.email}\n` +
+          `پلن: ${plan.title}\nمشتری: ${customer || "—"}\nمبلغ: ${toman(price)}`,
+        "order",
+      );
+      return tagged;
+    },
   );
+}
 
-  try {
-    const service = await createServiceOnPanel({
-      userId: reseller.id,
-      userEmail: reseller.email,
-      plan,
-      planId: plan.id,
-      panel,
-      code: `rs-${randomBytes(3).toString("hex")}`,
-      remark: `${settings.site_name} | ${plan.title}${customer ? ` | ${customer}` : ""}`,
-    });
+/**
+ * فروش با حجم و زمان دلخواه.
+ *
+ * نماینده خودش گیگابایت و تعداد روز را می‌گذارد و قیمت از نرخ‌های تنظیمات
+ * (قیمت هر گیگ + قیمت هر روز) با تخفیف نمایندگی حساب می‌شود. سرویس ساخته‌شده
+ * پلن ندارد، پس تمدیدش هم دلخواه انجام می‌شود.
+ */
+export async function resellerCreateCustomService(input: {
+  resellerId: string;
+  gb: number;
+  days: number;
+  panelId?: string | null;
+  customerName: string;
+}): Promise<Service> {
+  const reseller = await db.user.findUniqueOrThrow({ where: { id: input.resellerId } });
+  if (!reseller.isReseller) throw new ResellerError("این حساب نمایندگی فعال ندارد.");
 
-    const tagged = await db.service.update({
-      where: { id: service.id },
-      data: { resellerId: reseller.id, customerName: customer || null },
-    });
+  const options = await resellerOptions();
+  if (!options.showCustom) throw new ResellerError("فروش با حجم دلخواه در حال حاضر فعال نیست.");
 
-    await notifyAdmin(
-      `🤝 فروش نمایندگی\nنماینده: ${reseller.resellerName || reseller.email}\n` +
-        `پلن: ${plan.title}\nمشتری: ${customer || "—"}\nمبلغ: ${toman(price)}`,
-      "order",
+  const checked = checkCustom(options.rates, { gb: input.gb, days: input.days });
+  if (!checked.ok) throw new ResellerError(checked.error);
+
+  const { price } = customQuote(options.rates, checked.gb, checked.days, reseller.resellerOff);
+  if (price <= 0) throw new ResellerError("قیمت این سفارش صفر شد؛ نرخ‌ها را با پشتیبانی بررسی کنید.");
+  if (reseller.balance < price) {
+    throw new ResellerError(
+      `موجودی کافی نیست. قیمت این سفارش ${toman(price)} است و موجودی شما ${toman(reseller.balance)}.`,
     );
-    return tagged;
-  } catch (err) {
-    // ساخت روی پنل شکست خورد؛ پول برمی‌گردد
-    await db.user
-      .update({ where: { id: reseller.id }, data: { balance: { increment: price } } })
-      .catch(() => null);
-    await db.walletTx
-      .create({
-        data: {
-          userId: reseller.id,
-          amount: price,
-          kind: "refund",
-          note: `بازگشت وجه: ساخت سرویس ناموفق بود (${plan.title})`,
-        },
-      })
-      .catch(() => null);
-    throw err;
   }
+
+  const panel = await pickPanel(input.panelId ?? null, null);
+  const settings = await getSettings();
+  const customer = input.customerName.trim().slice(0, 60);
+  const label = `${checked.gb} گیگ / ${checked.days} روز`;
+
+  return spendCredit(
+    reseller.id,
+    price,
+    "reseller_sale",
+    `سفارش دلخواه ${label}${customer ? ` — ${customer}` : ""}`,
+    `بازگشت وجه: ساخت سرویس ناموفق بود (${label})`,
+    async () => {
+      const service = await createServiceOnPanel({
+        userId: reseller.id,
+        userEmail: reseller.email,
+        plan: {
+          volumeGb: checked.gb,
+          days: checked.days,
+          deviceLimit: options.rates.deviceLimit,
+        },
+        planId: null,
+        panel,
+        code: `rs-${randomBytes(3).toString("hex")}`,
+        remark: `${settings.site_name} | ${label}${customer ? ` | ${customer}` : ""}`,
+      });
+
+      const tagged = await db.service.update({
+        where: { id: service.id },
+        data: { resellerId: reseller.id, customerName: customer || null },
+      });
+
+      await notifyAdmin(
+        `🤝 فروش نمایندگی (دلخواه)\nنماینده: ${reseller.resellerName || reseller.email}\n` +
+          `سفارش: ${label}\nمشتری: ${customer || "—"}\nمبلغ: ${toman(price)}`,
+        "order",
+      );
+      return tagged;
+    },
+  );
 }
 
 /** تمدید سرویس یک مشتریِ نماینده با قیمت عمده */
@@ -207,6 +328,11 @@ export async function resellerRenewService(input: {
   });
   if (!service) throw new ResellerError("این سرویس در فهرست شما نیست.");
 
+  const options = await resellerOptions();
+  if (!options.showPlans) {
+    throw new ResellerError("تمدید با پلن آماده غیرفعال است؛ از تمدید با حجم دلخواه استفاده کنید.");
+  }
+
   const plan: Plan | null = await db.plan.findFirst({
     where: { id: input.planId || service.planId || "", isActive: true },
   });
@@ -217,31 +343,65 @@ export async function resellerRenewService(input: {
     throw new ResellerError(`موجودی کافی نیست؛ برای تمدید ${toman(price)} لازم است.`);
   }
 
-  await debitWallet(
+  return spendCredit(
     reseller.id,
     price,
     "reseller_renew",
     `تمدید ${plan.title}${service.customerName ? ` — ${service.customerName}` : ""}`,
+    `بازگشت وجه: تمدید ناموفق بود (${plan.title})`,
+    () => renewServiceOnPanel(service, plan),
   );
+}
 
-  try {
-    return await renewServiceOnPanel(service, plan);
-  } catch (err) {
-    await db.user
-      .update({ where: { id: reseller.id }, data: { balance: { increment: price } } })
-      .catch(() => null);
-    await db.walletTx
-      .create({
-        data: {
-          userId: reseller.id,
-          amount: price,
-          kind: "refund",
-          note: `بازگشت وجه: تمدید ناموفق بود (${plan.title})`,
-        },
-      })
-      .catch(() => null);
-    throw err;
+/**
+ * تمدید/شارژ سرویس مشتری با حجم و زمان دلخواه.
+ *
+ * حجم به حجم فعلی اضافه می‌شود و روزها به تاریخ انقضای فعلی؛ لینک و کانفیگ
+ * مشتری عوض نمی‌شود. با روز صفر فقط حجم اضافه می‌شود.
+ */
+export async function resellerRenewCustom(input: {
+  resellerId: string;
+  serviceId: string;
+  gb: number;
+  days: number;
+}): Promise<Service> {
+  const reseller = await db.user.findUniqueOrThrow({ where: { id: input.resellerId } });
+  const service = await db.service.findFirst({
+    where: { id: input.serviceId, resellerId: reseller.id },
+  });
+  if (!service) throw new ResellerError("این سرویس در فهرست شما نیست.");
+
+  const options = await resellerOptions();
+  if (!options.showCustom) throw new ResellerError("تمدید با حجم دلخواه در حال حاضر فعال نیست.");
+
+  const days = Math.round(Number(input.days));
+  // روز صفر یعنی «فقط حجم اضافه کن»؛ در این حالت محدودهٔ روز بررسی نمی‌شود
+  const checked = checkCustom(options.rates, { gb: input.gb, days }, days > 0 ? "custom" : "addon");
+  if (!checked.ok) throw new ResellerError(checked.error);
+  const addDays = days > 0 ? checked.days : 0;
+
+  const { price } = customQuote(options.rates, checked.gb, addDays, reseller.resellerOff);
+  if (price <= 0) throw new ResellerError("قیمت این سفارش صفر شد؛ نرخ‌ها را با پشتیبانی بررسی کنید.");
+  if (reseller.balance < price) {
+    throw new ResellerError(`موجودی کافی نیست؛ برای این شارژ ${toman(price)} لازم است.`);
   }
+
+  const label = addDays > 0 ? `${checked.gb} گیگ / ${addDays} روز` : `${checked.gb} گیگ`;
+
+  return spendCredit(
+    reseller.id,
+    price,
+    "reseller_renew",
+    `شارژ دلخواه ${label}${service.customerName ? ` — ${service.customerName}` : ""}`,
+    `بازگشت وجه: شارژ ناموفق بود (${label})`,
+    () =>
+      renewServiceOnPanel(service, {
+        volumeGb: checked.gb,
+        days: addDays,
+        deviceLimit: 0,
+        keepExpiry: addDays === 0,
+      }),
+  );
 }
 
 /** تغییر نام مشتری روی یک سرویس */

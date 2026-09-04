@@ -2,6 +2,9 @@ import { parseJsonField, type XuiInbound, type XuiJsonField } from "./xui";
 
 /** ساخت لینک کانفیگ از روی اطلاعات اینباند پنل (بدون نیاز به سرویس ساب) */
 
+// ساختار JSON اینباند در هر نسخهٔ پنل و هر نوع شبکه فرق می‌کند و کلیدهایش
+// از پیش معلوم نیست؛ تایپ دقیق برایش یعنی ده‌ها cast در ادامهٔ فایل.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = Record<string, any>;
 
 /** فیلد JSON پنل ممکن است رشته (نسخه ۲) یا آبجکت (نسخه ۳) باشد */

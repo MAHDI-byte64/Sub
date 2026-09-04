@@ -132,6 +132,8 @@ export default async function AdminServicesPage({
           <button className="btn btn-sm btn-primary" type="submit">
             اعمال
           </button>
+          {/* لینک دانلود فایل است، نه صفحه؛ باید مرورگر خودش بازش کند */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a className="btn btn-sm" href="/api/admin/export/services">
             ⬇ خروجی CSV
           </a>

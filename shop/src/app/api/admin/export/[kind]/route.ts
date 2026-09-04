@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { orderTitle } from "@/lib/orders";
 import { getCurrentUser } from "@/lib/auth";
 import { logAdmin } from "@/lib/adminlog";
 
@@ -34,7 +35,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ kin
     rows = orders.map((o) => ({
       code: o.code,
       email: o.user.email,
-      plan: o.plan?.title ?? "topup",
+      plan: orderTitle("fa", o),
       panel: o.panel?.location ?? "",
       amount: o.amount,
       discount: o.discountAmount,

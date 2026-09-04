@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireReseller } from "@/lib/auth";
 import { serviceLinks, syncService } from "@/lib/provision";
-import { resellerPlans, resellerProfile } from "@/lib/reseller";
+import { resellerOptions, resellerPlans, resellerProfile } from "@/lib/reseller";
 import {
   refreshServiceAction,
   renameCustomerAction,
@@ -14,6 +14,7 @@ import { faDate, faNum, formatBytes, remainingDays, toman } from "@/lib/format";
 import ActionForm from "@/components/ActionForm";
 import CopyButton from "@/components/CopyButton";
 import UsageRing from "@/components/UsageRing";
+import CustomRenewForm from "@/components/CustomRenewForm";
 
 export const dynamic = "force-dynamic";
 
@@ -32,12 +33,14 @@ export default async function ResellerServicePage({
   if (!owned) notFound();
 
   await syncService(id, true);
-  const [service, links, plans, profile] = await Promise.all([
+  const [service, links, allPlans, profile, options] = await Promise.all([
     db.service.findUniqueOrThrow({ where: { id }, include: { panel: true, plan: true } }),
     serviceLinks(id),
     resellerPlans(user.resellerOff),
     resellerProfile(user.id),
+    resellerOptions(),
   ]);
+  const plans = options.showPlans ? allPlans : [];
 
   const unlimited = service.totalBytes <= 0;
   const remaining = unlimited ? 0 : Math.max(0, service.totalBytes - service.usedBytes);
@@ -177,10 +180,29 @@ export default async function ResellerServicePage({
                   </span>
                 </div>
               </ActionForm>
-            ) : (
+            ) : options.showCustom ? null : (
               <p className="dim">پلنی برای تمدید تعریف نشده است.</p>
             )}
           </div>
+
+          {options.showCustom ? (
+            <div className="card">
+              <div className="card-title">
+                <h3>🎚️ شارژ دلخواه</h3>
+                <span className="badge badge-info">حجم و زمان با خودتان</span>
+              </div>
+              <p className="field-hint" style={{ marginBottom: 12 }}>
+                هر مقدار حجم و مدتی که مشتری خواست را همین‌جا بزنید؛ روی همین کانفیگ می‌نشیند و
+                لینک مشتری عوض نمی‌شود.
+              </p>
+              <CustomRenewForm
+                serviceId={service.id}
+                rates={options.rates}
+                discount={profile.discount}
+                balance={profile.balance}
+              />
+            </div>
+          ) : null}
 
           <div className="card">
             <div className="card-title">

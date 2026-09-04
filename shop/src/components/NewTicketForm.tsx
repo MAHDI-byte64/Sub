@@ -81,6 +81,17 @@ export default function NewTicketForm({
         </div>
       </div>
 
+      <div className="field">
+        <label htmlFor="attachment">{tr("ticket.attach")}</label>
+        <input
+          id="attachment"
+          name="attachment"
+          type="file"
+          accept="image/jpeg,image/png,image/webp,application/pdf"
+        />
+        <span className="field-hint">{tr("ticket.attachHint")}</span>
+      </div>
+
       <SubmitButton className="btn btn-primary btn-lg">{tr("ticket.send")}</SubmitButton>
     </form>
   );

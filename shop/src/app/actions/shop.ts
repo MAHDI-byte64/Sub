@@ -8,10 +8,12 @@ import { getCurrentUser } from "@/lib/auth";
 import { saveReceipt } from "@/lib/uploads";
 import { notifyAdmin } from "@/lib/telegram";
 import { asBool, asNum, getSettings } from "@/lib/settings";
+import { checkCustom, customPrice, customRates, ratesReady } from "@/lib/pricing";
 import { createTrialService, fulfillOrder, rotateCooldownLeft, rotateService } from "@/lib/provision";
-import { availableMethods, gatewayById, pickWallet, quoteCrypto } from "@/lib/payments";
-import { creditWallet, debitWallet, WalletError } from "@/lib/wallet";
+import { availableMethods, pickWallet, quoteCrypto } from "@/lib/payments";
+import { creditWallet, debitWallet } from "@/lib/wallet";
 import { notifyUser } from "@/lib/notify";
+import { orderTitle } from "@/lib/orders";
 import { payReferralBonus } from "@/lib/referral";
 import { toman } from "@/lib/format";
 
@@ -68,40 +70,120 @@ export async function checkDiscountAction(_prev: ShopState, formData: FormData):
   return { success: `${result.label} اعمال شد: ${toman(result.amount)} کمتر می‌پردازید.` };
 }
 
-/** ثبت سفارش خرید یا تمدید */
+/**
+ * سبد خرید یک سفارش: یا یک پلن آماده است یا حجم اضافه روی یک سرویس فعال.
+ * مسیر پرداخت هر دو یکی است، پس فقط همین چند فیلد فرق می‌کند.
+ */
+type OrderItem = {
+  kind: "plan" | "addon";
+  title: string;
+  amount: number;
+  planId: string | null;
+  panelId: string | null;
+  renewServiceId: string | null;
+  addonGb: number;
+  addonDays: number;
+};
+
+/** خواندن و اعتبارسنجی سفارش «حجم اضافه» از روی فرم */
+async function addonItem(
+  userId: string,
+  serviceId: string,
+  gbInput: string,
+): Promise<OrderItem | { error: string }> {
+  const settings = await getSettings();
+  const rates = customRates(settings);
+  if (!rates.addonEnabled) return { error: "خرید حجم اضافه در حال حاضر فعال نیست." };
+  if (!ratesReady(rates)) {
+    return { error: "قیمت حجم اضافه هنوز تنظیم نشده است. با پشتیبانی تماس بگیرید." };
+  }
+
+  const service = await db.service.findFirst({
+    where: { id: serviceId, userId, resellerId: null },
+    include: { plan: true },
+  });
+  if (!service) return { error: "سرویس مورد نظر پیدا نشد." };
+  if (service.totalBytes <= 0) return { error: "این سرویس حجم نامحدود دارد و نیازی به حجم اضافه ندارد." };
+  if (service.status === "expired") {
+    return { error: "این سرویس منقضی شده است؛ ابتدا آن را تمدید کنید." };
+  }
+
+  const checked = checkCustom(rates, { gb: gbInput }, "addon");
+  if (!checked.ok) return { error: checked.error };
+
+  return {
+    kind: "addon",
+    title: `حجم اضافه (${checked.gb} گیگابایت)`,
+    amount: customPrice(rates, checked.gb, 0),
+    planId: null,
+    panelId: null,
+    renewServiceId: service.id,
+    addonGb: checked.gb,
+    addonDays: 0,
+  };
+}
+
+/** ثبت سفارش خرید، تمدید یا حجم اضافه */
 export async function createOrderAction(_prev: ShopState, formData: FormData): Promise<ShopState> {
   const user = await getCurrentUser();
   const planId = String(formData.get("planId") || "");
-  if (!user) redirect(`/login?next=${encodeURIComponent(`/checkout?plan=${planId}`)}`);
+  const addonServiceId = String(formData.get("addonServiceId") || "");
+  const addonGb = String(formData.get("addonGb") || "");
+
+  if (!user) {
+    const next = addonServiceId
+      ? `/checkout?service=${addonServiceId}&gb=${addonGb}`
+      : `/checkout?plan=${planId}`;
+    redirect(`/login?next=${encodeURIComponent(next)}`);
+  }
 
   const panelId = String(formData.get("panelId") || "") || null;
   const renewServiceId = String(formData.get("renewServiceId") || "") || null;
   const code = String(formData.get("discountCode") || "");
 
-  const plan = await db.plan.findFirst({
-    where: { id: planId, isActive: true },
-    include: { panels: true },
-  });
-  if (!plan) return { error: "پلن انتخابی در دسترس نیست." };
-  const allowedPanels = plan.panels.map((p) => p.id);
+  let item: OrderItem;
 
-  if (renewServiceId) {
-    const service = await db.service.findFirst({ where: { id: renewServiceId, userId: user.id } });
-    if (!service) return { error: "سرویس مورد نظر برای تمدید پیدا نشد." };
-  }
+  if (addonServiceId) {
+    const built = await addonItem(user.id, addonServiceId, addonGb);
+    if ("error" in built) return { error: built.error };
+    item = built;
+  } else {
+    const plan = await db.plan.findFirst({
+      where: { id: planId, isActive: true },
+      include: { panels: true },
+    });
+    if (!plan) return { error: "پلن انتخابی در دسترس نیست." };
+    const allowedPanels = plan.panels.map((p) => p.id);
 
-  if (panelId) {
-    const panel = await db.panel.findFirst({ where: { id: panelId, isActive: true } });
-    if (!panel) return { error: "سرور انتخابی در دسترس نیست." };
-    if (allowedPanels.length && !allowedPanels.includes(panelId)) {
-      return { error: "این پلن روی سرور انتخابی ارائه نمی‌شود." };
+    if (renewServiceId) {
+      const service = await db.service.findFirst({ where: { id: renewServiceId, userId: user.id } });
+      if (!service) return { error: "سرویس مورد نظر برای تمدید پیدا نشد." };
     }
+
+    if (panelId) {
+      const panel = await db.panel.findFirst({ where: { id: panelId, isActive: true } });
+      if (!panel) return { error: "سرور انتخابی در دسترس نیست." };
+      if (allowedPanels.length && !allowedPanels.includes(panelId)) {
+        return { error: "این پلن روی سرور انتخابی ارائه نمی‌شود." };
+      }
+    }
+
+    item = {
+      kind: "plan",
+      title: plan.title,
+      amount: plan.priceToman,
+      planId: plan.id,
+      panelId,
+      renewServiceId,
+      addonGb: 0,
+      addonDays: 0,
+    };
   }
 
   let discountId: string | null = null;
   let discountAmount = 0;
   if (code.trim()) {
-    const result = await resolveDiscount(code, plan.priceToman);
+    const result = await resolveDiscount(code, item.amount);
     if (result && "error" in result) return { error: result.error };
     if (result) {
       discountId = result.id;
@@ -109,7 +191,7 @@ export async function createOrderAction(_prev: ShopState, formData: FormData): P
     }
   }
 
-  const payable = Math.max(0, plan.priceToman - discountAmount);
+  const payable = Math.max(0, item.amount - discountAmount);
   const settings = await getSettings();
   const method = String(formData.get("payMethod") || "");
   const methods = await availableMethods(payable);
@@ -141,13 +223,15 @@ export async function createOrderAction(_prev: ShopState, formData: FormData): P
     data: {
       code: orderCode,
       userId: user.id,
-      kind: "plan",
+      kind: item.kind,
       payMethod: useWallet ? "wallet" : gatewayChoice ? "online" : useCrypto ? "crypto" : "card",
       gatewayId: gatewayChoice,
-      planId: plan.id,
-      panelId,
-      renewServiceId,
-      amount: plan.priceToman,
+      planId: item.planId,
+      panelId: item.panelId,
+      renewServiceId: item.renewServiceId,
+      addonGb: item.addonGb,
+      addonDays: item.addonDays,
+      amount: item.amount,
       discountId,
       discountAmount,
       payable,
@@ -175,7 +259,13 @@ export async function createOrderAction(_prev: ShopState, formData: FormData): P
     }
 
     try {
-      await debitWallet(user.id, payable, renewServiceId ? "renew" : "purchase", plan.title, order.id);
+      await debitWallet(
+        user.id,
+        payable,
+        item.kind === "addon" ? "addon" : item.renewServiceId ? "renew" : "purchase",
+        item.title,
+        order.id,
+      );
       await db.order.update({
         where: { id: order.id },
         data: { status: "pending_review", paidAt: new Date() },
@@ -188,12 +278,15 @@ export async function createOrderAction(_prev: ShopState, formData: FormData): P
       await notifyUser({
         userId: user.id,
         kind: "order_approved",
-        title: "سرویس شما آماده است",
-        body: `${plan.title} با پرداخت از کیف پول فعال شد.`,
-        href: "/dashboard",
+        title: item.kind === "addon" ? "حجم اضافه روی سرویس شما نشست" : "سرویس شما آماده است",
+        body:
+          item.kind === "addon"
+            ? `${item.title} به سرویس شما اضافه شد؛ تاریخ انقضا تغییری نکرده است.`
+            : `${item.title} با پرداخت از کیف پول فعال شد.`,
+        href: item.kind === "addon" ? `/dashboard/services/${item.renewServiceId}` : "/dashboard",
       });
       await notifyAdmin(
-        `💰 خرید آنی از کیف پول\nکاربر: ${user.email}\nپلن: ${plan.title}\nمبلغ: ${toman(payable)}`,
+        `💰 خرید آنی از کیف پول\nکاربر: ${user.email}\n${item.kind === "addon" ? "حجم اضافه" : "پلن"}: ${item.title}\nمبلغ: ${toman(payable)}`,
         "order",
       );
     } catch (err) {
@@ -208,6 +301,7 @@ export async function createOrderAction(_prev: ShopState, formData: FormData): P
       };
     }
 
+    if (item.kind === "addon") redirect(`/dashboard/services/${item.renewServiceId}?paid=${orderCode}`);
     redirect(`/dashboard?paid=${orderCode}`);
   }
 
@@ -264,7 +358,7 @@ export async function uploadReceiptAction(_prev: ShopState, formData: FormData):
       "🧾 <b>رسید پرداخت جدید</b>",
       `کد سفارش: <code>${order.code}</code>`,
       `کاربر: ${user.email}`,
-      `پلن: ${order.plan?.title ?? "شارژ کیف پول"}`,
+      `مورد: ${orderTitle("fa", order)}`,
       `مبلغ: ${toman(order.payable)}`,
       ref ? `کد پیگیری: ${ref}` : "",
     ]

@@ -27,16 +27,17 @@ export default function MobileMenu({
   labels: { open: string; close: string; language: string; logout: string };
   showLogout: boolean;
 }) {
-  const [open, setOpen] = useState(false);
   const pathname = usePathname();
-
-  // با رفتن به صفحهٔ تازه، منو خودش بسته می‌شود
-  useEffect(() => setOpen(false), [pathname]);
+  // منو برای «همین مسیر» باز می‌شود؛ با رفتن به صفحهٔ تازه (حتی با دکمهٔ برگشت
+  // مرورگر) مقدار دیگر با مسیر جاری یکی نیست و منو خودش بسته می‌شود.
+  const [openFor, setOpenFor] = useState<string | null>(null);
+  const open = openFor === pathname;
+  const setOpen = (value: boolean) => setOpenFor(value ? pathname : null);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") setOpenFor(null);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -50,12 +51,12 @@ export default function MobileMenu({
         aria-expanded={open}
         aria-controls="mobile-menu"
         aria-label={open ? labels.close : labels.open}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpen(!open)}
       >
         <span aria-hidden>{open ? "✕" : "☰"}</span>
       </button>
 
-      {open ? <div className="menu-backdrop" onClick={() => setOpen(false)} /> : null}
+      {open ? <div className="menu-backdrop" onClick={() => setOpenFor(null)} /> : null}
 
       <div className="menu-sheet" id="mobile-menu" hidden={!open}>
         <nav className="menu-links">
@@ -65,7 +66,7 @@ export default function MobileMenu({
               href={link.href}
               className={`menu-link${link.primary ? " is-primary" : ""}`}
               // بستن همان لحظهٔ کلیک؛ منتظر تغییر مسیر نمی‌مانیم
-              onClick={() => setOpen(false)}
+              onClick={() => setOpenFor(null)}
             >
               {link.label}
             </Link>

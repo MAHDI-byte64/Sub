@@ -32,6 +32,8 @@ export default async function AdminUsersPage({
           <p>حساب‌های ثبت‌شده، سفارش‌ها و وضعیت دسترسی آن‌ها.</p>
         </div>
         <div className="btn-row">
+          {/* لینک دانلود فایل است، نه صفحه؛ باید مرورگر خودش بازش کند */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a className="btn btn-sm" href="/api/admin/export/users">
             ⬇ خروجی CSV
           </a>
