@@ -36,6 +36,12 @@ export default async function DashboardPage() {
 
   const trialAvailable = asBool(settings.trial_enabled) && !user.trialUsedAt && panels.length > 0;
 
+  // اگر مدیر سرور تست را ثابت کرده باشد، انتخاب لوکیشن به مشتری نشان داده نمی‌شود
+  const fixedTrialPanel = settings.trial_panel_id?.trim()
+    ? panels.find((panel) => panel.id === settings.trial_panel_id)
+    : undefined;
+  const trialPanels = fixedTrialPanel ? [fixedTrialPanel] : panels;
+
   // خلاصهٔ وضعیت برای نوار بالای پنل
   const activeServices = services.filter((s) => s.status === "active");
   const hasUnlimited = activeServices.some((s) => s.totalBytes <= 0);
@@ -117,7 +123,7 @@ export default async function DashboardPage() {
       {trialAvailable ? (
         <TrialCard
           locale={locale}
-          panels={panels.map((p) => ({ id: p.id, flag: p.flag, location: p.location }))}
+          panels={trialPanels.map((p) => ({ id: p.id, flag: p.flag, location: p.location }))}
           volume={settings.trial_volume_gb}
           days={settings.trial_days}
         />

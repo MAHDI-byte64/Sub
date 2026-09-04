@@ -37,6 +37,7 @@ export const ACTION_LABELS: Record<string, { label: string; icon: string }> = {
   wallet_saved: { label: "ذخیره آدرس ارز دیجیتال", icon: "🪙" },
   wallet_deleted: { label: "حذف آدرس ارز دیجیتال", icon: "🗑️" },
   telegram_tested: { label: "تست ربات تلگرام", icon: "✈️" },
+  mail_tested: { label: "تست ارسال ایمیل", icon: "📧" },
   push_enabled: { label: "فعال‌سازی اعلان پوش", icon: "🔔" },
   push_broadcast: { label: "ارسال اطلاعیه پوش", icon: "📣" },
   telegram_webhook_set: { label: "فعال‌سازی ربات تلگرام", icon: "🤖" },

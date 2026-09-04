@@ -43,6 +43,11 @@ export default function TrialCard({
               ))}
             </select>
           </div>
+        ) : panels.length === 1 ? (
+          // سرور تست ثابت است؛ فقط می‌گوییم از کجا تحویل می‌شود
+          <p className="field-hint">
+            {tr("common.location")}: {panels[0].flag} {panels[0].location}
+          </p>
         ) : null}
         <SubmitButton className="btn btn-success" pendingText={tr("card.trialPending")}>
           {tr("card.trialBtn")}

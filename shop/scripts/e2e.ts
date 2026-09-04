@@ -6,7 +6,7 @@
  *   bash scripts/test.sh
  */
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { rm, utimes, writeFile } from "node:fs/promises";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { db } from "../src/lib/db";
@@ -25,6 +25,7 @@ import {
   rotateService,
   serviceLinks,
   syncService,
+  trialPanelId,
 } from "../src/lib/provision";
 import { getSettings, saveSettings } from "../src/lib/settings";
 import { creditWallet, debitWallet } from "../src/lib/wallet";
@@ -91,7 +92,14 @@ import {
   useBackupCode,
   verifyTotp,
 } from "../src/lib/totp";
-import { isStaff, roleLabel } from "../src/lib/roles";
+import { hashPassword, isStaff, roleLabel, verifyPassword } from "../src/lib/roles";
+import { sendMail } from "../src/lib/mail";
+import {
+  checkResetToken,
+  completePasswordReset,
+  pruneResetTokens,
+  requestPasswordReset,
+} from "../src/lib/reset";
 import { notifyUser } from "../src/lib/notify";
 import { fmt } from "../src/lib/format";
 import { DICT, t, type Locale } from "../src/lib/i18n";
@@ -1823,6 +1831,229 @@ function securityScenario() {
   check("برچسب نقش‌ها درست است", roleLabel("support") === "پشتیبان" && roleLabel("admin") === "مدیر");
 }
 
+/* ------------------------- سرور اکانت تست رایگان ------------------------- */
+
+async function trialPanelScenario() {
+  console.log("\n══════ انتخاب سرور اکانت تست ══════");
+  await reset();
+  await saveSettings({ trial_enabled: "1", trial_volume_gb: "1", trial_days: "1", trial_panel_id: "" });
+
+  const normal = await db.panel.create({
+    data: {
+      name: "سرور فروش", location: "آلمان", flag: "🇩🇪", url: MOCK_V2,
+      username: "admin", password: "admin", inboundId: 1,
+      templateEmail: "template-vip", multiInbound: false, sortOrder: 1,
+    },
+  });
+  const trialServer = await db.panel.create({
+    data: {
+      name: "سرور تست", location: "هلند", flag: "🇳🇱", url: MOCK_V2,
+      username: "admin", password: "admin", inboundId: 2,
+      templateEmail: "template-alt", multiInbound: false, sortOrder: 2,
+    },
+  });
+
+  const newUser = async (tag: string) =>
+    db.user.create({ data: { email: `trial-${tag}-${Date.now()}@test.local`, passwordHash: "x" } });
+
+  /* ۱) بدون تنظیم: انتخاب مشتری رعایت می‌شود */
+  const auto = await createTrialService((await newUser("auto")).id, trialServer.id);
+  check("بدون تنظیم، لوکیشن انتخابی مشتری رعایت می‌شود", auto.panelId === trialServer.id, auto.panelId);
+
+  const settings = await getSettings();
+  check("بدون تنظیم، انتخاب مشتری برگردانده می‌شود", (await trialPanelId(settings, normal.id)) === normal.id);
+  check("بدون تنظیم و بدون انتخاب مشتری، خودکار می‌ماند", (await trialPanelId(settings, null)) === null);
+
+  /* ۲) با تنظیم مدیر: انتخاب مشتری نادیده گرفته می‌شود */
+  await saveSettings({ trial_panel_id: trialServer.id });
+  const fixedSettings = await getSettings();
+  check(
+    "با تنظیم مدیر، همان سرور برگردانده می‌شود",
+    (await trialPanelId(fixedSettings, normal.id)) === trialServer.id,
+  );
+
+  const forced = await createTrialService((await newUser("forced")).id, normal.id);
+  check("تست از سرور تعیین‌شدهٔ مدیر داده می‌شود", forced.panelId === trialServer.id, forced.panelId);
+  check("سرویس تست علامت تست دارد", forced.isTrial && forced.totalBytes === GB, forced.totalBytes);
+  check("کلاینت روی اینباند همان سرور ساخته شد", forced.inboundId === 2, forced.inboundId);
+
+  /* ۳) سرور تست خاموش شود: تست بی‌جواب نمی‌ماند */
+  await db.panel.update({ where: { id: trialServer.id }, data: { isActive: false } });
+  const offSettings = await getSettings();
+  check("سرور خاموش، انتخاب را به حالت خودکار برمی‌گرداند", (await trialPanelId(offSettings, null)) === null);
+
+  const fallback = await createTrialService((await newUser("fallback")).id, null);
+  check("با خاموش‌بودن سرور تست، سرور دیگری جایگزین می‌شود", fallback.panelId === normal.id, fallback.panelId);
+
+  /* ۴) سرور تست خراب (توسط پایش کنار گذاشته شده) */
+  await db.panel.update({
+    where: { id: trialServer.id },
+    data: { isActive: true, autoDisabled: true },
+  });
+  const brokenSettings = await getSettings();
+  check(
+    "سرور خرابِ تعیین‌شده هنوز انتخاب است ولی pickPanel کنارش می‌گذارد",
+    (await trialPanelId(brokenSettings, null)) === trialServer.id,
+  );
+  const rescued = await createTrialService((await newUser("broken")).id, null);
+  check("تست روی سرور خراب ساخته نمی‌شود", rescued.panelId === normal.id, rescued.panelId);
+
+  /* ۵) سرور پاک‌شده هم نباید تست را قفل کند */
+  await saveSettings({ trial_panel_id: "panel-that-does-not-exist" });
+  const goneSettings = await getSettings();
+  check("سرور پاک‌شده به حالت خودکار برمی‌گردد", (await trialPanelId(goneSettings, null)) === null);
+
+  await saveSettings({ trial_panel_id: "" });
+}
+
+/* ------------------------- بازیابی رمز عبور ------------------------- */
+
+async function resetScenario() {
+  console.log("\n══════ بازیابی رمز عبور ══════");
+  await reset();
+
+  const SMTP_PORT = Number(process.env.MOCK_SMTP_PORT || 8894);
+  const INBOX = `http://127.0.0.1:${SMTP_PORT + 1}/_mail`;
+  const lastMail = async () => (await fetch(`${INBOX}/last`).then((r) => r.json())) as
+    | { to: string[]; subject: string; text: string }
+    | null;
+
+  await fetch(`${INBOX}/clear`).catch(() => null);
+  process.env.APP_URL = "https://shop.test.local";
+
+  const user = await db.user.create({
+    data: {
+      email: "forgot@test.local",
+      name: "کاربر فراموشکار",
+      passwordHash: hashPassword("old-password-123"),
+    },
+  });
+
+  /* ۱) بدون تنظیم SMTP هیچ ایمیلی فرستاده نمی‌شود */
+  await saveSettings({ smtp_host: "", smtp_from: "" });
+  const noSmtp = await requestPasswordReset(user.email);
+  check("بدون تنظیم SMTP، بازیابی خاموش است", noSmtp.code === "not-configured", noSmtp);
+  check("بدون SMTP، ایمیل ساخته نمی‌شود", (await db.passwordReset.count()) === 0);
+
+  /* ۲) با تنظیم SMTP، ایمیل واقعی فرستاده می‌شود */
+  await saveSettings({
+    smtp_host: "127.0.0.1",
+    smtp_port: String(SMTP_PORT),
+    smtp_secure: "0",
+    smtp_user: process.env.MOCK_SMTP_USER || "shop",
+    smtp_pass: process.env.MOCK_SMTP_PASS || "smtp-pass",
+    smtp_from: "فندق <no-reply@test.local>",
+    reset_enabled: "1",
+  });
+
+  const sent = await requestPasswordReset(user.email);
+  check("درخواست بازیابی ثبت شد", sent.code === "sent" && Boolean(sent.token), sent.code);
+
+  const mail = await lastMail();
+  check("ایمیل به همان کاربر رسید", Boolean(mail?.to?.includes(user.email)), mail?.to);
+  check("موضوع ایمیل درست است", (mail?.subject ?? "").includes("بازیابی رمز عبور"), mail?.subject);
+  check("لینک بازیابی داخل ایمیل هست", (mail?.text ?? "").includes(sent.token!), mail?.text?.slice(0, 120));
+  check(
+    "لینک روی آدرس سایت ساخته می‌شود",
+    (mail?.text ?? "").includes("https://shop.test.local/reset?token="),
+    mail?.text?.slice(0, 160),
+  );
+
+  /* ۳) خودِ توکن در دیتابیس ذخیره نمی‌شود، فقط هشش */
+  const row = await db.passwordReset.findFirstOrThrow({ where: { userId: user.id } });
+  check("توکن خام در دیتابیس نیست", row.tokenHash !== sent.token);
+  check(
+    "هش ذخیره‌شده همان SHA-256 توکن است",
+    row.tokenHash === createHash("sha256").update(sent.token!).digest("hex"),
+  );
+
+  /* ۴) ایمیل ناموجود همان پیام را می‌دهد (فهرست کاربران لو نرود) */
+  await fetch(`${INBOX}/clear`);
+  const ghost = await requestPasswordReset("nobody@test.local");
+  check("ایمیل ناموجود هم پیام یکسان می‌گیرد", ghost.code === "sent" && !ghost.token, ghost);
+  check("برای ایمیل ناموجود ایمیلی فرستاده نمی‌شود", (await lastMail()) === null);
+
+  /* ۵) توکن نامعتبر و منقضی */
+  check("توکن الکی رد می‌شود", (await checkResetToken("not-a-real-token")).code === "invalid");
+  check("توکن درست هنوز معتبر است", (await checkResetToken(sent.token!)).ok);
+
+  await db.passwordReset.update({
+    where: { id: row.id },
+    data: { expiresAt: new Date(Date.now() - 1000) },
+  });
+  check("توکن منقضی رد می‌شود", (await checkResetToken(sent.token!)).code === "expired");
+  check(
+    "با توکن منقضی رمز عوض نمی‌شود",
+    (await completePasswordReset(sent.token!, "brand-new-pass")).code === "expired",
+  );
+  await db.passwordReset.update({
+    where: { id: row.id },
+    data: { expiresAt: new Date(Date.now() + 600_000) },
+  });
+
+  /* ۶) درخواست تازه، لینک قبلی را باطل می‌کند */
+  const second = await requestPasswordReset(user.email);
+  check("درخواست تازه ثبت شد", second.code === "sent" && second.token !== sent.token);
+  check("لینک قبلی دیگر کار نمی‌کند", (await checkResetToken(sent.token!)).code === "invalid");
+  check("فقط یک درخواست باز می‌ماند", (await db.passwordReset.count({ where: { userId: user.id } })) === 1);
+
+  /* ۷) نشست‌های باز بعد از تغییر رمز بسته می‌شوند */
+  await db.session.create({
+    data: { id: "old-session-token", userId: user.id, expiresAt: new Date(Date.now() + 86_400_000) },
+  });
+
+  const done = await completePasswordReset(second.token!, "brand-new-pass-9");
+  check("رمز تازه ثبت شد", done.ok && done.code === "done", done);
+
+  const updated = await db.user.findUniqueOrThrow({ where: { id: user.id } });
+  check("رمز تازه کار می‌کند", verifyPassword("brand-new-pass-9", updated.passwordHash));
+  check("رمز قبلی دیگر کار نمی‌کند", !verifyPassword("old-password-123", updated.passwordHash));
+  check("همهٔ نشست‌ها بسته شدند", (await db.session.count({ where: { userId: user.id } })) === 0);
+  check(
+    "به کاربر اعلان تغییر رمز داده شد",
+    (await db.notification.count({ where: { userId: user.id, kind: "security" } })) === 1,
+  );
+
+  /* ۸) توکن یک‌بارمصرف است */
+  check(
+    "همان لینک بار دوم کار نمی‌کند",
+    (await completePasswordReset(second.token!, "another-pass-9")).code === "used",
+  );
+
+  /* ۹) کاربر مسدود لینک نمی‌گیرد */
+  await fetch(`${INBOX}/clear`);
+  await db.user.update({ where: { id: user.id }, data: { isBlocked: true } });
+  const blocked = await requestPasswordReset(user.email);
+  check("کاربر مسدود لینک بازیابی نمی‌گیرد", blocked.code === "sent" && !blocked.token);
+  check("برای کاربر مسدود ایمیلی نرفت", (await lastMail()) === null);
+  await db.user.update({ where: { id: user.id }, data: { isBlocked: false } });
+
+  /* ۱۰) پاک‌سازی توکن‌های قدیمی */
+  await db.passwordReset.create({
+    data: {
+      userId: user.id,
+      tokenHash: "expired-hash-for-prune",
+      expiresAt: new Date(Date.now() - 86_400_000),
+    },
+  });
+  const pruned = await pruneResetTokens();
+  check("توکن‌های منقضی و مصرف‌شده پاک شدند", pruned >= 1, pruned);
+  check("چیزی از توکن‌های باطل نمی‌ماند", (await db.passwordReset.count()) === 0);
+
+  /* ۱۱) ایمیل آزمایشی */
+  await fetch(`${INBOX}/clear`);
+  const test = await sendMail({
+    to: "admin@test.local",
+    subject: "ایمیل آزمایشی",
+    text: "سلام از فندق",
+  });
+  check("ارسال ایمیل آزمایشی موفق بود", test.ok && test.code === "sent", test);
+  check("متن ایمیل آزمایشی درست رسید", ((await lastMail())?.text ?? "").includes("سلام از فندق"));
+
+  await saveSettings({ smtp_host: "", smtp_from: "", smtp_user: "", smtp_pass: "" });
+  delete process.env.APP_URL;
+}
+
 async function main() {
   await scenario({
     label: "پنل نسخه ۲ — ورود با نام کاربری و رمز",
@@ -1852,6 +2083,8 @@ async function main() {
   await hooshpayAndCryptoScenario();
   await resellerScenario();
   await pushScenario();
+  await resetScenario();
+  await trialPanelScenario();
   await migrateScenario();
   await backupScenario();
   securityScenario();

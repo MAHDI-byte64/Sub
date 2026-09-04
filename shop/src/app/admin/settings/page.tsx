@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { db } from "@/lib/db";
 import { getSettings, SETTING_DEFS } from "@/lib/settings";
 import {
   broadcastPushAction,
   enablePushAction,
   saveSettingsAction,
   setupTelegramWebhookAction,
+  testMailAction,
   testPushAction,
   testTelegramAction,
 } from "@/app/actions/admin";
@@ -16,7 +18,14 @@ export const dynamic = "force-dynamic";
 export default async function AdminSettingsPage() {
   await requireAdmin();
 
-  const values = await getSettings();
+  const [values, panels] = await Promise.all([
+    getSettings(),
+    db.panel.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      select: { id: true, name: true, flag: true, location: true },
+    }),
+  ]);
   const groups = [...new Set(SETTING_DEFS.map((d) => d.group))];
 
   return (
@@ -36,6 +45,12 @@ export default async function AdminSettingsPage() {
           <ActionForm
             action={testTelegramAction}
             submitLabel="✈️ ارسال پیام آزمایشی تلگرام"
+            buttonClass="btn btn-sm"
+            inline
+          />
+          <ActionForm
+            action={testMailAction}
+            submitLabel="📧 ارسال ایمیل آزمایشی"
             buttonClass="btn btn-sm"
             inline
           />
@@ -126,6 +141,15 @@ export default async function AdminSettingsPage() {
                       <label htmlFor={def.key}>{def.label}</label>
                       {def.type === "textarea" ? (
                         <textarea id={def.key} name={def.key} defaultValue={values[def.key]} />
+                      ) : def.type === "panel" ? (
+                        <select id={def.key} name={def.key} defaultValue={values[def.key] ?? ""}>
+                          <option value="">خودکار (مثل خرید عادی)</option>
+                          {panels.map((panel) => (
+                            <option key={panel.id} value={panel.id}>
+                              {panel.flag} {panel.name} — {panel.location}
+                            </option>
+                          ))}
+                        </select>
                       ) : (
                         <input
                           id={def.key}

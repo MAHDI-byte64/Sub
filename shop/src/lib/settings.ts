@@ -1,6 +1,6 @@
 import { db } from "./db";
 
-export type SettingType = "text" | "textarea" | "number" | "bool" | "password";
+export type SettingType = "text" | "textarea" | "number" | "bool" | "password" | "panel";
 
 export type SettingDef = {
   key: string;
@@ -334,6 +334,14 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "trial_volume_gb", label: "حجم تست (گیگابایت)", type: "number", group: "تست رایگان", default: "1" },
   { key: "trial_days", label: "مدت تست (روز)", type: "number", group: "تست رایگان", default: "1" },
   { key: "trial_device_limit", label: "تعداد کاربر همزمان تست", type: "number", group: "تست رایگان", default: "1" },
+  {
+    key: "trial_panel_id",
+    label: "سرور اکانت تست",
+    type: "panel",
+    group: "تست رایگان",
+    default: "",
+    hint: "خالی یعنی مثل خرید عادی: مشتری لوکیشن را انتخاب می‌کند و کم‌بارترین سرور سالم داده می‌شود. با انتخاب یک سرور، همهٔ تست‌ها فقط از همان داده می‌شوند (اگر آن سرور خاموش یا خراب باشد، سرور سالم دیگری جایگزین می‌شود تا تست بی‌جواب نماند).",
+  },
 
   {
     key: "canned_replies",
@@ -350,6 +358,50 @@ export const SETTING_DEFS: SettingDef[] = [
     hint: "در صفحه پاسخ به تیکت، این‌ها به‌صورت دکمه‌های یک‌کلیکی نمایش داده می‌شوند.",
   },
   { key: "support_hours", label: "ساعات پاسخ‌گویی", type: "text", group: "پشتیبانی", default: "۲۴ ساعته، هر روز هفته" },
+
+  {
+    key: "smtp_host",
+    label: "آدرس سرور SMTP",
+    type: "text",
+    group: "ایمیل",
+    default: "",
+    hint: "مثلاً smtp.zoho.com یا mail.example.com — خالی یعنی ایمیل خاموش است و «فراموشی رمز» به کاربر نشان داده نمی‌شود.",
+  },
+  { key: "smtp_port", label: "پورت", type: "number", group: "ایمیل", default: "587", hint: "۵۸۷ برای STARTTLS، ۴۶۵ برای SSL." },
+  {
+    key: "smtp_secure",
+    label: "اتصال از ابتدا رمزگذاری‌شده (SSL)",
+    type: "bool",
+    group: "ایمیل",
+    default: "0",
+    hint: "برای پورت ۴۶۵ روشن کنید؛ پورت ۵۸۷ خودش با STARTTLS بالا می‌آید.",
+  },
+  { key: "smtp_user", label: "نام کاربری", type: "text", group: "ایمیل", default: "" },
+  { key: "smtp_pass", label: "رمز عبور", type: "password", group: "ایمیل", default: "" },
+  {
+    key: "smtp_from",
+    label: "فرستنده",
+    type: "text",
+    group: "ایمیل",
+    default: "",
+    hint: 'به شکل «فندق <no-reply@example.com>» یا فقط نشانی ایمیل.',
+  },
+  {
+    key: "smtp_insecure",
+    label: "نادیده‌گرفتن خطای گواهی SSL",
+    type: "bool",
+    group: "ایمیل",
+    default: "0",
+    hint: "فقط برای میل‌سرور شخصی با گواهی خودامضا؛ روی سرویس‌های معروف روشنش نکنید.",
+  },
+  {
+    key: "reset_enabled",
+    label: "بازیابی رمز عبور با ایمیل فعال باشد",
+    type: "bool",
+    group: "ایمیل",
+    default: "1",
+    hint: "لینک «رمزم را فراموش کرده‌ام» در صفحهٔ ورود، فقط وقتی SMTP تنظیم شده باشد نمایش داده می‌شود.",
+  },
 
   { key: "telegram_bot_token", label: "توکن ربات تلگرام", type: "password", group: "اطلاع‌رسانی", default: "", hint: "برای اطلاع‌رسانی سفارش‌ها به ادمین." },
   { key: "telegram_admin_chat_id", label: "آیدی عددی چت ادمین", type: "text", group: "اطلاع‌رسانی", default: "" },

@@ -135,7 +135,7 @@ export default function ServiceCard({
         <Link className="btn btn-sm" href={`/plans?renew=${service.id}`}>
           {expired ? tr("card.renewLong") : tr("card.renew")}
         </Link>
-        <a className="btn btn-sm" href={`v2rayng://install-sub?url=${encodeURIComponent(sub)}`}>
+        <a className="btn btn-sm" href={sub} target="_blank" rel="noreferrer">
           {tr("card.addToApp")}
         </a>
       </div>

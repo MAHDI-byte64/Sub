@@ -42,13 +42,14 @@ model User {
   createdAt       DateTime  @default(now())
 
   sessions      Session[]
+  resetTokens   PasswordReset[]
   orders        Order[]
   services      Service[]
   tickets       Ticket[]
   notifications Notification[]
   walletTxs     WalletTx[]
-  referredBy    User?          @relation("Referrals", fields: [referredById], references: [id])
-  referrals     User[]         @relation("Referrals")
+  referredBy    User?           @relation("Referrals", fields: [referredById], references: [id])
+  referrals     User[]          @relation("Referrals")
   pushSubs      PushSub[]
 }
 
@@ -95,6 +96,20 @@ model Session {
   expiresAt DateTime
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// درخواست بازیابی رمز عبور (خودِ توکن ذخیره نمی‌شود، فقط هشِ آن)
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }

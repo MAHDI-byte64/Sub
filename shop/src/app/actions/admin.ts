@@ -41,6 +41,7 @@ import { notifyUser } from "@/lib/notify";
 import { payReferralBonus } from "@/lib/referral";
 import { notifyAdmin as notifyTelegram, telegramApi } from "@/lib/telegram";
 import { faNum, formatBytes, toman } from "@/lib/format";
+import { mailReady, mailTemplate, sendMail } from "@/lib/mail";
 
 export type AdminState = { error?: string; success?: string };
 
@@ -806,6 +807,34 @@ export async function restoreBackupAction(_prev: AdminState, formData: FormData)
 /** فهرست پشتیبان‌ها برای نمایش در پنل */
 export async function backupList() {
   return listBackups();
+}
+
+/** ارسال ایمیل آزمایشی برای بررسی تنظیمات SMTP */
+export async function testMailAction(_prev: AdminState, _formData: FormData): Promise<AdminState> {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const user = await getCurrentUser();
+  const settings = await getSettings();
+  if (!mailReady(settings)) {
+    return { error: "اول آدرس سرور SMTP و فرستنده را در بخش «ایمیل» پر کنید." };
+  }
+
+  const result = await sendMail({
+    to: user!.email,
+    subject: `ایمیل آزمایشی ${settings.site_name}`,
+    text: "اگر این پیام را می‌بینید، تنظیمات SMTP درست است و بازیابی رمز عبور کار می‌کند.",
+    html: mailTemplate({
+      siteName: settings.site_name,
+      title: "ایمیل آزمایشی",
+      body: "اگر این پیام را می‌بینید، تنظیمات SMTP درست است و بازیابی رمز عبور کار می‌کند.",
+    }),
+  });
+
+  await logAdmin("mail_tested", user!.email, result.ok ? "موفق" : (result.detail ?? "ناموفق"));
+  return result.ok
+    ? { success: `ایمیل آزمایشی به ${user!.email} فرستاده شد. صندوق ورودی و اسپم را ببینید.` }
+    : { error: `ارسال ایمیل انجام نشد: ${result.detail ?? "تنظیمات را بررسی کنید."}` };
 }
 
 /* --------------------- انتقال سرویس بین سرورها --------------------- */

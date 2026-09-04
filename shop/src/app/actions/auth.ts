@@ -5,6 +5,9 @@ import { db } from "@/lib/db";
 import { notifyUser } from "@/lib/notify";
 import { useBackupCode, verifyTotp } from "@/lib/totp";
 import { rateLimit, resetLimit } from "@/lib/ratelimit";
+import { asBool, getSettings } from "@/lib/settings";
+import { mailReady } from "@/lib/mail";
+import { completePasswordReset, requestPasswordReset } from "@/lib/reset";
 import {
   createSession,
   destroySession,
@@ -187,4 +190,71 @@ export async function changePasswordAction(_prev: AuthState & { success?: string
 
   await db.user.update({ where: { id: user.id }, data: { passwordHash: hashPassword(password) } });
   return { success: "رمز عبور با موفقیت تغییر کرد." };
+}
+
+/* --------------------------- بازیابی رمز عبور --------------------------- */
+
+export type ResetState = { error?: string; success?: string };
+
+/** مرحلهٔ ۱: درخواست لینک بازیابی */
+export async function forgotPasswordAction(
+  _prev: ResetState,
+  formData: FormData,
+): Promise<ResetState> {
+  const email = normalizeEmail(String(formData.get("email") || ""));
+  if (!email) return { error: "ایمیل حساب را وارد کنید." };
+
+  const settings = await getSettings();
+  if (!asBool(settings.reset_enabled) || !mailReady(settings)) {
+    return { error: "بازیابی رمز با ایمیل روی این سایت فعال نیست؛ با پشتیبانی تماس بگیرید." };
+  }
+
+  // ۳ درخواست در هر ۱۵ دقیقه برای هر ایمیل
+  const limit = rateLimit(`reset:${email}`, 3, 15 * 60_000);
+  if (!limit.ok) {
+    return { error: `درخواست‌های زیاد. ${limit.retryAfter} ثانیه دیگر دوباره تلاش کنید.` };
+  }
+
+  const result = await requestPasswordReset(email);
+  if (result.code === "not-configured") {
+    return { error: "ارسال ایمیل روی این سایت تنظیم نشده است؛ با پشتیبانی تماس بگیرید." };
+  }
+  if (result.code === "mail-failed") {
+    return { error: "ارسال ایمیل انجام نشد. کمی بعد دوباره امتحان کنید یا به پشتیبانی بگویید." };
+  }
+
+  // پیام یکسان برای ایمیل موجود و ناموجود، تا فهرست کاربران لو نرود
+  return {
+    success:
+      "اگر این ایمیل در سایت ثبت شده باشد، لینک ساخت رمز تازه برایش فرستاده شد. صندوق ورودی و پوشهٔ اسپم را ببینید؛ لینک تا ۳۰ دقیقه معتبر است.",
+  };
+}
+
+/** مرحلهٔ ۲: ثبت رمز تازه با توکن ایمیل */
+export async function resetPasswordAction(
+  _prev: ResetState,
+  formData: FormData,
+): Promise<ResetState> {
+  const token = String(formData.get("token") || "");
+  const password = String(formData.get("password") || "");
+  const confirm = String(formData.get("confirm") || "");
+
+  if (password !== confirm) return { error: "دو رمز واردشده یکی نیستند." };
+  if (password.length < 8) return { error: "رمز عبور باید حداقل ۸ کاراکتر باشد." };
+
+  const limit = rateLimit(`reset-submit:${token.slice(0, 16)}`, 6, 15 * 60_000);
+  if (!limit.ok) return { error: "تلاش‌های زیاد. کمی بعد دوباره امتحان کنید." };
+
+  const result = await completePasswordReset(token, password);
+  if (!result.ok) {
+    const message =
+      result.code === "expired"
+        ? "این لینک منقضی شده است. دوباره درخواست بازیابی بدهید."
+        : result.code === "used"
+          ? "این لینک قبلاً استفاده شده است. اگر باز هم لازم دارید، درخواست تازه بدهید."
+          : "لینک معتبر نیست. آدرس را کامل از ایمیل کپی کنید یا درخواست تازه بدهید.";
+    return { error: message };
+  }
+
+  redirect("/login?reset=1");
 }

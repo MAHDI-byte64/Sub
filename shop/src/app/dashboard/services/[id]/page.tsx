@@ -13,17 +13,6 @@ import RotateConfigButton from "@/components/RotateConfigButton";
 
 export const dynamic = "force-dynamic";
 
-/** برنامه‌هایی که لینک اشتراک را مستقیم وارد می‌کنند */
-function quickAddLinks(sub: string) {
-  const encoded = encodeURIComponent(sub);
-  return [
-    { name: "v2rayNG", href: `v2rayng://install-sub?url=${encoded}` },
-    { name: "Hiddify", href: `hiddify://install-sub?url=${encoded}` },
-    { name: "Streisand", href: `streisand://import/${sub}` },
-    { name: "Sing-box", href: `sing-box://import-remote-profile?url=${encoded}` },
-  ];
-}
-
 export default async function ServiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser(`/dashboard/services/${id}`);
@@ -136,16 +125,19 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
             <img src={`/api/qr?d=${encodeURIComponent(links.subscription)}`} alt={tr("service.subLink")} />
           </div>
 
-          <label className="field-hint" style={{ display: "block", margin: "18px 0 8px" }}>
-            {tr("service.quickAdd")}
-          </label>
-          <div className="btn-row">
-            {quickAddLinks(links.subscription).map((app) => (
-              <a className="btn btn-sm" href={app.href} key={app.name}>
-                {app.name}
-              </a>
-            ))}
+          <div className="btn-row" style={{ marginTop: 18 }}>
+            <a
+              className="btn btn-primary btn-block"
+              href={links.subscription}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {tr("service.openSub")}
+            </a>
           </div>
+          <p className="field-hint" style={{ marginTop: 8 }}>
+            {tr("service.openSubHint")}
+          </p>
         </div>
 
         {/* کانفیگ مستقیم */}

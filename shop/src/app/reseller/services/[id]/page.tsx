@@ -17,16 +17,6 @@ import UsageRing from "@/components/UsageRing";
 
 export const dynamic = "force-dynamic";
 
-/** برنامه‌هایی که لینک اشتراک را مستقیم وارد می‌کنند */
-function quickAddLinks(sub: string) {
-  const encoded = encodeURIComponent(sub);
-  return [
-    { name: "v2rayNG", href: `v2rayng://install-sub?url=${encoded}` },
-    { name: "Hiddify", href: `hiddify://install-sub?url=${encoded}` },
-    { name: "Streisand", href: `streisand://import/${sub}` },
-  ];
-}
-
 export default async function ResellerServicePage({
   params,
   searchParams,
@@ -135,12 +125,18 @@ export default async function ResellerServicePage({
             <img src={`/api/qr?d=${encodeURIComponent(links.subscription)}`} alt="لینک اشتراک" />
           </div>
           <div className="btn-row" style={{ marginTop: 14 }}>
-            {quickAddLinks(links.subscription).map((app) => (
-              <a className="btn btn-sm" href={app.href} key={app.name}>
-                {app.name}
-              </a>
-            ))}
+            <a
+              className="btn btn-primary btn-block"
+              href={links.subscription}
+              target="_blank"
+              rel="noreferrer"
+            >
+              باز کردن صفحهٔ اشتراک
+            </a>
           </div>
+          <p className="field-hint" style={{ marginTop: 8 }}>
+            همین صفحه را می‌توانید به مشتری نشان بدهید؛ راهنمای اتصال و همهٔ کانفیگ‌ها آنجاست.
+          </p>
 
           {links.configs.length ? (
             <>
