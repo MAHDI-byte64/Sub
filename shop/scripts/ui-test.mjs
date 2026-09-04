@@ -1071,7 +1071,12 @@ try {
   await admin.waitForSelector(".copy-box code", { timeout: 20000 });
   const shownKey = ((await admin.textContent(".copy-box code")) ?? "").replace(/\s/g, "");
   check("کلید دومرحله‌ای ساخته شد", /^[A-Z2-7]{32}$/.test(shownKey), shownKey);
-  check("QR کلید نمایش داده شد", await admin.isVisible("img[alt*='QR']"));
+  const qrImage = admin.locator("img[alt*='QR']").first();
+  await qrImage.waitFor({ state: "visible", timeout: 20000 });
+  check(
+    "QR کلید نمایش داده شد",
+    await qrImage.evaluate((img) => img.complete && img.naturalWidth > 0),
+  );
 
   await admin.fill("#totp-code", "000000");
   await admin.click("button:has-text('تأیید و روشن‌کردن')");
