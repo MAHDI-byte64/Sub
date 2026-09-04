@@ -50,7 +50,7 @@ export default function Donut({
           x="90"
           y="86"
           textAnchor="middle"
-          style={{ fontFamily: "var(--font)", fontWeight: 900, fontSize: 26, fill: "#fde08a" }}
+          style={{ fontFamily: "var(--font)", fontWeight: 900, fontSize: 26, fill: "var(--gold-light)" }}
         >
           {centerValue}
         </text>
@@ -58,7 +58,7 @@ export default function Donut({
           x="90"
           y="108"
           textAnchor="middle"
-          style={{ fontFamily: "var(--font)", fontSize: 12, fill: "#8b8379" }}
+          style={{ fontFamily: "var(--font)", fontSize: 12, fill: "var(--muted)" }}
         >
           {centerLabel}
         </text>

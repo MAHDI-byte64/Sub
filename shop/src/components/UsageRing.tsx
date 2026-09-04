@@ -39,8 +39,8 @@ export default function UsageRing({
       >
         <defs>
           <linearGradient id={`gold-${id}`} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#fde08a" />
-            <stop offset="100%" stopColor="#e09a1c" />
+            <stop offset="0%" stopColor="var(--gold-light)" />
+            <stop offset="100%" stopColor="var(--gold-deep)" />
           </linearGradient>
           <linearGradient id={`green-${id}`} x1="0" y1="1" x2="1" y2="0">
             <stop offset="0%" stopColor="#2f9e63" />

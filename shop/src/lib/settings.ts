@@ -1,6 +1,6 @@
 import { db } from "./db";
 
-export type SettingType = "text" | "textarea" | "number" | "bool" | "password" | "panel";
+export type SettingType = "text" | "textarea" | "number" | "bool" | "password" | "panel" | "theme";
 
 export type SettingDef = {
   key: string;
@@ -14,6 +14,14 @@ export type SettingDef = {
 /** همه تنظیمات قابل ویرایش در پنل ادمین */
 export const SETTING_DEFS: SettingDef[] = [
   { key: "site_name", label: "نام سایت", type: "text", group: "عمومی", default: "فندق" },
+  {
+    key: "site_theme",
+    label: "تم رنگی سایت",
+    type: "theme",
+    group: "عمومی",
+    default: "fandogh",
+    hint: "رنگ‌بندی کل سایت (صفحه‌های عمومی، پنل کاربری، پنل نمایندگی و پنل مدیر) را عوض می‌کند. فقط مدیر تم را انتخاب می‌کند و برای همهٔ بازدیدکننده‌ها یکسان است.",
+  },
   { key: "site_tagline", label: "شعار سایت", type: "text", group: "عمومی", default: "اینترنت بدون محدودیت، ساده و پرسرعت" },
   { key: "site_description", label: "توضیح کوتاه (سئو)", type: "textarea", group: "عمومی", default: "خرید اشتراک پرسرعت VLESS با پشتیبانی ۲۴ ساعته، تحویل آنی و امکان تست رایگان." },
   { key: "announcement", label: "اطلاعیه بالای سایت", type: "text", group: "عمومی", default: "", hint: "خالی بگذارید تا نمایش داده نشود." },

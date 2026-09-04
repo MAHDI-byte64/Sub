@@ -1,11 +1,13 @@
 import type { MetadataRoute } from "next";
 import { getSettings } from "@/lib/settings";
+import { themeById } from "@/lib/themes";
 
 export const dynamic = "force-dynamic";
 
 /** فایل مانیفست PWA؛ نام و رنگ‌ها از تنظیمات سایت خوانده می‌شود */
 export default async function manifest(): Promise<MetadataRoute.Manifest> {
   const s = await getSettings();
+  const theme = themeById(s.site_theme);
 
   return {
     name: `${s.site_name} | ${s.site_tagline}`,
@@ -15,8 +17,8 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     scope: "/",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#04060d",
-    theme_color: "#04060d",
+    background_color: theme.themeColor,
+    theme_color: theme.themeColor,
     dir: "rtl",
     lang: "fa-IR",
     categories: ["utilities", "productivity"],

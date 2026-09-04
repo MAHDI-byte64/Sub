@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { orderTitle } from "@/lib/orders";
+import { themeById } from "@/lib/themes";
 import { getCurrentUser, isStaff } from "@/lib/auth";
 import { asNum, getSettings, saveSettings } from "@/lib/settings";
 import { notifyAdmin } from "@/lib/telegram";
@@ -445,6 +446,8 @@ export async function saveSettingsAction(_prev: AdminState, formData: FormData):
   const values: Record<string, string> = {};
   for (const def of SETTING_DEFS) {
     if (def.type === "bool") values[def.key] = formData.get(def.key) ? "1" : "0";
+    // تم ناشناخته ذخیره نمی‌شود؛ به تم پیش‌فرض برمی‌گردد
+    else if (def.type === "theme") values[def.key] = themeById(String(formData.get(def.key) ?? "")).id;
     else values[def.key] = String(formData.get(def.key) ?? "");
   }
   await saveSettings(values);

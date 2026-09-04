@@ -45,12 +45,12 @@ export default function AreaChart({
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="نمودار">
         <defs>
           <linearGradient id={`area-${id}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgba(244,183,64,0.42)" />
-            <stop offset="100%" stopColor="rgba(244,183,64,0)" />
+            <stop offset="0%" stopColor="rgba(var(--accent-rgb), 0.42)" />
+            <stop offset="100%" stopColor="rgba(var(--accent-rgb), 0)" />
           </linearGradient>
           <linearGradient id={`line-${id}`} x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#fde08a" />
-            <stop offset="100%" stopColor="#e09a1c" />
+            <stop offset="0%" stopColor="var(--gold-light)" />
+            <stop offset="100%" stopColor="var(--gold-deep)" />
           </linearGradient>
         </defs>
 
@@ -71,7 +71,13 @@ export default function AreaChart({
 
         {coords.map((c) => (
           <g key={`${c.label}-${c.x}`}>
-            <circle cx={c.x} cy={c.y} r="3.5" fill="#0b0910" stroke="#f4b740" strokeWidth="2" />
+            <circle
+              cx={c.x}
+              cy={c.y}
+              r="3.5"
+              strokeWidth="2"
+              style={{ fill: "var(--bg-2)", stroke: "var(--gold)" }}
+            />
             <title>{c.title ?? `${c.label}: ${formatValue(c.value)}`}</title>
           </g>
         ))}

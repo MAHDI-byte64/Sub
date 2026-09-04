@@ -22,6 +22,11 @@ export default function BackgroundFX() {
     const ctx = canvas.getContext("2d", { alpha: true });
     if (!ctx) return;
 
+    // رنگ ذرات از متغیرهای همان تمی می‌آید که مدیر انتخاب کرده است
+    const styles = getComputedStyle(document.documentElement);
+    const dot = styles.getPropertyValue("--particle").trim() || "rgba(252, 215, 122, 0.75)";
+    const line = styles.getPropertyValue("--particle-line").trim() || "244, 183, 64";
+
     let width = 0;
     let height = 0;
     let frame = 0;
@@ -75,7 +80,7 @@ export default function BackgroundFX() {
           const dy = points[i].y - points[j].y;
           const dist = Math.hypot(dx, dy);
           if (dist > max) continue;
-          ctx.strokeStyle = `rgba(244, 183, 64, ${(1 - dist / max) * 0.3})`;
+          ctx.strokeStyle = `rgba(${line}, ${(1 - dist / max) * 0.3})`;
           ctx.lineWidth = 0.7;
           ctx.beginPath();
           ctx.moveTo(points[i].x, points[i].y);
@@ -85,7 +90,7 @@ export default function BackgroundFX() {
       }
 
       for (const p of points) {
-        ctx.fillStyle = "rgba(252, 215, 122, 0.75)";
+        ctx.fillStyle = dot;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fill();
