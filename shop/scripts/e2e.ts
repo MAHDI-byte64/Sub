@@ -58,6 +58,7 @@ import {
   resellerStats,
 } from "../src/lib/reseller";
 import { checkCustom, customPrice, customRates, ratesReady } from "../src/lib/pricing";
+import { DEFAULT_THEME_ID, THEMES, themeById, themeCss, themeVars } from "../src/lib/themes";
 import { displayName, isImageFile, saveUpload } from "../src/lib/uploads";
 import { completePaidOrder, orderTitle } from "../src/lib/orders";
 import {
@@ -2410,6 +2411,64 @@ async function customPricingScenario() {
   delete process.env.UPLOAD_DIR;
 }
 
+/* ---------------------------------- تم سایت --------------------------------- */
+
+async function themeScenario() {
+  console.log("\n══════ تم رنگی سایت ══════");
+  await reset();
+
+  check("چند تم در دسترس است", THEMES.length >= 4, THEMES.length);
+  check("شناسهٔ تم‌ها تکراری نیست", new Set(THEMES.map((t) => t.id)).size === THEMES.length);
+  check(
+    "همهٔ تم‌ها برچسب فارسی و انگلیسی دارند",
+    THEMES.every((t) => t.label.trim() && t.labelEn.trim() && t.hint.trim()),
+  );
+  check(
+    "رنگ نوار مرورگر هر تم معتبر است",
+    THEMES.every((t) => /^#[0-9a-f]{6}$/i.test(t.themeColor)),
+    THEMES.map((t) => t.themeColor),
+  );
+
+  // هیچ تمی نباید متغیر جاافتاده داشته باشد، وگرنه بخشی از سایت رنگ تم قبلی را می‌گیرد
+  const keys = Object.keys(themeVars(THEMES[0]));
+  const complete = THEMES.every((theme) => {
+    const vars = themeVars(theme);
+    return keys.every((key) => (vars[key] ?? "").trim().length > 0);
+  });
+  check("همهٔ تم‌ها همهٔ متغیرها را دارند", complete, keys.length);
+
+  check("تم پیش‌فرض فندق است", themeById(undefined).id === DEFAULT_THEME_ID);
+  check("تم ناشناخته به پیش‌فرض برمی‌گردد", themeById("hacker-theme").id === DEFAULT_THEME_ID);
+  check("مقدار خالی به پیش‌فرض برمی‌گردد", themeById("").id === DEFAULT_THEME_ID);
+  check("تم معتبر همان تم برگردانده می‌شود", themeById("emerald").id === "emerald");
+
+  const css = themeCss(themeById("midnight"));
+  check("بلوک CSS تم ساخته شد", css.startsWith(":root{") && css.endsWith("}"), css.slice(0, 40));
+  check("رنگ اصلی در بلوک CSS هست", css.includes("--gold:#60a5fa"), css.slice(0, 120));
+  check("متغیر ذرات پس‌زمینه هم در بلوک هست", css.includes("--particle-line:"));
+  // اگر روزی مقداری از بیرون به تم راه پیدا کند، نباید بتواند از بلوک style بیرون بزند
+  const hostile = themeCss({
+    ...THEMES[0],
+    vars: { ...THEMES[0].vars, accent: "red;} </style><script>x</script>" },
+  });
+  check(
+    "مقدار دستکاری‌شده از بلوک CSS بیرون نمی‌زند",
+    !hostile.includes("<") && hostile.split("}").length === 2,
+    hostile.slice(0, 80),
+  );
+
+  // ذخیره و خواندن از تنظیمات
+  const defaults = await getSettings();
+  check("تنظیمات پیش‌فرض تم فندق است", defaults.site_theme === DEFAULT_THEME_ID, defaults.site_theme);
+
+  await saveSettings({ site_theme: "royal" });
+  const saved = await getSettings();
+  check("تم ذخیره‌شده خوانده می‌شود", saved.site_theme === "royal", saved.site_theme);
+  check("تم ذخیره‌شده به متغیر درست تبدیل می‌شود", themeVars(themeById(saved.site_theme))["--gold"] === "#a78bfa");
+
+  await saveSettings({ site_theme: DEFAULT_THEME_ID });
+}
+
 async function main() {
   await scenario({
     label: "پنل نسخه ۲ — ورود با نام کاربری و رمز",
@@ -2439,6 +2498,7 @@ async function main() {
   await hooshpayAndCryptoScenario();
   await resellerScenario();
   await customPricingScenario();
+  await themeScenario();
   await pushScenario();
   await announceScenario();
   await resetScenario();

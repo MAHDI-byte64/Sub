@@ -3,6 +3,7 @@ import "./globals.css";
 import { getSettings } from "@/lib/settings";
 import { getLocale } from "@/lib/locale";
 import { dirOf } from "@/lib/i18n";
+import { themeById, themeCss } from "@/lib/themes";
 import BackgroundFX from "@/components/BackgroundFX";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
@@ -26,16 +27,22 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export const viewport: Viewport = {
-  themeColor: "#04060d",
-  width: "device-width",
-  initialScale: 1,
-};
+export async function generateViewport(): Promise<Viewport> {
+  const settings = await getSettings();
+  return {
+    // رنگ نوار بالای مرورگر با تم انتخابی مدیر هماهنگ می‌ماند
+    themeColor: themeById(settings.site_theme).themeColor,
+    width: "device-width",
+    initialScale: 1,
+  };
+}
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const locale = await getLocale();
+  const [locale, settings] = await Promise.all([getLocale(), getSettings()]);
+  const theme = themeById(settings.site_theme);
+
   return (
-    <html lang={locale} dir={dirOf(locale)}>
+    <html lang={locale} dir={dirOf(locale)} data-theme={theme.id}>
       <head>
         <link
           rel="preload"
@@ -44,6 +51,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           type="font/woff2"
           crossOrigin="anonymous"
         />
+        {/* متغیرهای تم انتخابی مدیر؛ مقدارها از فهرست ثابت themes.ts می‌آیند */}
+        <style dangerouslySetInnerHTML={{ __html: themeCss(theme) }} />
       </head>
       <body>
         <BackgroundFX />

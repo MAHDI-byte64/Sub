@@ -677,6 +677,57 @@ try {
   );
   await user.goto(serviceUrl, { waitUntil: "domcontentloaded" });
 
+  console.log("→ تغییر تم سایت توسط مدیر");
+  await admin.goto(`${BASE}/admin/settings`, { waitUntil: "domcontentloaded" });
+  check("کارت‌های انتخاب تم در تنظیمات هست", (await admin.locator(".theme-card").count()) >= 4);
+  check(
+    "تم پیش‌فرض فندق انتخاب شده است",
+    await admin.isChecked("input[name=site_theme][value=fandogh]"),
+  );
+
+  // انتخاب تم تازه باید همان لحظه روی خود پنل هم دیده شود (پیش‌نمایش)
+  await admin.click(".theme-card:has(input[value=emerald])");
+  check(
+    "پیش‌نمایش تم بدون ذخیره اعمال می‌شود",
+    (await admin.getAttribute("html", "data-theme")) === "emerald",
+    await admin.getAttribute("html", "data-theme"),
+  );
+
+  await admin.click("button:has-text('ذخیره همه تنظیمات')");
+  await admin.waitForSelector(".alert-success", { timeout: 20000 });
+  check("تنظیمات تم ذخیره شد", ((await admin.textContent(".alert-success")) ?? "").includes("ذخیره"));
+
+  // تم برای همهٔ بازدیدکننده‌ها اعمال می‌شود، حتی بدون ورود
+  await guest.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+  check(
+    "تم تازه روی صفحهٔ عمومی نشست",
+    (await guest.getAttribute("html", "data-theme")) === "emerald",
+    await guest.getAttribute("html", "data-theme"),
+  );
+  const guestAccent = await guest.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue("--gold").trim(),
+  );
+  check("رنگ اصلی تم روی متغیرهای CSS نشست", guestAccent === "#34d399", guestAccent);
+
+  await user.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
+  check(
+    "پنل کاربری هم با همان تم رندر می‌شود",
+    (await user.getAttribute("html", "data-theme")) === "emerald",
+  );
+  check("کاربر عادی جایی برای تغییر تم ندارد", (await user.locator(".theme-card").count()) === 0);
+
+  // کاربر عادی نباید بتواند تم را عوض کند: صفحهٔ تنظیمات برایش باز نمی‌شود
+  await user.goto(`${BASE}/admin/settings`, { waitUntil: "domcontentloaded" });
+  check("صفحهٔ تنظیمات برای کاربر عادی باز نمی‌شود", !user.url().includes("/admin/settings"), user.url());
+
+  // برگرداندن به تم پیش‌فرض تا بقیهٔ تست‌ها و اسکرین‌شات‌ها تغییر نکنند
+  await admin.goto(`${BASE}/admin/settings`, { waitUntil: "domcontentloaded" });
+  await admin.click(".theme-card:has(input[value=fandogh])");
+  await admin.click("button:has-text('ذخیره همه تنظیمات')");
+  await admin.waitForSelector(".alert-success", { timeout: 20000 });
+  await guest.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+  check("بازگشت به تم پیش‌فرض انجام شد", (await guest.getAttribute("html", "data-theme")) === "fandogh");
+
   console.log("→ نسخه انگلیسی سایت");
   await guest.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
   check("سایت به‌صورت پیش‌فرض فارسی و راست‌چین است", (await guest.getAttribute("html", "dir")) === "rtl");

@@ -10,6 +10,7 @@ import {
   testTelegramAction,
 } from "@/app/actions/admin";
 import ActionForm from "@/components/ActionForm";
+import ThemePicker from "@/components/ThemePicker";
 import { requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -114,7 +115,11 @@ export default async function AdminSettingsPage() {
             </div>
             <div className="grid grid-2">
               {SETTING_DEFS.filter((d) => d.group === group).map((def) => (
-                <div className={def.type === "bool" ? "checkbox" : "field"} key={def.key}>
+                <div
+                  className={def.type === "bool" ? "checkbox" : "field"}
+                  key={def.key}
+                  style={def.type === "theme" ? { gridColumn: "1 / -1" } : undefined}
+                >
                   {def.type === "bool" ? (
                     <>
                       <input
@@ -130,6 +135,8 @@ export default async function AdminSettingsPage() {
                       <label htmlFor={def.key}>{def.label}</label>
                       {def.type === "textarea" ? (
                         <textarea id={def.key} name={def.key} defaultValue={values[def.key]} />
+                      ) : def.type === "theme" ? (
+                        <ThemePicker name={def.key} value={values[def.key]} />
                       ) : def.type === "panel" ? (
                         <select id={def.key} name={def.key} defaultValue={values[def.key] ?? ""}>
                           <option value="">خودکار (مثل خرید عادی)</option>
